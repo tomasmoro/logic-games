@@ -1,0 +1,38 @@
+-- Historial de partidas en local (modo invitado / offline / cola de sync).
+CREATE TABLE GameProgressEntity (
+    localId             INTEGER PRIMARY KEY AUTOINCREMENT,
+    remoteId            TEXT,                       -- NULL hasta sincronizar
+    gameId              TEXT    NOT NULL,
+    score               INTEGER NOT NULL,
+    completionTimeMs    INTEGER NOT NULL,
+    accuracyPercentage  REAL    NOT NULL,
+    difficultyLevel     INTEGER NOT NULL,
+    createdAt           INTEGER NOT NULL,           -- epoch millis
+    isSynced            INTEGER NOT NULL DEFAULT 0  -- 0 = pendiente, 1 = subido
+);
+
+CREATE INDEX idx_progress_game ON GameProgressEntity(gameId);
+CREATE INDEX idx_progress_synced ON GameProgressEntity(isSynced);
+CREATE INDEX idx_progress_created ON GameProgressEntity(createdAt);
+
+insert:
+INSERT INTO GameProgressEntity(gameId, score, completionTimeMs, accuracyPercentage, difficultyLevel, createdAt, isSynced)
+VALUES (?, ?, ?, ?, ?, ?, 0);
+
+lastInsertedId:
+SELECT last_insert_rowid();
+
+selectAll:
+SELECT * FROM GameProgressEntity ORDER BY createdAt DESC;
+
+selectByGame:
+SELECT * FROM GameProgressEntity WHERE gameId = :gameId ORDER BY createdAt DESC;
+
+selectUnsynced:
+SELECT * FROM GameProgressEntity WHERE isSynced = 0 ORDER BY createdAt ASC;
+
+markSynced:
+UPDATE GameProgressEntity SET isSynced = 1, remoteId = :remoteId WHERE localId = :localId;
+
+countInRange:
+SELECT count(*) FROM GameProgressEntity WHERE createdAt >= :start AND createdAt < :end;
