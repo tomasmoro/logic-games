@@ -7,7 +7,38 @@ Léelas antes de escribir o modificar código.
 
 ## 1. Qué es este proyecto
 
-App de **entrenamiento mental y juegos de lógica** estilo *Impulse*.
+App móvil de **entrenamiento mental y juegos de lógica** estilo *Impulse* /
+*Lumosity*. La propuesta es un producto **adictivo y de uso diario**: sesiones
+cortas de minijuegos que ejercitan distintas capacidades cognitivas, con
+progreso medible y fuerte gancho de retención.
+
+### Visión de producto y funcionalidades
+
+- **Contenido — 30 minijuegos** repartidos en **11 categorías cognitivas**:
+  Memoria, Pensamiento Lógico, Resolución de Problemas, Reflejos, Velocidad
+  Mental, Atención y Concentración, Visión Espacial, Cálculo Mental, Lenguaje y
+  Vocabulario, Flexibilidad Cognitiva y Reconocimiento de Patrones. Además:
+  sección de **Acertijos** independientes y **Desafíos Diarios** con leaderboard.
+- **Gamificación y retención:** objetivo mental diario (p. ej. 5 ejercicios/día
+  para la recompensa), sistema de **logros**, y **rachas** por inicio de sesión
+  consecutivo.
+- **Estadísticas:** gráficos de progreso (tiempo de finalización, efectividad) y
+  **comparación contra el resto de jugadores al terminar cada partida**
+  (percentiles: "Eres mejor que el X% de los jugadores").
+- **Monetización:** plan **gratuito** con anuncios cada 3 minutos de juego activo
+  y plan **Premium** sin anuncios.
+- **Cuentas y sincronización:** login con **Google** y **Email/Password**; modo
+  **invitado** 100% local/offline que, al autenticarse, sincroniza su progreso
+  con la nube (bidireccional).
+- **UX/UI:** diseño llamativo con colores vibrantes, animaciones fluidas en
+  transiciones y **feedback inmediato** (visual, sonoro y háptico) al acertar o
+  fallar.
+
+> Estado actual: la arquitectura y dos juegos de ejemplo (Memoria de Secuencias
+> y Reflejos) están implementados; faltan los 28 juegos restantes, la UI de auth,
+> los acertijos y el leaderboard de desafíos. Ver la tabla de fases (§2).
+
+### Stack técnico
 
 - **Cliente:** Kotlin Multiplatform + **Compose Multiplatform** (Android e iOS,
   UI y lógica compartidas en `commonMain`).
