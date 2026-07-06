@@ -1,6 +1,10 @@
 package com.example.kortexgames.core.audio
 
 import com.example.kortexgames.data.settings.SettingsRepository
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.usePinned
+import platform.Foundation.NSData
+import platform.Foundation.create
 import platform.AVFAudio.AVAudioPlayer
 import platform.AVFAudio.AVAudioSession
 import platform.AVFAudio.AVAudioSessionCategoryAmbient
@@ -21,12 +25,26 @@ import platform.UIKit.UINotificationFeedbackType
  *
  * Respeta las preferencias del usuario vía [settings].
  */
+// Opt-in requerido: AVAudioPlayer/AVAudioSession y los generadores hápticos de
+// UIKit se consumen vía cinterop de Foundation, cuya API sigue marcada como
+// experimental (ExperimentalForeignApi). Se anota la clase entera porque los usos
+// se reparten entre las propiedades (AVAudioPlayer) y varios métodos
+// (preload/startMusic), evitando salpicar la anotación por cada llamada.
+// BetaInteropApi: NSData.create(bytes=,length=) (síntesis de tonos) aún es beta.
+@OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
 class IosAudioAndHapticManager(
     private val settings: SettingsRepository,
 ) : AudioAndHapticManager {
 
     private val players = mutableMapOf<SoundEffect, AVAudioPlayer>()
     private var musicPlayer: AVAudioPlayer? = null
+
+    /**
+     * Reproductores de tonos vivos. AVAudioPlayer deja de sonar si se libera, así
+     * que hay que retenerlos mientras suenan; se purgan los ya terminados en cada
+     * disparo para no acumularlos.
+     */
+    private val tonePlayers = mutableListOf<AVAudioPlayer>()
 
     private val impactLight = UIImpactFeedbackGenerator(UIImpactFeedbackStyle.UIImpactFeedbackStyleLight)
     private val impactMedium = UIImpactFeedbackGenerator(UIImpactFeedbackStyle.UIImpactFeedbackStyleMedium)
@@ -55,6 +73,23 @@ class IosAudioAndHapticManager(
             currentTime = 0.0
             play()
         }
+    }
+
+    override fun playTone(frequencyHz: Float, durationMs: Int) {
+        if (!settings.current.isSfxEnabled) return
+        // AVAudioPlayer no reproduce PCM crudo: se envuelve en WAV en memoria.
+        val wav = ToneSynth.wav(ToneSynth.squarePcm16(frequencyHz, durationMs))
+        val player = AVAudioPlayer(data = wav.toNSData(), error = null)
+        player.prepareToPlay()
+        player.play()
+        // Retén el reproductor mientras suena y descarta los ya finalizados.
+        tonePlayers.removeAll { !it.playing }
+        tonePlayers.add(player)
+    }
+
+    /** Copia el ByteArray a un NSData (sin exponer punteros fuera del pin). */
+    private fun ByteArray.toNSData(): NSData = usePinned { pinned ->
+        NSData.create(bytes = pinned.addressOf(0), length = size.toULong())
     }
 
     override fun hapticFeedback(type: HapticFeedback) {
@@ -89,6 +124,8 @@ class IosAudioAndHapticManager(
     override fun release() {
         players.values.forEach { it.stop() }
         players.clear()
+        tonePlayers.forEach { it.stop() }
+        tonePlayers.clear()
         stopMusic()
     }
 

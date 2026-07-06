@@ -54,6 +54,11 @@ kotlin {
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
 
+            // --- FASE 5: navegación multiplataforma (Scaffold + BottomNav) ---
+            implementation(libs.navigation.compose)
+            // --- FASE 5: iconos vectoriales Material (sin emojis como iconos) ---
+            implementation(libs.compose.materialIconsExtended)
+
             // --- FASE 3 ---
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)

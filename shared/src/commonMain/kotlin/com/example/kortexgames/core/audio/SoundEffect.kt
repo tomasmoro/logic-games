@@ -13,6 +13,9 @@ enum class SoundEffect(val fileName: String) {
     TAP("sfx_tap"),
     TIMER_TICK("sfx_timer_tick"),
     LEVEL_UP("sfx_level_up"),
+
+    /** Tirada de dado (juego al azar): rebotes secos que se asientan. */
+    DICE_ROLL("sfx_dice_roll"),
 }
 
 /** Intensidades de feedback háptico, mapeadas a cada plataforma. */

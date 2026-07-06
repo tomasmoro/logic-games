@@ -16,6 +16,17 @@ interface AudioAndHapticManager {
     /** Reproduce un efecto de sonido de baja latencia. */
     fun playSound(effect: SoundEffect)
 
+    /**
+     * Reproduce un tono musical sintetizado al vuelo (onda cuadrada = timbre
+     * arcade; ver [ToneSynth]). Se usa para el teclado del juego de Memoria, donde
+     * **cada botón tiene su propia nota** sin necesidad de 9 assets de audio.
+     * No-op silencioso si el usuario tiene el SFX desactivado.
+     *
+     * @param frequencyHz frecuencia de la nota (p. ej. 440 Hz = La).
+     * @param durationMs duración del "blip" en milisegundos.
+     */
+    fun playTone(frequencyHz: Float, durationMs: Int = 180)
+
     /** Dispara feedback háptico. */
     fun hapticFeedback(type: HapticFeedback)
 

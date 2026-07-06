@@ -61,8 +61,12 @@ siguiente sin que el usuario lo confirme explícitamente.
 | 2 | RLS + RPC percentiles + Edge Function | ✅ aplicado |
 | 3 | Arquitectura app (MVI, local-first, AdManager, tema, gráficos, audio/háptica) | ✅ |
 | 4 | `GameEngine` + 2 juegos ejemplo + Daily Goal | ✅ |
+| 5 | Sistema de Diseño visual (tema, animaciones, navegación, pantallas Home/Games/Profile) | 🚧 en curso |
 
 Al terminar una fase: resume lo hecho y **espera confirmación** antes de seguir.
+
+> El **Sistema de Diseño** (paleta, tipografía, principios de animación) está
+> especificado en la §9. Es la referencia obligatoria para toda UI nueva.
 
 ---
 
@@ -217,3 +221,153 @@ en vez de pedir credenciales.
 - No poner colores/strings hardcodeados donde exista tema/recurso.
 - No dejar código público sin KDoc (ver sección 3).
 - No introducir dependencias de plataforma en `commonMain` sin `expect/actual`.
+
+---
+
+## 9. Sistema de Diseño (Design System)
+
+> **Filosofía rectora: "Los detalles hacen grande a cualquier app; sé detallista
+> siempre."** Diseño moderno, amigable y estético. Cada interacción responde con
+> feedback visual. La app debe sentirse *viva* sin ser ruidosa.
+
+La fuente de verdad en código vive en `core/theme` (`LogicColors`,
+`LogicGradients`, `LogicTypography`, `LogicGamesTheme`) y en los modificadores de
+`ui/components/ModifierExt.kt`. **Esta sección manda sobre cualquier valor
+hardcodeado**: si necesitas un color, sale de `LogicColors`; si un color de
+categoría, de `CategoryPalette`.
+
+### 9.1 Concepto: "Lógica + Juego"
+
+La identidad nace de una tensión deliberada entre dos mundos:
+
+- **Lógica** → fondos oscuros y profundos (**azul noche**, `#0A0E1A`). Transmiten
+  concentración, elegancia y foco. Es el "lienzo" sobre el que el jugador piensa.
+- **Juego** → acentos vibrantes y saturados (neón). Transmiten energía,
+  gamificación y recompensa. Son los "premios" que puntúan la pantalla.
+
+Regla de oro de proporción: **superficie mayormente oscura, acento escaso**. El
+neón vale porque es raro; si todo brilla, nada resalta.
+
+### 9.2 Paleta de colores
+
+**Base / "Lógica" (superficies azul-noche, tema por defecto):**
+
+| Rol | Token | Hex | Uso |
+|-----|-------|-----|-----|
+| Fondo profundo | `BackgroundDark` | `#0A0E1A` | Fondo raíz de la app |
+| Superficie | `SurfaceDark` | `#141B2E` | Tarjetas, sheets, barra inferior |
+| Superficie elevada | `SurfaceVariantDark` | `#1E2740` | Tracks, chips, placeholders |
+| Texto principal | `OnDark` | `#F2F5FF` | Titulares y cuerpo |
+| Texto atenuado | `OnDarkMuted` | `#9AA3BE` | Subtítulos, metadatos |
+
+**Acentos / "Juego" (neón saturado con halo):**
+
+| Rol | Token | Hex | Personalidad |
+|-----|-------|-----|--------------|
+| Verde neón (acción) | `NeonGreen` | `#25E17E` | PLAY NOW, progreso, acierto |
+| Cian eléctrico (foco) | `NeonCyan`/`Electric` | `#00E5FF` | Navegación activa, anillo |
+| Morado neón | `Violet` | `#9D4EDD` | Categoría Memoria, marca 2ª |
+| Azul neón | `Blue` | `#3D9BFF` | Categoría Lógica |
+| Naranja coral | `Coral` | `#FF7A2F` | Categoría Reflejos |
+| Fuego (racha) | `StreakOrange` | `#FF7A3D` | Icono de racha |
+| Amarillo eléctrico | `Amber` | `#FFC24B` | Recompensa, monedas |
+| Magenta | `Magenta` | `#FF3D8B` | Categoría Lenguaje |
+
+El anillo de progreso y el CTA usan degradados neón (`LogicGradients.ring` cian→verde,
+`LogicGradients.play` verde). El halo de los iconos lo da `NeonIcon` (resplandor radial).
+
+**Feedback de juego (semántico, no decorativo):**
+
+| Rol | Token | Hex | Cuándo |
+|-----|-------|-----|--------|
+| Acierto | `Success` | `#00E676` | Respuesta correcta |
+| Error | `Error` | `#FF1744` | Fallo, tiempo agotado |
+
+**Degradados** (`LogicGradients`) para dar volumen a botones y fondos:
+`primary` (Violet→Magenta), `energy` (Electric→Violet), `reward` (Amber→Magenta),
+`success` (Lime→Success).
+
+**Color por categoría** (`CategoryPalette`): cada categoría cognitiva tiene un
+color representativo estable; las tarjetas del catálogo lo usan como identidad
+visual. No inventes colores por categoría fuera de ese mapa.
+
+### 9.3 Tipografía
+
+Escala geométrica de pesos marcados: **titulares gruesos** (impacto, "gamey") y
+**cuerpo legible** (nunca por debajo de 14sp). Amigable pero clara.
+
+| Estilo | Peso | Tamaño | Uso |
+|--------|------|--------|-----|
+| `displayLarge` | Black | 40sp | Números grandes, hero |
+| `headlineLarge` | ExtraBold | 30sp | Títulos de pantalla |
+| `headlineMedium` | Bold | 24sp | Saludo, secciones fuertes |
+| `titleLarge` | Bold | 20sp | Encabezados de sección |
+| `titleMedium` | SemiBold | 17sp | Títulos de tarjeta |
+| `bodyLarge` | Normal | 16sp | Cuerpo |
+| `bodyMedium` | Normal | 14sp | Texto secundario |
+| `labelLarge` | SemiBold | 15sp | Botones, chips |
+
+> Hoy se usa la fuente del sistema por pragmatismo multiplataforma. Para adoptar
+> una geométrica/redondeada propia (p. ej. *Poppins*, *Nunito*, *Baloo*), enlázala
+> vía `compose.components.resources` y aplícala como `FontFamily` en
+> `LogicTypography` — el resto de la app la hereda sin cambios.
+
+### 9.4 Principios de animación
+
+**Toda interacción tiene feedback visual.** Reglas:
+
+1. **Fluidas, rápidas y NO invasivas.** La animación sirve al usuario, no lo
+   entretiene: nunca bloquea la interacción ni retrasa la lectura.
+2. **Física de resorte (`spring`) para lo táctil** (botones, selección, aparición
+   de tarjetas). Da sensación orgánica y "con peso". Preferimos `spring` sobre
+   `tween` en todo lo que el usuario *toca*.
+3. **Transiciones sutiles de opacidad + escala para navegar** (fade/scale corto),
+   no deslizamientos largos que mareen.
+4. **Duraciones:** micro-feedback ~100–250 ms; revelados/entradas ~300–600 ms;
+   ambientes en bucle (brillo, latido) lentos (~1.2–2 s) y de baja amplitud.
+5. **Bucles con propósito:** el "pulse/glow" solo en el CTA principal para guiar
+   la acción; jamás en varios elementos a la vez (competirían por la atención).
+6. **Respeta el estado:** animaciones dirigidas por estado (`animate*AsState`,
+   `AnimatedVisibility`), reactivas, no imperativas.
+
+**Modificadores reutilizables** (`ui/components/ModifierExt.kt`):
+
+- `Modifier.bounceClick { }` — escala al 95 % al presionar y rebota con `spring`
+  al soltar. **Interacción táctil por defecto** de la app.
+- `Modifier.pulse()` — latido suave y continuo (escala 1↔1.04). Solo para el CTA
+  principal ("JUGAR AHORA").
+- `Modifier.softGlow(color)` — halo/sombra que respira. Refuerza el CTA sin ruido.
+
+Componentes canónicos con animación: `AnimatedGameButton` (spring press),
+`CircularProgressRing` (llenado animado), `LineChart` (trazado revelado),
+`AnimatedBottomBar` (ícono que crece + color + indicador), `RandomGameFab` (dado
+flotante: balanceo en bucle + brillo + "tirada" con giro al pulsar),
+`CategoryMotifSurface` + `CategoryTexture` (fondo de tarjeta **temático por
+categoría** —símbolos matemáticos, piezas de rompecabezas, red neuronal, o el
+icono repetido— con animación de expansión radial al pulsar que ilumina la card).
+
+### 9.5 Iconografía (REGLA: nada de emojis como iconos)
+
+Los iconos son **siempre vectoriales** (`ImageVector`), nunca emojis. Los emojis
+renderizan distinto por plataforma, no se pueden teñir con el color de acento ni
+llevar halo neón, y rompen la estética. Regla para todo icono de UI (navegación,
+categorías, racha, ajustes, botones):
+
+- Fuente: **Material Icons** (`org.jetbrains.compose.material:material-icons-extended`,
+  fijado en **1.7.3** — la última versión publicada; el artefacto no existe para la
+  versión de CMP actual). Variante **`Rounded`** (coherente con el lenguaje amigable).
+- Centraliza los iconos de navegación/acción en `ui/components/KortexIcons`; el
+  icono de cada categoría vive en la enum `GameCategory`.
+- Píntalos con [NeonIcon] para darles el **halo neón** del color de acento. Para
+  "encender/apagar" un icono (activo/inactivo) usa `glow = true/false` + color.
+- `contentDescription` significativo en iconos con carga semántica (accesibilidad).
+
+### 9.6 Forma y elevación
+
+- **Bordes muy redondeados** (moderno): tarjetas `24dp`, botones `20dp`, chips
+  `12dp`. Escala en `LogicShapes` (`small`/`medium`/`large`).
+- **Elevación sutil** por color y sombra corta; en tema oscuro la jerarquía se da
+  sobre todo por el escalón de superficie (`Surface` < `SurfaceVariant`), no por
+  sombras duras.
+- Espaciado base múltiplos de `4dp`; ritmo vertical cómodo (`16–20dp` entre
+  bloques).

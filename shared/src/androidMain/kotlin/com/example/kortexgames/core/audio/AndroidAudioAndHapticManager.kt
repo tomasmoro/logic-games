@@ -2,6 +2,8 @@ package com.example.kortexgames.core.audio
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioTrack
 import android.media.MediaPlayer
 import android.media.SoundPool
 import android.os.Build
@@ -24,18 +26,26 @@ class AndroidAudioAndHapticManager(
     private val settings: SettingsRepository,
 ) : AudioAndHapticManager {
 
+    /** Atributos de audio de juego, compartidos por SoundPool y AudioTrack. */
+    private val gameAudioAttributes: AudioAttributes = AudioAttributes.Builder()
+        .setUsage(AudioAttributes.USAGE_GAME)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+        .build()
+
     private val soundPool: SoundPool = SoundPool.Builder()
         .setMaxStreams(6) // varios SFX solapados sin cortarse
-        .setAudioAttributes(
-            AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_GAME)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build()
-        )
+        .setAudioAttributes(gameAudioAttributes)
         .build()
 
     private val soundIds = mutableMapOf<SoundEffect, Int>()
     private var musicPlayer: MediaPlayer? = null
+
+    /**
+     * Caché de PCM por (frecuencia|duración): sintetizar la onda en cada toque es
+     * barato, pero el juego reutiliza las mismas 9 notas una y otra vez, así que
+     * memorizarlas evita recomputar en el hilo de UI durante la reproducción.
+     */
+    private val toneCache = mutableMapOf<Long, ByteArray>()
 
     private val vibrator: Vibrator by lazy {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -58,6 +68,38 @@ class AndroidAudioAndHapticManager(
         if (!settings.current.isSfxEnabled) return
         val id = soundIds[effect] ?: return
         soundPool.play(id, 1f, 1f, 1, 0, 1f)
+    }
+
+    override fun playTone(frequencyHz: Float, durationMs: Int) {
+        if (!settings.current.isSfxEnabled) return
+        // Clave estable combinando bits de la frecuencia y la duración.
+        val key = (frequencyHz.toRawBits().toLong() shl 20) or (durationMs.toLong() and 0xFFFFF)
+        val pcm = toneCache.getOrPut(key) { ToneSynth.squarePcm16(frequencyHz, durationMs) }
+
+        // AudioTrack en MODO_STATIC: escribimos todo el buffer y lo disparamos.
+        // Cada toque crea un track efímero que se auto-libera al llegar al final
+        // (marker), así varias notas pueden solaparse sin cortarse entre sí.
+        val track = AudioTrack.Builder()
+            .setAudioAttributes(gameAudioAttributes)
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setSampleRate(ToneSynth.SAMPLE_RATE)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                    .build()
+            )
+            .setBufferSizeInBytes(pcm.size)
+            .setTransferMode(AudioTrack.MODE_STATIC)
+            .build()
+
+        track.write(pcm, 0, pcm.size)
+        // Marca el final (en frames) para liberar el track cuando termina de sonar.
+        track.setNotificationMarkerPosition(pcm.size / 2)
+        track.setPlaybackPositionUpdateListener(object : AudioTrack.OnPlaybackPositionUpdateListener {
+            override fun onMarkerReached(t: AudioTrack?) { t?.release() }
+            override fun onPeriodicNotification(t: AudioTrack?) {}
+        })
+        track.play()
     }
 
     override fun hapticFeedback(type: HapticFeedback) {

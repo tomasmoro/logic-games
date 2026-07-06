@@ -10,27 +10,27 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 
 private val DarkScheme = darkColorScheme(
-    primary = LogicColors.Violet,
-    secondary = LogicColors.Electric,
-    tertiary = LogicColors.Magenta,
+    primary = LogicColors.NeonCyan,        // foco/navegación
+    secondary = LogicColors.NeonGreen,     // acción principal
+    tertiary = LogicColors.Violet,
     background = LogicColors.BackgroundDark,
     surface = LogicColors.SurfaceDark,
     surfaceVariant = LogicColors.SurfaceVariantDark,
     error = LogicColors.Error,
-    onPrimary = LogicColors.OnDark,
+    onPrimary = LogicColors.BackgroundDark, // texto oscuro sobre neón (contraste)
     onBackground = LogicColors.OnDark,
     onSurface = LogicColors.OnDark,
     onSurfaceVariant = LogicColors.OnDarkMuted,
 )
 
 private val LightScheme = lightColorScheme(
-    primary = LogicColors.Violet,
-    secondary = LogicColors.Electric,
-    tertiary = LogicColors.Magenta,
+    primary = LogicColors.NeonCyan,
+    secondary = LogicColors.NeonGreen,
+    tertiary = LogicColors.Violet,
     background = LogicColors.BackgroundLight,
     surface = LogicColors.SurfaceLight,
     error = LogicColors.Error,
-    onPrimary = LogicColors.OnDark,
+    onPrimary = LogicColors.BackgroundDark,
     onBackground = LogicColors.OnLight,
     onSurface = LogicColors.OnLight,
 )
