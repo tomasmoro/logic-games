@@ -2,8 +2,12 @@ package com.example.kortexgames.game.watersort
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -32,9 +36,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathMeasure
@@ -47,21 +53,21 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.kortexgames.core.theme.CategoryPalette
 import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameStatus
+import com.example.kortexgames.ui.components.ArcadeBrickBackground
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.NeonIcon
 import com.example.kortexgames.ui.components.bounceClick
 import kotlin.math.PI
 import kotlin.math.cos
-import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
@@ -93,13 +99,27 @@ private const val RETURN_START = 0.90f      // empieza el viaje de vuelta
 private const val TILT_DEGREES = 45f        // inclinación al servir
 
 /** Ancho fijo de un tubo; se reutiliza para el tubo "viajero" del overlay. */
-private val TubeWidth = 52.dp
+private val TubeWidth = 54.dp
 
-/** Relación de aspecto del tubo (ancho/alto). */
-private const val TubeAspect = 0.4f
+/** Relación de aspecto del tubo (ancho/alto). Más esbelto → aspecto de frasco. */
+private const val TubeAspect = 0.36f
 
-/** Forma del vidrio del tubo: boca casi recta, base bien redondeada. */
-private val TubeShape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 22.dp, bottomEnd = 22.dp)
+/**
+ * Forma del vidrio del tubo de ensayo: boca apenas redondeada arriba y **base en
+ * U** (radio ~= mitad del ancho) para que se lea como un frasco real y no como una
+ * caja. El líquido se recorta contra esta silueta.
+ */
+private val TubeShape = RoundedCornerShape(topStart = 7.dp, topEnd = 7.dp, bottomStart = 27.dp, bottomEnd = 27.dp)
+
+/**
+ * Separación vertical (aire de vidrio) entre bandas de líquido. El usuario pidió
+ * "agrandar la separación": deja ver el fondo del vidrio entre colores para que
+ * cada franja se lea como un líquido independiente, no como un bloque continuo.
+ */
+private val BandSeparation = 4.dp
+
+/** Radio de esquina de cada banda de líquido (superficie con aspecto de gota). */
+private val BandCorner = 5.dp
 
 /**
  * Una banda de líquido a dibujar, de abajo hacia arriba. [heightSlots] es la
@@ -122,9 +142,10 @@ private data class LiquidBand(val colorIndex: Int, val heightSlots: Float)
  * motor ya está actualizado, así que se reconstruye el estado *previo* al vertido
  * a partir del propio evento para animar el trasvase.
  *
- * El progreso efectivo se calcula de forma **síncrona** (`p`): mientras el
- * `LaunchedEffect` aún no ha arrancado la animación del vertido nuevo, `p` vale 0
- * (estado inicial), evitando el "frame fantasma" en que se vería el estado final.
+ * Se crea un `Animatable` **nuevo por cada id de vertido** (`remember(pour?.id)`),
+ * de modo que `p` (=`progress.value`) vale 0 en el primer frame de cada vertido sin
+ * carreras de reseteo: así el tubo viajero nunca aparece un frame en la posición de
+ * destino antes de arrancar desde el origen.
  */
 @Composable
 fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
@@ -139,23 +160,30 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
     var containerCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val tubeCoords = remember { mutableMapOf<Int, LayoutCoordinates>() }
 
-    val progress = remember { Animatable(0f) }
-    // Id del vertido cuya animación ya arrancó. Sirve para (1) lanzar la animación
-    // y (2) saber si el `progress` actual corresponde ya al vertido en curso.
-    var animId by remember { mutableStateOf<Long?>(null) }
-
     val pour = game.lastPour
+    // Un Animatable NUEVO por cada id de vertido (`remember(pour?.id)`): garantiza
+    // que `progress.value` vale 0 en el PRIMER frame de cada vertido, porque es una
+    // instancia recién creada, no una reutilizada con un valor viejo. Esto elimina
+    // POR CONSTRUCCIÓN el "frame fantasma" en la posición de destino: no depende del
+    // orden de `snapTo`/marca de arranque ni del mutex del Animatable (esas carreras
+    // dejaban colarse un `progress` a media animación anterior al interrumpir un
+    // vertido con otro toque, y el tubo destellaba un frame al costado/destino).
+    val progress = remember(pour?.id) { Animatable(0f) }
     LaunchedEffect(pour?.id) {
-        val pr = pour ?: return@LaunchedEffect
-        animId = pr.id
-        progress.snapTo(0f)
-        progress.animateTo(1f, tween(POUR_DURATION_MS, easing = FastOutSlowInEasing))
+        if (pour != null) progress.animateTo(1f, tween(POUR_DURATION_MS, easing = FastOutSlowInEasing))
     }
 
-    val raw = progress.value                  // registra lecturas → recomposición por frame
-    val started = pour != null && animId == pour.id
-    val p = if (started) raw else 0f          // aún sin arrancar ⇒ estado inicial (p=0)
-    val animating = pour != null && (!started || raw < 1f)
+    // Anclas (rects de origen y destino) CONGELADAS al inicio de cada vertido. Es la
+    // clave del bug reportado: `boundsOf` se recalcula por frame a partir de
+    // `tubeCoords`/`containerCoords`, que se reescriben en relayouts durante el
+    // vertido (el origen pasa a placeholder, el destino se repinta con menos bandas,
+    // el texto "N movimientos" cambia de ancho y re-centra la fila…). Eso movía
+    // `fromRect`/`destRect` a media animación → el tubo saltaba. Al fijar las anclas
+    // una sola vez, la trayectoria es estable de principio a fin.
+    val anchors = remember(pour?.id) { mutableStateOf<Pair<Rect, Rect>?>(null) }
+
+    val p = progress.value                    // 0 en el primer frame de cada vertido
+    val animating = pour != null && p < 1f
 
     /** Rect del tubo [i] en coordenadas del contenedor (o null si aún no medido). */
     fun boundsOf(i: Int): Rect? {
@@ -166,6 +194,11 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
     }
 
     Box(Modifier.fillMaxSize().background(LogicColors.BackgroundDark)) {
+        // Textura ambiental de muro arcade "neo-retro" (azul Lógica), muy sutil.
+        ArcadeBrickBackground(
+            modifier = Modifier.fillMaxSize(),
+            accent = CategoryPalette.Logic,
+        )
         Column(
             modifier = Modifier.fillMaxSize().padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -224,25 +257,39 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
                                     isTravelingSource -> Box(
                                         slotModifier.aspectRatio(TubeAspect),
                                     )
-                                    // El destino se rellena in situ durante el vertido.
+                                    // El destino se rellena in situ durante el vertido. Ya
+                                    // brilla si este vertido lo deja completo.
                                     activePour != null && index == activePour.to -> TubeView(
                                         bands = destBands(tube, activePour, pourFactor),
                                         capacity = game.capacity,
-                                        selected = false,
+                                        highlightColor = null,
+                                        lifted = false,
+                                        glowing = tube.isGlowing(game.capacity),
+                                        glowColor = PotionColors[activePour.color],
                                         tiltDegrees = 0f,
                                         enabled = false,
                                         onClick = {},
                                         modifier = slotModifier,
                                     )
-                                    else -> TubeView(
-                                        bands = tube.segments.map { LiquidBand(it, 1f) },
-                                        capacity = game.capacity,
-                                        selected = game.selected == index,
-                                        tiltDegrees = 0f,
-                                        enabled = !animating,
-                                        onClick = { vm.onIntent(WaterSortIntent.TapTube(index)) },
-                                        modifier = slotModifier,
-                                    )
+                                    else -> {
+                                        val isSel = game.selected == index
+                                        val top = tube.topColorOrNull()
+                                        TubeView(
+                                            bands = tube.segments.map { LiquidBand(it, 1f) },
+                                            capacity = game.capacity,
+                                            // Borde neón del color superior al seleccionar (§ petición).
+                                            highlightColor = if (isSel) top else null,
+                                            lifted = isSel,
+                                            glowing = tube.isGlowing(game.capacity),
+                                            glowColor = top ?: LogicColors.NeonCyan,
+                                            tiltDegrees = 0f,
+                                            // Los demás frascos siguen tocables aunque otro esté
+                                            // vertiendo (§ petición: no bloquear el resto).
+                                            enabled = true,
+                                            onClick = { vm.onIntent(WaterSortIntent.TapTube(index)) },
+                                            modifier = slotModifier,
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -251,8 +298,17 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
 
                 // --- Capa superior: tubo viajero + chorro (solo durante el vertido) ---
                 if (activePour != null) {
-                    val fromRect = boundsOf(activePour.from)
-                    val destRect = boundsOf(activePour.to)
+                    // Congela las anclas la primera vez que ambas están medidas y
+                    // reutilízalas el resto del vertido (posición estable, sin saltos
+                    // por relayouts). En el primer frame se calculan de las medidas
+                    // actuales, que ya son válidas porque los tubos llevan pintados.
+                    val frozen = anchors.value ?: run {
+                        val f = boundsOf(activePour.from)
+                        val d = boundsOf(activePour.to)
+                        if (f != null && d != null) (f to d).also { anchors.value = it } else null
+                    }
+                    val fromRect = frozen?.first
+                    val destRect = frozen?.second
                     if (fromRect != null && destRect != null) {
                         val travel = travelFactor(p)
                         val dir = if (destRect.center.x >= fromRect.center.x) 1f else -1f
@@ -264,14 +320,27 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
                         TubeView(
                             bands = sourceBands(game.tubes[activePour.from], activePour, pourFactor),
                             capacity = game.capacity,
-                            selected = false,
+                            // Mantiene el borde neón del color vertido durante todo el
+                            // trasvase (§ petición: conservar el borde al derramar).
+                            highlightColor = PotionColors[activePour.color],
+                            lifted = false,
+                            glowing = false,
+                            glowColor = PotionColors[activePour.color],
                             tiltDegrees = angle,
                             enabled = false,
                             onClick = {},
+                            // Posicionamos con `graphicsLayer` (traslación en fase de
+                            // dibujo), NO con `offset { }`: el offset diferido no se
+                            // aplica en el primer frame del nodo recién compuesto, lo que
+                            // hacía destellar el tubo un frame en la esquina (TopStart)
+                            // antes de saltar al origen.
                             modifier = Modifier
                                 .align(Alignment.TopStart)
-                                .offset { IntOffset(current.left.roundToInt(), current.top.roundToInt()) }
-                                .width(TubeWidth),
+                                .width(TubeWidth)
+                                .graphicsLayer {
+                                    translationX = current.left
+                                    translationY = current.top
+                                },
                         )
 
                         // Chorro neón desde la esquina del pico del tubo viajero al destino.
@@ -427,17 +496,34 @@ private fun DrawScope.drawPourStream(source: Rect, dest: Rect, dir: Float, angle
     drawPath(segment, color, style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round))
 }
 
+/** Color neón de la banda superior del tubo (lo próximo a verter), o null si vacío. */
+private fun Tube.topColorOrNull(): Color? = segments.lastOrNull()?.let { PotionColors[it] }
+
+/**
+ * ¿El tubo debe **brillar** (halo pulsante)? Solo cuando está resuelto de verdad:
+ * lleno y de un único color. Un tubo vacío también cumple `isComplete`, pero no
+ * tiene nada que celebrar, así que no brilla.
+ */
+private fun Tube.isGlowing(capacity: Int): Boolean =
+    segments.isNotEmpty() && isComplete(capacity)
+
 /**
  * Un tubo de ensayo dibujado con [Canvas] para poder pintar bandas de altura
- * fraccionaria (necesario para animar el trasvase). Feedback visual:
- *  - **seleccionado** → se eleva ([offset]) con `spring` y borde neón del color superior,
- *  - **sirviendo** → se inclina ([tiltDegrees]) pivotando sobre su base.
+ * fraccionaria (necesario para animar el trasvase). Feedback visual (§9.4):
+ *  - **[lifted]** (seleccionado) → se eleva con `spring` (sensación táctil),
+ *  - **[highlightColor]** → borde neón de ese color con halo estático (selección
+ *    o tubo origen en vuelo; el usuario pidió conservarlo al derramar),
+ *  - **[glowing]** (tubo completado) → halo neón **pulsante** de [glowColor],
+ *  - **[tiltDegrees]** (sirviendo) → se inclina pivotando sobre su base.
  */
 @Composable
 private fun TubeView(
     bands: List<LiquidBand>,
     capacity: Int,
-    selected: Boolean,
+    highlightColor: Color?,
+    lifted: Boolean,
+    glowing: Boolean,
+    glowColor: Color,
     tiltDegrees: Float,
     enabled: Boolean,
     onClick: () -> Unit,
@@ -445,7 +531,7 @@ private fun TubeView(
 ) {
     // El tubo seleccionado se eleva con física de resorte (sensación táctil, §9.4).
     val lift by animateDpAsState(
-        targetValue = if (selected) (-18).dp else 0.dp,
+        targetValue = if (lifted) (-18).dp else 0.dp,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessLow,
@@ -453,9 +539,30 @@ private fun TubeView(
         label = "tubeLift",
     )
 
-    val topColor = bands.lastOrNull()?.let { PotionColors[it.colorIndex] } ?: LogicColors.NeonCyan
-    val borderColor = if (selected) topColor else LogicColors.SurfaceVariantDark
-    val borderDp = if (selected) 2.5.dp else 1.5.dp
+    // Latido lento del halo del tubo completado (ambiente de baja amplitud, §9.4).
+    val glowPulse by rememberInfiniteTransition(label = "tubeGlow").animateFloat(
+        initialValue = 0.30f,
+        targetValue = 0.85f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1300, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "tubeGlowAlpha",
+    )
+
+    // Prioridad del halo: completado (pulsante) > seleccionado/en vuelo (fijo).
+    val haloColor = when {
+        glowing -> glowColor
+        highlightColor != null -> highlightColor
+        else -> null
+    }
+    val haloAlpha = when {
+        glowing -> glowPulse
+        highlightColor != null -> 0.5f
+        else -> 0f
+    }
+    val borderColor = highlightColor ?: if (glowing) glowColor else LogicColors.SurfaceVariantDark
+    val borderDp = if (highlightColor != null || glowing) 2.5.dp else 1.5.dp
 
     Box(modifier = modifier.aspectRatio(TubeAspect)) {
         Canvas(
@@ -469,20 +576,27 @@ private fun TubeView(
                 }
                 .bounceClick(enabled = enabled, onClick = onClick),
         ) {
-            drawTube(bands, capacity, borderColor, borderDp.toPx())
+            drawTube(bands, capacity, borderColor, borderDp.toPx(), haloColor, haloAlpha)
         }
     }
 }
 
 /**
- * Pinta el vidrio (fondo + borde redondeado) y el líquido apilado desde la base.
- * La última banda puede ser fraccionaria (superficie del líquido durante el vertido).
+ * Pinta el frasco de ensayo: vidrio (fondo + reflejo), líquido en **bandas
+ * separadas** (con aire de vidrio entre colores para que se lean como líquidos
+ * distintos, § petición) y borde/halo neón. La última banda puede ser fraccionaria
+ * (superficie del líquido durante el vertido).
+ *
+ * @param haloColor color del halo neón interior (selección/en vuelo/completado); null = sin halo.
+ * @param haloAlpha intensidad del halo 0..1 (pulsa cuando el tubo está completado).
  */
 private fun DrawScope.drawTube(
     bands: List<LiquidBand>,
     capacity: Int,
     borderColor: Color,
     borderWidthPx: Float,
+    haloColor: Color?,
+    haloAlpha: Float,
 ) {
     val outline = TubeShape.createOutline(size, layoutDirection, this)
     val glass = Path().apply { addOutline(outline) }
@@ -490,20 +604,52 @@ private fun DrawScope.drawTube(
     drawPath(glass, LogicColors.SurfaceDark) // vidrio
 
     clipPath(glass) {
-        val inset = 3.dp.toPx()
-        val topGap = 6.dp.toPx() // deja aire en la boca aunque esté lleno
+        val inset = 4.dp.toPx()
+        val topGap = 7.dp.toPx() // deja aire en la boca aunque esté lleno
+        val sep = BandSeparation.toPx()
+        val corner = CornerRadius(BandCorner.toPx(), BandCorner.toPx())
         val slotHeight = (size.height - topGap) / capacity
         val innerWidth = size.width - inset * 2
-        var yBottom = size.height
+        var yBottom = size.height - inset // pequeño colchón sobre la base en U
         for (band in bands) {
             val h = band.heightSlots * slotHeight
             if (h <= 0f) continue
-            drawRect(
+            // Reserva `sep` de aire en la parte alta de cada banda → franjas separadas.
+            val drawH = (h - sep).coerceAtLeast(1f)
+            drawRoundRect(
                 color = PotionColors[band.colorIndex],
-                topLeft = Offset(inset, yBottom - h),
-                size = Size(innerWidth, h),
+                topLeft = Offset(inset, yBottom - drawH),
+                size = Size(innerWidth, drawH),
+                cornerRadius = corner,
+            )
+            // Menisco: fina franja superior más clara → aspecto de superficie líquida.
+            drawRoundRect(
+                color = Color.White.copy(alpha = 0.16f),
+                topLeft = Offset(inset, yBottom - drawH),
+                size = Size(innerWidth, 3.dp.toPx()),
+                cornerRadius = corner,
             )
             yBottom -= h
+        }
+
+        // Reflejo de vidrio: brillo vertical translúcido en el lado izquierdo (§ "los
+        // detalles hacen grande a la app"). Va sobre el líquido, muy sutil.
+        drawRoundRect(
+            brush = Brush.horizontalGradient(
+                colors = listOf(Color.White.copy(alpha = 0.10f), Color.Transparent),
+                startX = inset,
+                endX = inset + innerWidth * 0.5f,
+            ),
+            topLeft = Offset(inset, inset),
+            size = Size(innerWidth * 0.32f, size.height),
+            cornerRadius = corner,
+        )
+
+        // Halo neón **interior**: varios trazos del borde a alfa baja dan un
+        // resplandor hacia dentro sin salirse de los límites del Canvas.
+        if (haloColor != null && haloAlpha > 0f) {
+            drawPath(glass, haloColor.copy(alpha = haloAlpha * 0.5f), style = Stroke(11.dp.toPx()))
+            drawPath(glass, haloColor.copy(alpha = haloAlpha), style = Stroke(5.dp.toPx()))
         }
     }
 

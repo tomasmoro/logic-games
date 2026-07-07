@@ -1,6 +1,7 @@
 package com.example.kortexgames.ui.profile
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,8 +17,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.automirrored.rounded.ShowChart
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.CloudSync
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material3.Icon
@@ -28,16 +31,21 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.kortexgames.core.theme.LogicColors
+import com.example.kortexgames.core.theme.LogicGradients
 import com.example.kortexgames.di.AppGraph
+import com.example.kortexgames.domain.model.AuthState
 import com.example.kortexgames.domain.model.GameProgress
 import com.example.kortexgames.game.daily.calculateStreakDays
 import com.example.kortexgames.ui.components.ChartPoint
@@ -48,21 +56,26 @@ import com.example.kortexgames.ui.components.bounceClick
 import com.example.kortexgames.ui.components.pulse
 import com.example.kortexgames.ui.settings.SettingsIntent
 import com.example.kortexgames.ui.settings.SettingsViewModel
+import kotlinx.coroutines.launch
 
 /**
  * Pantalla de Perfil: racha actual (con icono de fuego neón animado), espacios
  * preparados para los gráficos de rendimiento, ajustes de la app y gestión de
  * cuenta. La racha se **deriva del historial local** (fuente de verdad, offline).
  * Sin emojis: todos los iconos son vectoriales.
+ *
+ * @param onOpenAuth abre el login (CTA mostrado solo a invitados).
  */
 @Composable
-fun ProfileScreen(graph: AppGraph) {
+fun ProfileScreen(graph: AppGraph, onOpenAuth: () -> Unit) {
     val settingsVm: SettingsViewModel = viewModel {
         SettingsViewModel(graph.settingsRepository, graph.audio)
     }
     val settings by settingsVm.state.collectAsStateWithLifecycle()
     val history by graph.progressRepository.observeHistory(null)
         .collectAsStateWithLifecycle(initialValue = emptyList())
+    val session by graph.authRepository.sessionState.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
 
     val streak = calculateStreakDays(history)
 
@@ -107,7 +120,11 @@ fun ProfileScreen(graph: AppGraph) {
 
             // --- Cuenta ----------------------------------------------------------
             Text("Cuenta", style = MaterialTheme.typography.titleLarge, color = LogicColors.OnDark)
-            AccountRow(onClick = { /* TODO FASE auth: navegar a ajustes de cuenta */ })
+            if (session is AuthState.Authenticated) {
+                AuthenticatedAccountCard(onSignOut = { scope.launch { graph.signOut() } })
+            } else {
+                GuestAccountCard(onSignIn = onOpenAuth)
+            }
 
             Spacer(Modifier.height(4.dp))
         }
@@ -179,25 +196,99 @@ private fun SettingToggle(
     }
 }
 
-/** Fila de cuenta: icono de ajustes + texto + chevron, con rebote al tocar. */
+/**
+ * Tarjeta de cuenta para **invitados**: CTA con borde neón que invita a iniciar
+ * sesión, explicando el beneficio (sincronizar en la nube). Es la contraparte en
+ * Perfil del banner del Home.
+ */
 @Composable
-private fun AccountRow(onClick: () -> Unit) {
+private fun GuestAccountCard(onSignIn: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(LogicColors.SurfaceDark)
-            .bounceClick(onClick = onClick)
+            .border(
+                width = 1.dp,
+                brush = Brush.horizontalGradient(LogicGradients.energy),
+                shape = RoundedCornerShape(20.dp),
+            )
+            .bounceClick(onClick = onSignIn)
             .padding(18.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            NeonIcon(icon = KortexIcons.Settings, tint = LogicColors.NeonCyan, size = 24.dp, glow = false)
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+            NeonIcon(icon = Icons.Rounded.CloudSync, tint = LogicColors.NeonCyan, size = 24.dp)
             Spacer(Modifier.width(14.dp))
-            Text("Gestión de cuenta", style = MaterialTheme.typography.bodyLarge, color = LogicColors.OnDark)
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Iniciar sesión", style = MaterialTheme.typography.bodyLarge, color = LogicColors.OnDark)
+                Text(
+                    "Sincroniza tu progreso y no lo pierdas",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = LogicColors.OnDarkMuted,
+                )
+            }
         }
-        Icon(KortexIcons.ChevronRight, contentDescription = null, tint = LogicColors.OnDarkMuted, modifier = Modifier.size(24.dp))
+        Text(
+            "Entrar",
+            style = MaterialTheme.typography.labelLarge,
+            color = LogicColors.NeonCyan,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+/**
+ * Tarjeta de cuenta para usuarios **autenticados**: confirma que el progreso se
+ * sincroniza y ofrece cerrar sesión (vuelve a modo invitado, sin borrar lo local).
+ */
+@Composable
+private fun AuthenticatedAccountCard(onSignOut: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(LogicColors.SurfaceDark)
+            .padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            NeonIcon(icon = Icons.Rounded.CloudSync, tint = LogicColors.Success, size = 24.dp)
+            Spacer(Modifier.width(14.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Sesión iniciada", style = MaterialTheme.typography.bodyLarge, color = LogicColors.OnDark)
+                Text(
+                    "Tu progreso se guarda en la nube",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = LogicColors.OnDarkMuted,
+                )
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(LogicColors.SurfaceVariantDark)
+                .bounceClick(onClick = onSignOut)
+                .padding(vertical = 12.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.AutoMirrored.Rounded.Logout,
+                contentDescription = null,
+                tint = LogicColors.Error,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                "Cerrar sesión",
+                style = MaterialTheme.typography.labelLarge,
+                color = LogicColors.Error,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
     }
 }
 

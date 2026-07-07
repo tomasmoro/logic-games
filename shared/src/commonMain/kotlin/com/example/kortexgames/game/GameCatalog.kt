@@ -30,6 +30,12 @@ object GameIds {
 
     /** Ordena las Pociones / Water Sort (categoría "logic"). */
     const val WATER_SORT = "33333333-3333-4333-8333-333333333333"
+
+    /** Burbujas de Cálculo (categoría "calculation" / Cálculo Mental). */
+    const val BUBBLE_MATH = "44444444-4444-4444-8444-444444444444"
+
+    /** Flujo de Energía (categoría "spatial" / Visión Espacial). */
+    const val ENERGY_FLOW = "55555555-5555-4555-8555-555555555555"
 }
 
 /**
@@ -77,20 +83,21 @@ data class GameInfo(
 )
 
 /**
- * Catálogo de juegos que alimenta la pantalla de lista. Hoy solo dos juegos son
- * jugables (FASE 4); el resto son placeholders del roadmap para dar volumen y
- * comunicar la visión sin engañar (aparecen como "Próximamente").
+ * Catálogo de juegos que alimenta la pantalla de lista. Hoy son jugables cinco
+ * juegos (Memoria, Reflejos, Pociones, Burbujas de Cálculo y Flujo de Energía); el
+ * resto son placeholders del roadmap para dar volumen y comunicar la visión sin
+ * engañar (aparecen como "Próximamente").
  */
 object GameCatalog {
     val games: List<GameInfo> = listOf(
         GameInfo(GameIds.SEQUENCE_MEMORY, "Memoria de Secuencias", GameCategory.MEMORY, playable = true),
         GameInfo(GameIds.REFLEX_TAP, "Reflejos de Toque Rápido", GameCategory.REFLEXES, playable = true),
         GameInfo(GameIds.WATER_SORT, "Ordena las Pociones", GameCategory.LOGIC, playable = true),
+        GameInfo(GameIds.BUBBLE_MATH, "Burbujas de Cálculo", GameCategory.MENTAL_MATH, playable = true),
+        GameInfo(GameIds.ENERGY_FLOW, "Flujo de Energía", GameCategory.SPATIAL, playable = true),
         GameInfo(null, "Parejas Relámpago", GameCategory.MEMORY, playable = false),
         GameInfo(null, "Cadena Lógica", GameCategory.LOGIC, playable = false),
-        GameInfo(null, "Sumas Veloces", GameCategory.MENTAL_MATH, playable = false),
         GameInfo(null, "Encuentra el Intruso", GameCategory.ATTENTION, playable = false),
-        GameInfo(null, "Rotación Espacial", GameCategory.SPATIAL, playable = false),
         GameInfo(null, "Anagramas", GameCategory.LANGUAGE, playable = false),
         GameInfo(null, "Cambio de Regla", GameCategory.FLEXIBILITY, playable = false),
         GameInfo(null, "Patrón Oculto", GameCategory.PATTERNS, playable = false),

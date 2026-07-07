@@ -19,9 +19,25 @@ object Routes {
     const val GAMES = "games"
     const val PROFILE = "profile"
 
+    /**
+     * Login **a demanda**: un invitado pulsa "Iniciar sesión" en Home/Perfil.
+     * Muestra la flecha de volver y NO la opción de invitado (ya pasó la puerta).
+     */
+    const val AUTH = "auth"
+
+    /**
+     * Login como **puerta de primera apertura** (onboarding): obligatorio decidir,
+     * ofrece "continuar sin cuenta" con aviso de riesgos y no muestra "volver".
+     * Es una ruta aparte (en vez de un argumento) para no depender de la API de
+     * argumentos, que difiere entre plataformas en Compose Multiplatform.
+     */
+    const val AUTH_ONBOARDING = "auth/onboarding"
+
     const val MEMORY = "game/memory"
     const val REFLEX = "game/reflex"
     const val WATER_SORT = "game/watersort"
+    const val BUBBLE_MATH = "game/bubblemath"
+    const val ENERGY_FLOW = "game/energyflow"
 
     /**
      * Ruta de juego para un [GameIds] concreto, o null si el juego aún no es
@@ -32,6 +48,8 @@ object Routes {
         GameIds.SEQUENCE_MEMORY -> MEMORY
         GameIds.REFLEX_TAP -> REFLEX
         GameIds.WATER_SORT -> WATER_SORT
+        GameIds.BUBBLE_MATH -> BUBBLE_MATH
+        GameIds.ENERGY_FLOW -> ENERGY_FLOW
         else -> null
     }
 

@@ -43,6 +43,10 @@ kotlin {
             implementation(libs.sqldelight.android.driver)
             implementation(libs.ktor.client.okhttp)
             implementation(libs.kotlinx.coroutines.android)
+            // FASE 6: login con Google nativo (Credential Manager + Google Identity)
+            implementation(libs.androidx.credentials)
+            implementation(libs.androidx.credentials.playServicesAuth)
+            implementation(libs.google.googleid)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)

@@ -33,10 +33,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.kortexgames.core.theme.CategoryPalette
 import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameStatus
+import com.example.kortexgames.ui.components.ArcadeBrickBackground
 import com.example.kortexgames.ui.components.GameOverOverlay
+import com.example.kortexgames.ui.components.NeonFrame
 import com.example.kortexgames.ui.components.clickableNoRipple
 
 /**
@@ -73,6 +76,11 @@ fun SequenceMemoryScreen(graph: AppGraph, onExit: () -> Unit) {
     val game = state.game
 
     Box(Modifier.fillMaxSize().background(LogicColors.BackgroundDark)) {
+        // Textura ambiental de muro arcade "neo-retro" (morado Memoria), muy sutil.
+        ArcadeBrickBackground(
+            modifier = Modifier.fillMaxSize(),
+            accent = CategoryPalette.Memory,
+        )
         Column(
             modifier = Modifier.fillMaxSize().padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -96,20 +104,28 @@ fun SequenceMemoryScreen(graph: AppGraph, onExit: () -> Unit) {
             )
             Spacer(Modifier.height(24.dp))
 
-            // Rejilla 3x3 de botones arcade
+            // Rejilla 3x3 de botones arcade dentro de un "bezel" de consola: panel
+            // sólido (tapa el muro del fondo en los huecos entre botones) con borde
+            // neón animado alrededor. El padding lateral externo achica los botones
+            // y deja aire a los costados.
             val inputEnabled = game.phase == MemoryPhase.INPUT
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                for (rowIdx in 0 until 3) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        for (colIdx in 0 until 3) {
-                            val tileIndex = rowIdx * 3 + colIdx
-                            MemoryButton(
-                                color = TileColors[tileIndex],
-                                lit = game.litTile == tileIndex,
-                                enabled = inputEnabled,
-                                onClick = { vm.onIntent(SequenceMemoryIntent.TapTile(tileIndex)) },
-                                modifier = Modifier.weight(1f),
-                            )
+            NeonFrame(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                contentPadding = 14.dp,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    for (rowIdx in 0 until 3) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            for (colIdx in 0 until 3) {
+                                val tileIndex = rowIdx * 3 + colIdx
+                                MemoryButton(
+                                    color = TileColors[tileIndex],
+                                    lit = game.litTile == tileIndex,
+                                    enabled = inputEnabled,
+                                    onClick = { vm.onIntent(SequenceMemoryIntent.TapTile(tileIndex)) },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
                         }
                     }
                 }

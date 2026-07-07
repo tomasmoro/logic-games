@@ -1,5 +1,11 @@
 package com.example.kortexgames.ui.home
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +26,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CloudSync
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -44,8 +52,10 @@ import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.core.theme.LogicGradients
 import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.domain.model.AuthState
+import com.example.kortexgames.domain.model.GameProgress
 import com.example.kortexgames.game.GameCatalog
 import com.example.kortexgames.game.GameCategory
+import com.example.kortexgames.game.GameInfo
 import com.example.kortexgames.game.daily.DailyGoalState
 import com.example.kortexgames.game.daily.calculateStreakDays
 import com.example.kortexgames.ui.components.CategoryMotifSurface
@@ -67,6 +77,7 @@ import kotlin.math.roundToInt
  * @param onQuickPlay abre una partida rápida (quick play).
  * @param onSeeGames lleva al catálogo completo.
  * @param onOpenGame abre un juego concreto por su ruta de navegación.
+ * @param onOpenAuth abre el login (mostrado como CTA solo a invitados).
  */
 @Composable
 fun HomeScreen(
@@ -74,19 +85,22 @@ fun HomeScreen(
     onQuickPlay: () -> Unit,
     onSeeGames: () -> Unit,
     onOpenGame: (String) -> Unit,
+    onOpenAuth: () -> Unit,
 ) {
     val dailyGoal by graph.dailyGoalManager.state.collectAsStateWithLifecycle()
     val history by graph.progressRepository.observeHistory(null)
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val streak = calculateStreakDays(history)
 
+    // Sesión reactiva: la fuente de verdad para el saludo y el CTA de login.
+    val session by graph.authRepository.sessionState.collectAsStateWithLifecycle()
+    val isGuest = session !is AuthState.Authenticated
+
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
     // Nombre amigable: el modo invitado no tiene nombre → saludo genérico cálido.
-    val playerName = remember(graph.authState) {
-        if (graph.authState is AuthState.Authenticated) "Campeón" else "Jugador"
-    }
+    val playerName = if (isGuest) "Jugador" else "Campeón"
 
     // Anuncio cada 3 min de juego activo (si no es premium).
     LaunchedEffect(Unit) {
@@ -109,19 +123,39 @@ fun HomeScreen(
         ) {
             HomeHeader(name = playerName, streakDays = streak)
 
-            DailyGoalCard(
-                goal = dailyGoal,
-                onClaim = {
-                    scope.launch {
-                        if (graph.dailyGoalManager.claimReward()) {
-                            snackbar.showSnackbar("¡Recompensa diaria reclamada!")
+            // Invitado: banner que invita a iniciar sesión para guardar en la nube.
+            if (isGuest) {
+                SignInBanner(onClick = onOpenAuth)
+            }
+
+            // Entrenamiento terminado → cartel de celebración con brillo neón; en
+            // caso contrario, el CTA que invita a completarlo. Nunca ambos: un solo
+            // foco de acción por pantalla (CLAUDE.md §9.1 "acento escaso").
+            if (dailyGoal.isComplete) {
+                TrainingCompleteCard()
+            } else {
+                DailyGoalCard(
+                    goal = dailyGoal,
+                    onClaim = {
+                        scope.launch {
+                            if (graph.dailyGoalManager.claimReward()) {
+                                snackbar.showSnackbar("¡Recompensa diaria reclamada!")
+                            }
                         }
-                    }
-                },
-            )
+                    },
+                )
 
-            PlayNowButton(onClick = onQuickPlay)
+                PlayNowButton(onClick = onQuickPlay)
+            }
 
+            // Juego estrella: el más jugado con mejor precisión media. Se calcula a partir
+            val starGame = remember(history) { findStarGame(history) }
+            if (starGame != null) {
+                StarGameCard(
+                    star = starGame,
+                    onPlay = { Routes.gameRoute(starGame.game.id)?.let(onOpenGame) },
+                )
+            }
             CategoryRow(
                 onOpenCategory = { category ->
                     val route = GameCatalog.games
@@ -133,6 +167,52 @@ fun HomeScreen(
 
             Spacer(Modifier.height(4.dp))
         }
+    }
+}
+
+/**
+ * Banner para invitados: recuerda que sin cuenta el progreso no se guarda en la
+ * nube y ofrece iniciar sesión de un toque. Estética cian (foco) con [bounceClick].
+ * Solo se muestra a invitados, por lo que no compite con el CTA de "jugar".
+ */
+@Composable
+private fun SignInBanner(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(LogicColors.SurfaceDark)
+            .border(
+                width = 1.dp,
+                brush = Brush.horizontalGradient(LogicGradients.energy),
+                shape = RoundedCornerShape(20.dp),
+            )
+            .bounceClick(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        NeonIcon(icon = Icons.Rounded.CloudSync, tint = LogicColors.NeonCyan, size = 26.dp)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                "Guarda tu progreso",
+                style = MaterialTheme.typography.titleMedium,
+                color = LogicColors.OnDark,
+            )
+            Text(
+                "Inicia sesión para sincronizar en la nube",
+                style = MaterialTheme.typography.bodyMedium,
+                color = LogicColors.OnDarkMuted,
+                maxLines = 1,
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(
+            "Entrar",
+            style = MaterialTheme.typography.labelLarge,
+            color = LogicColors.NeonCyan,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
@@ -285,6 +365,234 @@ private fun PlayNowButton(onClick: () -> Unit) {
             ) {
                 NeonIcon(icon = KortexIcons.Play, tint = LogicColors.BackgroundDark, size = 18.dp, glow = false)
             }
+        }
+    }
+}
+
+/**
+ * Cartel de **entrenamiento completado**: sustituye al [PlayNowButton] cuando el
+ * objetivo diario está cumplido. Celebra el logro con estética neón sin caer en el
+ * ruido: un halo verde que respira ([softGlow]), un borde que late en opacidad y un
+ * icono de check con latido ([pulse]). Reutiliza el mismo lenguaje del CTA para que
+ * el usuario perciba el cambio como "el botón se convirtió en recompensa".
+ *
+ * No es interactivo: es un estado de confirmación, no una acción.
+ */
+@Composable
+private fun TrainingCompleteCard() {
+    val shape = RoundedCornerShape(30.dp)
+
+    // Latido de opacidad del borde: da vida al neón sin mover el layout. Sincroniza
+    // en espíritu con el brillo de [softGlow] para leerse como un único "respiro".
+    val transition = rememberInfiniteTransition(label = "trainingComplete")
+    val borderAlpha by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "borderAlpha",
+    )
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .softGlow(color = LogicColors.Success, shape = shape, maxElevation = 24.dp)
+            .clip(shape)
+            .background(
+                Brush.horizontalGradient(
+                    listOf(
+                        LogicColors.SurfaceDark,
+                        LogicColors.SurfaceVariantDark,
+                    ),
+                ),
+            )
+            .border(
+                width = 2.dp,
+                brush = Brush.horizontalGradient(
+                    listOf(
+                        LogicColors.NeonGreen.copy(alpha = borderAlpha),
+                        LogicColors.NeonCyan.copy(alpha = borderAlpha),
+                    ),
+                ),
+                shape = shape,
+            )
+            .padding(horizontal = 22.dp, vertical = 18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        NeonIcon(
+            icon = KortexIcons.Check,
+            tint = LogicColors.Success,
+            size = 34.dp,
+            modifier = Modifier.pulse(maxScale = 1.08f),
+        )
+        Spacer(Modifier.width(16.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                "¡Entrenamiento completado!",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black,
+                color = LogicColors.OnDark,
+            )
+            Text(
+                "Gran trabajo hoy. ¡Vuelve mañana para mantener la racha!",
+                style = MaterialTheme.typography.bodyMedium,
+                color = LogicColors.OnDarkMuted,
+            )
+        }
+    }
+}
+
+/**
+ * Datos del "juego estrella": el minijuego jugable en el que el usuario obtiene su
+ * mejor rendimiento, con las cifras que lo respaldan. Es un modelo de presentación
+ * (solo vive para pintar [StarGameCard]), no de dominio.
+ *
+ * @property game metadatos del juego (título, categoría → icono/color).
+ * @property avgAccuracy precisión media del jugador en ese juego (0–100).
+ * @property bestScore mejor puntuación conseguida.
+ * @property playCount nº de partidas registradas (usado como criterio de desempate).
+ */
+private data class StarGame(
+    val game: GameInfo,
+    val avgAccuracy: Double,
+    val bestScore: Int,
+    val playCount: Int,
+)
+
+/**
+ * Elige el "juego estrella" a partir del historial local: aquel **juego jugable del
+ * catálogo** con mayor precisión media. Ante empate, gana el más jugado y luego el
+ * de mejor score, para que la elección sea estable y refleje dominio real.
+ *
+ * Se ignoran las filas de juegos no catalogados o aún no jugables (roadmap), que no
+ * tendrían pantalla a la que enviar al usuario.
+ *
+ * @return el juego destacado, o null si el historial no tiene partidas jugables.
+ */
+private fun findStarGame(history: List<GameProgress>): StarGame? =
+    history
+        .groupBy { it.gameId }
+        .mapNotNull { (gameId, runs) ->
+            val info = GameCatalog.games.firstOrNull { it.id == gameId && it.playable }
+                ?: return@mapNotNull null
+            StarGame(
+                game = info,
+                avgAccuracy = runs.map { it.accuracyPercentage }.average(),
+                bestScore = runs.maxOf { it.score },
+                playCount = runs.size,
+            )
+        }
+        .maxWithOrNull(compareBy({ it.avgAccuracy }, { it.playCount }, { it.bestScore }))
+
+/**
+ * Tarjeta **"Tu juego estrella"**: rellena la Home cuando el objetivo diario ya está
+ * cumplido, reforzando el dominio del jugador y reenganchándolo. Toma el color de
+ * identidad de la categoría del juego ([GameCategory.accent]) para el halo del icono,
+ * el borde y el CTA, manteniendo la coherencia visual del catálogo.
+ *
+ * @param star datos del juego destacado (ver [findStarGame]).
+ * @param onPlay abre de nuevo ese juego.
+ */
+@Composable
+private fun StarGameCard(star: StarGame, onPlay: () -> Unit) {
+    val accent = star.game.category.accent
+    val shape = RoundedCornerShape(28.dp)
+
+    // Mismo lenguaje neón que [TrainingCompleteCard]: borde que late en opacidad y
+    // halo que respira, pero teñidos con el color de la categoría para mantener la
+    // identidad visual del juego destacado.
+    val transition = rememberInfiniteTransition(label = "starGame")
+    val borderAlpha by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "borderAlpha",
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .softGlow(color = accent, shape = shape, maxElevation = 24.dp)
+            .clip(shape)
+            .background(LogicColors.SurfaceDark)
+            .border(
+                width = 2.dp,
+                brush = Brush.horizontalGradient(
+                    listOf(
+                        accent.copy(alpha = borderAlpha),
+                        accent.copy(alpha = borderAlpha * 0.6f),
+                    ),
+                ),
+                shape = shape,
+            )
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        // Rótulo con estrella ámbar: "destacado" universal, sin depender del color
+        // de la categoría (que puede ser frío) para leerse como logro.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            NeonIcon(icon = KortexIcons.Star, tint = LogicColors.Amber, size = 20.dp)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "TU JUEGO ESTRELLA",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Black,
+                color = LogicColors.OnDarkMuted,
+            )
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Icono de la categoría sobre un chip tenue de su propio color.
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(accent.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                NeonIcon(icon = star.game.category.icon, tint = accent, size = 28.dp)
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    star.game.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = LogicColors.OnDark,
+                    maxLines = 1,
+                )
+                Text(
+                    "${star.avgAccuracy.roundToInt()}% precisión · mejor ${star.bestScore}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = LogicColors.OnDarkMuted,
+                    maxLines = 1,
+                )
+            }
+        }
+
+        // CTA teñido con el color de la categoría: acción clara "vuelve a jugarlo".
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(Brush.horizontalGradient(listOf(accent, accent.copy(alpha = 0.7f))))
+                .bounceClick(onClick = onPlay)
+                .padding(vertical = 12.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Jugar de nuevo",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = LogicColors.BackgroundDark,
+            )
+            Spacer(Modifier.width(8.dp))
+            NeonIcon(icon = KortexIcons.Play, tint = LogicColors.BackgroundDark, size = 18.dp, glow = false)
         }
     }
 }

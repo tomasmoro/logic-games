@@ -5,8 +5,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Casino
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.EmojiEvents
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.Person
@@ -15,6 +18,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SportsEsports
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -44,11 +48,23 @@ object KortexIcons {
     /** Trofeo: fin de partida / recompensa / logro. */
     val Trophy: ImageVector = Icons.Rounded.EmojiEvents
 
+    /** Check en círculo: tarea/objetivo cumplido (p. ej. entrenamiento diario). */
+    val Check: ImageVector = Icons.Rounded.CheckCircle
+
+    /** Estrella: destacado / mejor rendimiento (p. ej. "tu juego estrella"). */
+    val Star: ImageVector = Icons.Rounded.Star
+
     /** Deshacer el último movimiento (acción de juego). */
     val Undo: ImageVector = Icons.AutoMirrored.Rounded.Undo
 
     /** Reiniciar el nivel actual (acción de juego). */
     val Refresh: ImageVector = Icons.Rounded.Refresh
+
+    /** Corazón lleno: una vida disponible (marcador de vidas). */
+    val Heart: ImageVector = Icons.Rounded.Favorite
+
+    /** Corazón vacío: una vida ya perdida. */
+    val HeartOutline: ImageVector = Icons.Rounded.FavoriteBorder
 }
 
 /**

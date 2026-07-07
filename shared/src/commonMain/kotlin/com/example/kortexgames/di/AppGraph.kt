@@ -8,18 +8,24 @@ import com.example.kortexgames.data.local.DatabaseDriverFactory
 import com.example.kortexgames.data.local.SqlDelightLocalProgressDataSource
 import com.example.kortexgames.data.local.createDatabase
 import com.example.kortexgames.data.remote.RemoteProgressDataSource
+import com.example.kortexgames.data.remote.auth.GoogleAuthClient
 import com.example.kortexgames.data.remote.buildSupabaseClient
+import com.example.kortexgames.data.repository.AuthRepositoryImpl
 import com.example.kortexgames.data.repository.ProgressRepositoryImpl
+import com.example.kortexgames.data.settings.OnboardingGate
 import com.example.kortexgames.data.settings.SettingsRepository
 import com.example.kortexgames.data.settings.createSettingsDataStore
 import com.example.kortexgames.game.daily.DailyGoalManager
 import com.example.kortexgames.game.daily.DailyGoalStore
 import com.example.kortexgames.domain.model.AuthState
 import com.example.kortexgames.domain.model.PlanType
+import com.example.kortexgames.domain.repository.AuthRepository
 import com.example.kortexgames.domain.repository.ProgressRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 
 /**
  * Contenedor de dependencias manual (sin framework de DI). Se instancia una vez
@@ -34,7 +40,11 @@ class AppGraph(context: PlatformContext) {
     /** Scope de aplicación (sobrevive a las pantallas). */
     val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    /** Estado de sesión mutable. Se actualiza al hacer login/logout. */
+    /**
+     * Snapshot síncrono del estado de sesión. Lo consumen sin suspender
+     * [ProgressRepositoryImpl] (¿subir a la nube?) y [AdManager] (¿es premium?).
+     * Se mantiene sincronizado observando [AuthRepository.sessionState] (ver init).
+     */
     var authState: AuthState = AuthState.Guest
         private set
 
@@ -54,6 +64,20 @@ class AppGraph(context: PlatformContext) {
     // --- Backend Supabase (FASE 2) ------------------------------------------
     val supabaseClient = buildSupabaseClient()
     private val remoteProgress = RemoteProgressDataSource(supabaseClient)
+
+    // --- Autenticación (email + Google) -------------------------------------
+    /** Seam de plataforma para el login con Google (ID token nativo). */
+    private val googleAuthClient = GoogleAuthClient(context)
+
+    /** Repositorio de auth: fuente de verdad reactiva de la sesión. */
+    val authRepository: AuthRepository = AuthRepositoryImpl(
+        client = supabaseClient,
+        googleAuthClient = googleAuthClient,
+        scope = appScope,
+    )
+
+    /** Recuerda si el usuario ya decidió en la puerta de login (onboarding). */
+    val onboardingGate = OnboardingGate(preferences, appScope)
 
     // --- Repositorio local-first --------------------------------------------
     val progressRepository: ProgressRepository = ProgressRepositoryImpl(
@@ -79,13 +103,22 @@ class AppGraph(context: PlatformContext) {
         scope = appScope,
     )
 
-    /** Llamar tras login: fija sesión y sincroniza lo pendiente. */
-    suspend fun onAuthenticated(userId: String, plan: PlanType) {
-        authState = AuthState.Authenticated(userId, plan)
-        progressRepository.syncPending()
+    init {
+        // La sesión de Supabase manda: al iniciar sesión (o restaurarla al abrir
+        // la app) refrescamos el snapshot y subimos lo que se jugó como invitado.
+        authRepository.sessionState
+            .onEach { state ->
+                val wasAuthenticated = authState is AuthState.Authenticated
+                authState = state
+                if (state is AuthState.Authenticated && !wasAuthenticated) {
+                    progressRepository.syncPending()
+                }
+            }
+            .launchIn(appScope)
     }
 
-    fun onSignedOut() {
-        authState = AuthState.Guest
+    /** Cierra sesión: Supabase emite el nuevo estado y [authState] vuelve a Guest. */
+    suspend fun signOut() {
+        authRepository.signOut()
     }
 }
