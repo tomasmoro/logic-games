@@ -5,3 +5,8 @@ PRODUCT_BUNDLE_IDENTIFIER=com.example.kortexgames.KortexGames$(TEAM_ID)
 
 CURRENT_PROJECT_VERSION=1
 MARKETING_VERSION=1.0
+
+// El framework Shared es estático, así que la app enlaza las libs del sistema
+// que usa el driver nativo de SQLDelight. libsqlite3 aporta los símbolos
+// sqlite3_* (bind_blob, etc.); sin esto el linker de Xcode falla.
+OTHER_LDFLAGS = $(inherited) -lsqlite3

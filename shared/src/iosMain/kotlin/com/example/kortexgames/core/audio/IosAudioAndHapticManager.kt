@@ -1,8 +1,15 @@
 package com.example.kortexgames.core.audio
 
 import com.example.kortexgames.data.settings.SettingsRepository
+import kortexgames.shared.generated.resources.Res
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.ExperimentalResourceApi
 import platform.Foundation.NSData
 import platform.Foundation.create
 import platform.AVFAudio.AVAudioPlayer
@@ -31,13 +38,24 @@ import platform.UIKit.UINotificationFeedbackType
 // se reparten entre las propiedades (AVAudioPlayer) y varios métodos
 // (preload/startMusic), evitando salpicar la anotación por cada llamada.
 // BetaInteropApi: NSData.create(bytes=,length=) (síntesis de tonos) aún es beta.
-@OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, kotlinx.cinterop.BetaInteropApi::class)
+@OptIn(
+    kotlinx.cinterop.ExperimentalForeignApi::class,
+    kotlinx.cinterop.BetaInteropApi::class,
+    ExperimentalResourceApi::class,
+)
 class IosAudioAndHapticManager(
     private val settings: SettingsRepository,
 ) : AudioAndHapticManager {
 
     private val players = mutableMapOf<SoundEffect, AVAudioPlayer>()
     private var musicPlayer: AVAudioPlayer? = null
+
+    /**
+     * Scope de carga de los SFX. Se usa [Dispatchers.Main] a propósito: el mapa
+     * [players] lo lee [playSound] desde el hilo de UI, así que construirlo también
+     * ahí evita compartir estado mutable entre hilos en Kotlin/Native.
+     */
+    private val loadScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     /**
      * Reproductores de tonos vivos. AVAudioPlayer deja de sonar si se libera, así
@@ -54,11 +72,18 @@ class IosAudioAndHapticManager(
     override fun preload() {
         AVAudioSession.sharedInstance().setCategory(AVAudioSessionCategoryAmbient, null)
         AVAudioSession.sharedInstance().setActive(true, null)
-        SoundEffect.entries.forEach { effect ->
-            resolveUrl(effect.fileName)?.let { url ->
-                AVAudioPlayer(contentsOfURL = url, error = null).also {
-                    it.prepareToPlay()
-                    players[effect] = it
+        // Los SFX viven en composeResources/files y el plugin de Compose los
+        // empaqueta en el bundle iOS. Se leen como bytes (suspend) y se envuelven
+        // en un AVAudioPlayer precargado por efecto. Antes se buscaban en
+        // NSBundle, pero esos .wav nunca se añadían al target iOS → no sonaban.
+        loadScope.launch {
+            SoundEffect.entries.forEach { effect ->
+                runCatching {
+                    val bytes = Res.readBytes("files/${effect.fileName}.wav")
+                    AVAudioPlayer(data = bytes.toNSData(), error = null).also {
+                        it.prepareToPlay()
+                        players[effect] = it
+                    }
                 }
             }
         }
@@ -122,6 +147,7 @@ class IosAudioAndHapticManager(
     }
 
     override fun release() {
+        loadScope.cancel()
         players.values.forEach { it.stop() }
         players.clear()
         tonePlayers.forEach { it.stop() }
