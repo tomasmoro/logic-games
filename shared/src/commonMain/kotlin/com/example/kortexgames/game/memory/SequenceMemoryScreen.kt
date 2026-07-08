@@ -42,6 +42,8 @@ import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.NeonFrame
 import com.example.kortexgames.ui.components.clickableNoRipple
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.memory_intro
 
 /**
  * Color neón de cada uno de los 9 botones (índice = tile). Se eligen tonos bien
@@ -83,6 +85,7 @@ fun SequenceMemoryScreen(graph: AppGraph, onExit: () -> Unit) {
             title = "Memoria de Secuencias",
             description = "Observa la secuencia de notas y repítela en orden. Cada acierto la hace más larga.",
             accent = CategoryPalette.Memory,
+            heroImage = Res.drawable.memory_intro,
             onStart = { vm.onIntent(SequenceMemoryIntent.Start) },
             onExit = onExit,
             background = {
@@ -152,6 +155,7 @@ fun SequenceMemoryScreen(graph: AppGraph, onExit: () -> Unit) {
         if (state.status == GameStatus.FINISHED && state.gameOver != null) {
             GameOverOverlay(
                 info = state.gameOver!!,
+                audio = graph.audio,
                 onPlayAgain = { vm.onIntent(SequenceMemoryIntent.PlayAgain) },
                 onExit = onExit,
             )

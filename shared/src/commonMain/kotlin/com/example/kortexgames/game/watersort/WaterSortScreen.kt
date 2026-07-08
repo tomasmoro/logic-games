@@ -398,6 +398,7 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
         if (state.status == GameStatus.FINISHED && state.gameOver != null && !animating) {
             GameOverOverlay(
                 info = state.gameOver!!,
+                audio = graph.audio,
                 headline = "¡Nivel ${state.currentLevel} completado!",
                 onPlayAgain = { vm.onIntent(WaterSortIntent.PlayAgain) },
                 onExit = onExit,

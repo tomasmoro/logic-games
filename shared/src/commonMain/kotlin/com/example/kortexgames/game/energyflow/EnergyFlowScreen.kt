@@ -214,6 +214,7 @@ fun EnergyFlowScreen(graph: AppGraph, onExit: () -> Unit) {
         if (state.status == GameStatus.FINISHED && state.gameOver != null) {
             GameOverOverlay(
                 info = state.gameOver!!,
+                audio = graph.audio,
                 headline = "¡Nivel ${state.currentLevel} completado!",
                 onPlayAgain = {
                     boardGen++

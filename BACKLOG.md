@@ -47,9 +47,17 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
     nivel" (`GameOverOverlay` extendido, opcional para no afectar a los no-LEVELED).
 
   **Pendiente (polish, siguiente pase):**
-  - Badge "¡Nuevo récord!" en el overlay de fin de partida. Requiere que cada
-    ViewModel capture el récord PREVIO al empezar (snapshot de
-    `playerProgressRepository.observe(gameId)`) y lo compare con `reachedMetric`.
+  - [x] Badge "¡Nuevo récord!" en el overlay de fin de partida — HECHO. En vez del
+    snapshot por-ViewModel se resuelve en la **capa de repositorio** (más DRY y sin
+    tocar la DI de los VMs ENDLESS): `PlayerProgressRepository.recordResult` devuelve
+    si batió el récord PREVIO (solo si había marca anterior; la primera no cuenta),
+    `ProgressRepository.saveResult` lo propaga en un nuevo `SaveOutcome`
+    (percentil + `isNewRecord`) y cada VM lo pasa a `GameOverInfo.isNewRecord`. El
+    `GameOverOverlay` muestra la píldora animada + **fuegos artificiales neón**
+    (`FireworksOverlay`, puntual, no en bucle) con **sonido/háptica arcade**
+    (`SoundEffect.SUCCESS` por estallido, háptica HEAVY en el primero) sincronizados
+    a cada explosión. Nota: reusa el SFX `sfx_success` existente; si se quiere una
+    fanfarria propia, añadir un `.wav` nuevo + entrada en `SoundEffect`.
   - Menor: en la **antesala (intro)** el `AdManager` sigue contando "gameplay" (la
     ruta del juego está activa aunque el jugador aún no haya pulsado "Comenzar").
     Los juegos ENDLESS quedan en `GameStatus.IDLE` durante la intro, así que la
@@ -136,7 +144,18 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
 
 ## Bugs conocidos
 
-- [ ] **Polarity Collision: colisiones de color a veces se cuentan como fallo.**
+- [x] **Polarity Collision: colisiones de color a veces se cuentan como fallo.**
+  ARREGLADO. Se muestrea el ángulo de impacto en el **punto de cruce del borde**
+  (nuevo `borderCrossing()`: interpola posición previa→nueva hasta `catchRadius` y
+  usa ESE ángulo, el que el jugador ve) en vez de en la posición final ya hundida y
+  desviada por el magnetismo. Además, `isColorMatch()` da **beneficio de la duda**
+  en la costura entre sectores (±`SECTOR_EDGE_TOLERANCE_RAD`, ~5.7°): si el color
+  coincide con cualquiera de los dos sectores contiguos, cuenta como acierto.
+  Ref: `game/polarity/PolarityCollisionEngine.kt` (`step()`, `borderCrossing()`,
+  `isColorMatch()`).
+
+  <details><summary>Diagnóstico original (histórico)</summary>
+
   Cuando un asteroide violeta impacta el sector violeta del centro (y análogamente
   con todos los colores), a veces se registra como mismatch (`ERROR` + penalización)
   aunque visualmente el color coincide.
@@ -153,7 +172,8 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
   borde** (interpolar entre la posición previa y la nueva hasta `catchRadius`), no en
   la posición final; muestrear `rotationRad` de forma coherente con ese instante; y/o
   añadir una pequeña tolerancia angular (snap) cerca de los límites de sector.
-  Ref: `game/polarity/PolarityCollisionEngine.kt` (`step()`, `sectorFromAngle()`).
+
+  </details>
 
 ## Logros
 

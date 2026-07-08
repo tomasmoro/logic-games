@@ -8,9 +8,9 @@ import androidx.compose.material.icons.rounded.Casino
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.EmojiEvents
+import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
-import androidx.compose.material.icons.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.Lock
@@ -72,7 +72,7 @@ object KortexIcons {
     val Lock: ImageVector = Icons.Rounded.Lock
 
     /** Interrogación: botón de ayuda / cómo se juega (antesala de cada juego). */
-    val Help: ImageVector = Icons.Rounded.HelpOutline
+    val Help: ImageVector = Icons.AutoMirrored.Rounded.HelpOutline
 }
 
 /**

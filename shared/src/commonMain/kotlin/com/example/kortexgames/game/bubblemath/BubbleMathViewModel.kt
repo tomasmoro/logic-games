@@ -72,9 +72,9 @@ class BubbleMathViewModel(
 
     private fun onFinished(result: GameResult) {
         viewModelScope.launch {
-            val percentile = progress.saveResult(result)
+            val outcome = progress.saveResult(result)
             audio.playSound(SoundEffect.LEVEL_UP)
-            setState { copy(gameOver = GameOverInfo(result, percentile)) }
+            setState { copy(gameOver = GameOverInfo(result, outcome.percentile, outcome.isNewRecord)) }
         }
     }
 }

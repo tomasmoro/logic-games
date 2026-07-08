@@ -5,7 +5,7 @@ import com.example.kortexgames.data.remote.RemoteProgressDataSource
 import com.example.kortexgames.domain.model.AuthState
 import com.example.kortexgames.domain.model.GameProgress
 import com.example.kortexgames.domain.model.GameResult
-import com.example.kortexgames.domain.model.PercentileResult
+import com.example.kortexgames.domain.model.SaveOutcome
 import com.example.kortexgames.domain.repository.PlayerProgressRepository
 import com.example.kortexgames.domain.repository.ProgressRepository
 import kotlin.time.Clock
@@ -43,22 +43,24 @@ class ProgressRepositoryImpl(
     private val clock: Clock = Clock.System,
 ) : ProgressRepository {
 
-    override suspend fun saveResult(result: GameResult): PercentileResult? {
+    override suspend fun saveResult(result: GameResult): SaveOutcome {
         // 1) Local primero — nunca se pierde la partida.
         val localId = local.insert(result, clock.now().toEpochMilliseconds())
 
-        // 1b) Actualiza récord/reanudación (local-first; también en modo invitado).
-        //     No debe tumbar el guardado del historial si algo falla.
-        runCatching { playerProgress.recordResult(result) }
+        // 1b) Actualiza récord/reanudación (local-first; también en modo invitado) y
+        //     averigua si batió el récord previo. No debe tumbar el guardado del
+        //     historial si algo falla (por eso runCatching → false en el peor caso).
+        val isNewRecord = runCatching { playerProgress.recordResult(result) }.getOrDefault(false)
 
         // 2) ¿Podemos ir al backend?
-        if (authState() !is AuthState.Authenticated) return null
+        if (authState() !is AuthState.Authenticated) return SaveOutcome(percentile = null, isNewRecord = isNewRecord)
 
-        return runCatching {
+        val percentile = runCatching {
             val (remoteId, percentile) = remote.submit(result)
             local.markSynced(localId, remoteId)
             percentile
         }.getOrNull() // fallo de red → queda pendiente, se subirá en syncPending()
+        return SaveOutcome(percentile = percentile, isNewRecord = isNewRecord)
     }
 
     override fun observeHistory(gameId: String?): Flow<List<GameProgress>> =

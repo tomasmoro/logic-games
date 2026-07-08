@@ -105,6 +105,7 @@ fun ReflexTapScreen(graph: AppGraph, onExit: () -> Unit) {
         if (state.status == GameStatus.FINISHED && state.gameOver != null) {
             GameOverOverlay(
                 info = state.gameOver!!,
+                audio = graph.audio,
                 onPlayAgain = { vm.onIntent(ReflexTapIntent.PlayAgain) },
                 onExit = onExit,
             )

@@ -37,6 +37,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.core.theme.LogicGradients
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import org.jetbrains.compose.resources.DrawableResource
+import org.jetbrains.compose.resources.painterResource
 
 /**
  * Datos del **selector de niveles** para la pantalla de intro de un juego LEVELED.
@@ -79,6 +83,8 @@ data class LevelStripState(
  * @param onStart lanza la partida (el nivel elegido si [levels] no es null).
  * @param onExit vuelve atrás (sale a la lista de juegos).
  * @param icon icono del juego; **null** = placeholder vacío (aún sin diseñar, por petición).
+ * @param heroImage arte del juego que rellena el recuadro "héroe"; tiene prioridad sobre
+ *        [icon]. **null** = se usa [icon] (o placeholder vacío si ambos son null).
  * @param levels datos del carril de niveles; **null** en juegos sin niveles (ENDLESS).
  * @param onHelp acción del botón de ayuda; por ahora un no-op (pendiente de contenido).
  * @param startLabel texto del CTA (por defecto "Comenzar").
@@ -93,6 +99,7 @@ fun GameIntroScreen(
     onExit: () -> Unit,
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
+    heroImage: DrawableResource? = null,
     levels: LevelStripState? = null,
     onHelp: () -> Unit = {},
     startLabel: String = "Comenzar",
@@ -136,7 +143,7 @@ fun GameIntroScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Spacer(Modifier.height(8.dp))
-                GameIconHero(icon = icon, accent = accent)
+                GameIconHero(icon = icon, heroImage = heroImage, accent = accent)
 
                 Spacer(Modifier.height(24.dp))
                 Text(
@@ -204,17 +211,21 @@ fun GameIntroScreen(
 }
 
 /**
- * "Héroe" del juego: recuadro redondeado con halo neón de acento donde vive el icono
- * del juego. Por ahora [icon] es **null** en todos (aún sin diseñar), así que se pinta
- * un **placeholder vacío**: el recuadro con su halo, sin glifo. En cuanto cada juego
- * tenga icono se pinta con [NeonIcon] sin tocar nada más.
+ * "Héroe" del juego: recuadro redondeado con halo neón de acento donde vive la identidad
+ * visual del juego. Prioridad de contenido: [heroImage] (arte propio del juego) > [icon]
+ * (glifo neón) > **placeholder vacío** (el recuadro con su halo, para juegos aún sin
+ * diseñar). Cuando hay imagen, esta rellena el recuadro (`Crop`) recortada a su forma.
  */
 @Composable
-private fun GameIconHero(icon: ImageVector?, accent: Color) {
+private fun GameIconHero(icon: ImageVector?, heroImage: DrawableResource?, accent: Color) {
     val shape = RoundedCornerShape(28.dp)
     Box(
         modifier = Modifier
             .size(132.dp)
+            // Halo neón que "respira" alrededor del marco, mismo lenguaje que los
+            // elementos destacados de la Home (§9.4). Va antes del clip para que el
+            // resplandor se derrame fuera del recuadro.
+            .softGlow(color = accent, shape = shape, maxElevation = 24.dp)
             .clip(shape)
             .background(
                 Brush.verticalGradient(
@@ -224,8 +235,14 @@ private fun GameIconHero(icon: ImageVector?, accent: Color) {
             .border(BorderStroke(1.5.dp, accent.copy(alpha = 0.55f)), shape),
         contentAlignment = Alignment.Center,
     ) {
-        if (icon != null) {
-            NeonIcon(icon = icon, tint = accent, size = 64.dp)
+        when {
+            heroImage != null -> Image(
+                painter = painterResource(heroImage),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            icon != null -> NeonIcon(icon = icon, tint = accent, size = 64.dp)
         }
     }
 }

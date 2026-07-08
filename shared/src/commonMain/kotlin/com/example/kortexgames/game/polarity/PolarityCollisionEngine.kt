@@ -17,6 +17,7 @@ import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.min
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlin.random.Random
 
 /**
@@ -219,9 +220,19 @@ class PolarityCollisionEngine(
 
             val afterStepDistance = hypot(px - centerX, py - centerY)
             if (afterStepDistance <= catchRadius) {
-                val impactAngle = atan2(py - centerY, px - centerX)
-                val targetSector = sectorFromAngle(impactAngle, state.rotationRad)
-                if (targetSector == particle.colorIndex) {
+                // Ángulo del PUNTO DE CRUCE del borde, no de la posición final: (px,py)
+                // ya está hundida en el disco y desviada tangencialmente por el
+                // magnetismo justo antes de impactar, así que su ángulo puede caer en el
+                // sector contiguo al que el jugador ve. Interpolamos el segmento
+                // previo→nuevo hasta donde cruza `catchRadius` y usamos ESE ángulo.
+                val (impactX, impactY) = borderCrossing(
+                    fromX = particle.x, fromY = particle.y,
+                    toX = px, toY = py,
+                    centerX = centerX, centerY = centerY,
+                    radius = catchRadius,
+                )
+                val impactAngle = atan2(impactY - centerY, impactX - centerX)
+                if (isColorMatch(impactAngle, state.rotationRad, particle.colorIndex)) {
                     caughtDelta++
                     val speed = hypot(vx, vy)
                     scoreDelta += (80f * particle.mass + speed * 0.14f).toInt() + if (particle.magnetic) 35 else 0
@@ -303,10 +314,76 @@ class PolarityCollisionEngine(
         )
     }
 
+    /**
+     * Punto donde el segmento (from→to) **entra** en la circunferencia de radio [radius]
+     * centrada en (centerX,centerY). Resuelve la cuadrática |from + t·d − c|² = r² y toma
+     * la raíz de ENTRADA (la menor t en [0,1]). Si el segmento no cruza limpiamente
+     * (degenerado, o `from` ya estaba dentro), cae de vuelta al punto final [toX]/[toY].
+     *
+     * Se usa para muestrear el ángulo de impacto justo en el borde del área de captura,
+     * que es lo que el jugador ve, en vez de en la posición final (ya dentro del disco).
+     */
+    private fun borderCrossing(
+        fromX: Float, fromY: Float,
+        toX: Float, toY: Float,
+        centerX: Float, centerY: Float,
+        radius: Float,
+    ): Pair<Float, Float> {
+        val dx = toX - fromX
+        val dy = toY - fromY
+        val a = dx * dx + dy * dy
+        if (a <= 1e-6f) return toX to toY // segmento degenerado (sin movimiento)
+        val ex = fromX - centerX
+        val ey = fromY - centerY
+        val b = 2f * (ex * dx + ey * dy)
+        val c = ex * ex + ey * ey - radius * radius
+        val disc = b * b - 4f * a * c
+        if (disc < 0f) return toX to toY // no cruza (no debería pasar si `to` está dentro)
+        val t = (-b - sqrt(disc)) / (2f * a)
+        if (t < 0f || t > 1f) return toX to toY // `from` ya dentro / cruce fuera del paso
+        return (fromX + t * dx) to (fromY + t * dy)
+    }
+
+    /**
+     * Ángulo [angleRad] llevado al sistema de la rejilla de sectores: se le resta la
+     * rotación del círculo y se desplaza medio sector para que `[0, sectorSize)` sea el
+     * sector 0. Resultado en `[0, 2π)`. Base común de [sectorFromAngle] e [isColorMatch].
+     */
+    private fun alignedAngle(angleRad: Float, rotationRad: Float): Float {
+        val sectorSize = (2.0 * PI / COLOR_SECTORS).toFloat()
+        return normalizeAnglePositive(angleRad - rotationRad + sectorSize * 0.5f)
+    }
+
     private fun sectorFromAngle(angleRad: Float, rotationRad: Float): Int {
         val sectorSize = (2.0 * PI / COLOR_SECTORS).toFloat()
-        val aligned = normalizeAnglePositive(angleRad - rotationRad + sectorSize * 0.5f)
-        return (aligned / sectorSize).toInt().mod(COLOR_SECTORS)
+        return (alignedAngle(angleRad, rotationRad) / sectorSize).toInt().mod(COLOR_SECTORS)
+    }
+
+    /**
+     * ¿El impacto en [angleRad] (con el círculo girado [rotationRad]) cuenta como acierto
+     * para una partícula de color [colorIndex]?
+     *
+     * Además del sector que contiene el ángulo, concede el **beneficio de la duda** cuando
+     * el impacto cae MUY cerca de una frontera entre sectores (±[SECTOR_EDGE_TOLERANCE_RAD]):
+     * ahí el color bajo el asteroide es ambiguo (toca ambos sectores), así que si su color
+     * coincide con cualquiera de los dos contiguos se acepta. Evita fallos "injustos" en la
+     * costura, donde el jugador percibe que el color sí coincidía.
+     */
+    private fun isColorMatch(angleRad: Float, rotationRad: Float, colorIndex: Int): Boolean {
+        val sectorSize = (2.0 * PI / COLOR_SECTORS).toFloat()
+        val aligned = alignedAngle(angleRad, rotationRad)
+        val sector = (aligned / sectorSize).toInt().mod(COLOR_SECTORS)
+        if (sector == colorIndex) return true
+
+        // Distancia a cada frontera del sector actual (within ∈ [0, sectorSize)).
+        val within = aligned - sector * sectorSize
+        if (within <= SECTOR_EDGE_TOLERANCE_RAD &&
+            (sector - 1).mod(COLOR_SECTORS) == colorIndex
+        ) return true
+        if (sectorSize - within <= SECTOR_EDGE_TOLERANCE_RAD &&
+            (sector + 1).mod(COLOR_SECTORS) == colorIndex
+        ) return true
+        return false
     }
 
     private fun normalizeAngle(angleRad: Float): Float {
@@ -344,6 +421,13 @@ class PolarityCollisionEngine(
     private companion object {
         const val COLOR_SECTORS = 4
         const val ROUND_DURATION_MS = DEFAULT_ROUND_DURATION_MS
+
+        /**
+         * Media banda de tolerancia (rad) a cada lado de una frontera de sector donde el
+         * impacto se considera ambiguo y se da el beneficio de la duda (~5.7°, estrecha:
+         * cada sector mide 90°). Ver [isColorMatch].
+         */
+        const val SECTOR_EDGE_TOLERANCE_RAD = 0.10f
 
         const val BASE_SPAWN_INTERVAL_SEC = 1.15f
         const val MIN_SPAWN_INTERVAL_SEC = 0.42f

@@ -70,9 +70,9 @@ class SequenceMemoryViewModel(
     /** Guarda el resultado y expone el percentil en el estado. */
     private fun onFinished(result: com.example.kortexgames.domain.model.GameResult) {
         viewModelScope.launch {
-            val percentile = progress.saveResult(result)
+            val outcome = progress.saveResult(result)
             audio.playSound(SoundEffect.LEVEL_UP)
-            setState { copy(gameOver = GameOverInfo(result, percentile)) }
+            setState { copy(gameOver = GameOverInfo(result, outcome.percentile, outcome.isNewRecord)) }
         }
     }
 }
