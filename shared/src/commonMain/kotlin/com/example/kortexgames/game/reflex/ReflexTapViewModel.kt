@@ -48,7 +48,8 @@ class ReflexTapViewModel(
         engine.state.onEach { s -> setState { copy(game = s) } }.launchIn(viewModelScope)
         engine.status.onEach { st -> setState { copy(status = st) } }.launchIn(viewModelScope)
         engine.outcome.onEach { result -> result?.let(::onFinished) }.launchIn(viewModelScope)
-        engine.start()
+        // No arrancamos aquí: el juego queda en IDLE y muestra la antesala (intro). La
+        // partida empieza al pulsar "Comenzar" (intent [ReflexTapIntent.Start]).
     }
 
     override fun onIntent(intent: ReflexTapIntent) {

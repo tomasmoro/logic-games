@@ -52,9 +52,12 @@ import com.example.kortexgames.core.theme.CategoryPalette
 import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameStatus
+import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.CitySkylineBackground
+import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.KortexIcons
+import com.example.kortexgames.ui.components.LevelStripState
 import com.example.kortexgames.ui.components.NeonIcon
 import com.example.kortexgames.ui.components.bounceClick
 
@@ -88,9 +91,31 @@ private val TargetLit = LogicColors.Amber
 @Composable
 fun EnergyFlowScreen(graph: AppGraph, onExit: () -> Unit) {
     val vm: EnergyFlowViewModel = viewModel {
-        EnergyFlowViewModel(graph.progressRepository, graph.audio)
+        EnergyFlowViewModel(graph.progressRepository, graph.playerProgressRepository, graph.audio)
     }
     val state by vm.state.collectAsStateWithLifecycle()
+
+    // Fase de intro: antesala del juego con icono, descripción y carril de niveles.
+    if (state.phase == LeveledGamePhase.LEVEL_SELECT) {
+        var selectedLevel by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
+        GameIntroScreen(
+            title = "Flujo de Energía",
+            description = "Gira las piezas para llevar la energía de la batería a la bombilla.",
+            accent = CategoryPalette.SpatialVision,
+            levels = LevelStripState(
+                maxUnlocked = state.maxUnlocked,
+                selected = selectedLevel,
+                onSelect = { selectedLevel = it },
+            ),
+            onStart = { vm.onIntent(EnergyFlowIntent.PlayLevel(selectedLevel)) },
+            onExit = onExit,
+            background = {
+                CitySkylineBackground(modifier = Modifier.fillMaxSize(), accent = CategoryPalette.SpatialVision)
+            },
+        )
+        return
+    }
+
     val game = state.game
 
     // Generación del tablero: sube al reiniciar/reempezar para recomponer desde cero.
@@ -130,7 +155,7 @@ fun EnergyFlowScreen(graph: AppGraph, onExit: () -> Unit) {
                 color = LogicColors.Electric,
             )
             Text(
-                "Nivel ${game.round}/${game.totalRounds}",
+                "Nivel ${game.round}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = LogicColors.NeonGreen,
             )
@@ -189,11 +214,17 @@ fun EnergyFlowScreen(graph: AppGraph, onExit: () -> Unit) {
         if (state.status == GameStatus.FINISHED && state.gameOver != null) {
             GameOverOverlay(
                 info = state.gameOver!!,
+                headline = "¡Nivel ${state.currentLevel} completado!",
                 onPlayAgain = {
                     boardGen++
                     vm.onIntent(EnergyFlowIntent.PlayAgain)
                 },
                 onExit = onExit,
+                onNextLevel = {
+                    boardGen++
+                    vm.onIntent(EnergyFlowIntent.NextLevel)
+                },
+                onChooseLevel = { vm.onIntent(EnergyFlowIntent.ChooseLevel) },
             )
         }
     }

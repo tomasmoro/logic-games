@@ -50,7 +50,8 @@ class SequenceMemoryViewModel(
         engine.status.onEach { st -> setState { copy(status = st) } }.launchIn(viewModelScope)
         // outcome pasa de null a un GameResult cuando la partida termina.
         engine.outcome.onEach { result -> result?.let(::onFinished) }.launchIn(viewModelScope)
-        engine.start()
+        // No arrancamos aquí: el juego queda en IDLE y muestra la antesala (intro). La
+        // partida empieza al pulsar "Comenzar" (intent [SequenceMemoryIntent.Start]).
     }
 
     override fun onIntent(intent: SequenceMemoryIntent) {

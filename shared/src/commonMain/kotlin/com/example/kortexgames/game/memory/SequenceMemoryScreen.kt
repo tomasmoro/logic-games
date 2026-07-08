@@ -38,6 +38,7 @@ import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.ui.components.ArcadeBrickBackground
+import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.NeonFrame
 import com.example.kortexgames.ui.components.clickableNoRipple
@@ -74,6 +75,22 @@ fun SequenceMemoryScreen(graph: AppGraph, onExit: () -> Unit) {
     }
     val state by vm.state.collectAsStateWithLifecycle()
     val game = state.game
+
+    // Antesala del juego: mientras no ha arrancado (IDLE) se muestra la intro. Evita,
+    // además, que la secuencia se reproduzca (con sonido) antes de que el jugador empiece.
+    if (state.status == GameStatus.IDLE) {
+        GameIntroScreen(
+            title = "Memoria de Secuencias",
+            description = "Observa la secuencia de notas y repítela en orden. Cada acierto la hace más larga.",
+            accent = CategoryPalette.Memory,
+            onStart = { vm.onIntent(SequenceMemoryIntent.Start) },
+            onExit = onExit,
+            background = {
+                ArcadeBrickBackground(modifier = Modifier.fillMaxSize(), accent = CategoryPalette.Memory)
+            },
+        )
+        return
+    }
 
     Box(Modifier.fillMaxSize().background(LogicColors.BackgroundDark)) {
         // Textura ambiental de muro arcade "neo-retro" (morado Memoria), muy sutil.

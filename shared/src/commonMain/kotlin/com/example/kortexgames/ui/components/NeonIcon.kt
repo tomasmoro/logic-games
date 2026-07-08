@@ -10,8 +10,10 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -65,6 +67,12 @@ object KortexIcons {
 
     /** Corazón vacío: una vida ya perdida. */
     val HeartOutline: ImageVector = Icons.Rounded.FavoriteBorder
+
+    /** Candado: nivel aún bloqueado (selector de niveles). */
+    val Lock: ImageVector = Icons.Rounded.Lock
+
+    /** Interrogación: botón de ayuda / cómo se juega (antesala de cada juego). */
+    val Help: ImageVector = Icons.Rounded.HelpOutline
 }
 
 /**

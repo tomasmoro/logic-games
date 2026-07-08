@@ -35,61 +35,87 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
     `PlayerProgressRepositoryImpl` (local-first con fusión bidireccional: mejor
     marca gana; `lastLevel` más reciente gana). Sync al autenticarse (AppGraph).
   - UI: la tarjeta del catálogo muestra el récord ("Nivel máx 7" / "Mejor 320 ms").
+  - **Selección/continuación de niveles (LEVELED) — HECHO.** Water Sort y Energy
+    Flow ahora tienen **curva de dificultad paramétrica** (`configForLevel(N)`,
+    nivel 1 = config base) y juegan **un nivel elegido** por partida
+    (`startAtLevel`). El selector de niveles vive dentro de la **antesala/intro**
+    (ver ítem "Antesala (intro) de cada juego"): un carril horizontal muestra los
+    niveles superados (con check), el actual/frontera (número en acento) y los
+    bloqueados (candado); el elegido se resalta y "Comenzar" lo lanza. Los VMs
+    tienen fase `LEVEL_SELECT`/`PLAYING` y observan `playerProgressRepository` para
+    el nivel máx desbloqueado. Game-over con "Siguiente nivel"/"Repetir"/"Elegir
+    nivel" (`GameOverOverlay` extendido, opcional para no afectar a los no-LEVELED).
 
   **Pendiente (polish, siguiente pase):**
   - Badge "¡Nuevo récord!" en el overlay de fin de partida. Requiere que cada
     ViewModel capture el récord PREVIO al empezar (snapshot de
     `playerProgressRepository.observe(gameId)`) y lo compare con `reachedMetric`.
-  - "Continuar nivel N / Empezar de nuevo" en juegos LEVELED. El `lastLevel` ya se
-    persiste y sincroniza, pero los motores aún no arrancan en un nivel dado; Water
-    Sort/Energy Flow juegan una lista fija de rondas. Falta la **curva de dificultad
-    paramétrica** (nivel N → config generada) para reanudar de verdad.
+  - Menor: en la **antesala (intro)** el `AdManager` sigue contando "gameplay" (la
+    ruta del juego está activa aunque el jugador aún no haya pulsado "Comenzar").
+    Los juegos ENDLESS quedan en `GameStatus.IDLE` durante la intro, así que la
+    condición podría afinarse para pausar el contador mientras el estado sea IDLE /
+    fase `LEVEL_SELECT` (`onEnterMenuOrPause`).
   - SQLDelight: `PlayerGameProgressEntity` se añadió con migración versionada
     (`1.sqm`, v1→v2), así que las instalaciones existentes la reciben vía onUpgrade
     (no hace falta reinstalar). Es la PRIMERA migración `.sqm` del proyecto: las
     próximas altas de tabla/columna deben seguir el mismo patrón (nuevo `.sqm`).
 
-  **Problema actual:** `GameEngine.finish()` guarda `difficultyLevel = difficulty`
-  (la dificultad de INICIO, siempre 1), no el nivel alcanzado. No existe estado de
-  progresión por juego: solo hay log de partidas (`user_progress`).
+- [x] **Antesala (intro) de cada juego.** HECHO. Nuevo componente neón reutilizable
+  `ui/components/GameIntroScreen.kt`: pantalla previa común a todos los juegos con
+  icono (placeholder vacío por ahora), título, descripción, botón de **ayuda**
+  (no-op de momento), CTA **Comenzar** (único bucle de atención: latido + halo) y,
+  si el juego tiene niveles, un **carril horizontal de niveles** (`LevelStripState`:
+  superados con check, frontera resaltada, bloqueados con candado; el elegido lanza
+  "Comenzar"). Los juegos LEVELED (Water Sort, Energy Flow) usan la intro en su fase
+  `LEVEL_SELECT`; los ENDLESS (Memoria, Reflejos, Burbujas, Atracción) ya **no
+  arrancan en `init`**: quedan en `GameStatus.IDLE` mostrando la intro y empiezan al
+  pulsar "Comenzar" (nuevo/reusado intent `Start`) — esto además arregla que la
+  secuencia de Memoria sonara antes de empezar. El componente `LevelSelector.kt`
+  (rejilla) queda **sustituido** por este carril y se eliminó.
 
-  **Modelo — separar 3 conceptos:**
-  1. *Log de partidas* → ya existe (`user_progress`).
-  2. *Récord por juego* → tu mejor marca (nivel máx / botones máx). FALTA.
-  3. *Punto de reanudación* → dónde retomas la próxima vez. FALTA.
+  **Pendiente (polish):**
+  - **Iconos por juego.** Hoy el "héroe" de la intro es un placeholder vacío (por
+    petición). Falta diseñar/asignar un icono por juego; hueco ya previsto en
+    `GameIntroScreen(icon = ...)` (basta pasar un `ImageVector`). Punto natural para
+    guardarlo: un campo `icon` en `GameInfo`/`GameCatalog` o junto a `GameProgressions`.
+  - **Contenido del botón de ayuda.** El botón "?" existe pero es un no-op; falta la
+    hoja/diálogo de "cómo se juega" (reglas, ejemplos) por juego.
 
-  **Dos tipos de juego** (declarar en `GameInfo` un `progression: ProgressionKind`
-  + etiqueta de métrica):
-  - `LEVELED`: niveles discretos que suben → reanudar/desbloquear (Water Sort,
-    Energy Flow, Bubble Math, Polarity). Métrica: "Nivel N".
-  - `ENDLESS`: una corrida hasta fallar → récord (Memoria = máx. botones/secuencia,
-    Reflejos = mejor tiempo). Métrica: "Mejor: X".
+- [ ] **Desafíos (challenges) por juego.** Feature de retención inspirada en el
+  mockup: bajo la intro, una tarjeta **DESAFÍO** con un objetivo acotado en el
+  tiempo y barra de progreso, p. ej. *"Llega al nivel 20 en los próximos 13.5
+  minutos — 18/20"*. Al cumplirlo, recompensa (monedas/estrella/tema desbloqueable).
 
-  **Requisito:** el motor debe reportar el valor ALCANZADO, no el de inicio (Water
-  Sort: ronda/nivel alcanzado; Memoria: longitud máx de secuencia). `saveResult`
-  actualiza el récord con `max(...)`.
+  **Alcance propuesto (primer pase):**
+  - **Modelo de dominio** `Challenge` (en `domain/model`): `gameId`, tipo de objetivo
+    (`enum ChallengeGoal { REACH_LEVEL, REACH_SCORE, WIN_ROUNDS, BEAT_TIME }`),
+    `target: Int`, `deadline` (instant absoluto), `progress: Int`, `reward`. Cerrar
+    dominios con `enum`/`sealed`, no strings (CLAUDE.md §4).
+  - **Generación:** un desafío activo por juego, derivado del récord actual
+    (`playerProgressRepository`), p. ej. `target = maxUnlocked + 2`, `deadline = now +
+    N min`. Determinista por día para que reabrir la app no lo re-tire.
+  - **Persistencia:** local-first (SQLDelight, patrón de `PlayerProgress.sq`); a
+    futuro, sincronizar y alimentar el **leaderboard de Desafíos Diarios** (§1 de
+    CLAUDE.md) vía Supabase.
+  - **UI:** tarjeta neón bajo el título/carril en `GameIntroScreen` (slot ya cómodo
+    de añadir): etiqueta "DESAFÍO", texto del objetivo, `CircularProgressRing`/barra
+    con `progress/target`, y cuenta atrás del `deadline`. Reutilizar `LogicColors`/
+    `LogicGradients`.
+  - **Progreso:** al terminar una partida, el ViewModel actualiza el `progress` del
+    desafío activo (comparando `reachedMetric`) y dispara la recompensa al cumplirse.
 
-  **Dónde guardar (mínimo viable, recomendado):**
-  - *Récord* → derivarlo del historial (`max` sobre `user_progress`). Sin infra
-    nueva; se sincroniza gratis cuando exista la descarga nube→local.
-  - *Reanudación* (`lastLevel`) → DataStore local por juego (patrón `DailyGoalStore`).
-    Comodidad por-dispositivo; promocionable a fila sincronizada si se quiere que
-    siga a la cuenta.
-
-  **Alternativa (más ambiciosa):** tabla `player_game_progress` en Supabase
-  (best/max/lastLevel por juego) sincronizada entre dispositivos → implica
-  migración SQL + RLS + sync; depende de resolver antes la descarga nube→local.
-
-  **Nota Water Sort:** hoy juega una lista fija de 3 rondas (`roundConfigs`) por
-  sesión. Para progresión infinita hay que pasar a una curva de dificultad
-  paramétrica (nivel N → config generada), persistir `lastLevel` y arrancar ahí.
-
-  **UX:** tarjeta del catálogo muestra la métrica ("Nivel máx 7" / "Mejor: 12");
-  juegos LEVELED ofrecen "Continuar nivel N / Empezar de nuevo"; game-over marca
-  "Nuevo récord" al superar el `bestMetric`.
+  Ref: `ui/components/GameIntroScreen.kt` (slot de tarjeta), `game/GameProgression.kt`,
+  `domain/model`, `data/local` (nueva tabla vía migración `.sqm`).
 
 - [ ] **Energy Flow: medir la stat por TIEMPO, no por nivel.** El récord debería ser
   cuánto tarda en resolver los niveles (menor = mejor), no el nivel alcanzado.
+
+  ⚠️ **Tensión con lo ya hecho:** Energy Flow ahora es LEVELED con selector de
+  niveles (récord = nivel máx). Medir por tiempo lo volvería ENDLESS y quitaría la
+  progresión por niveles. Alternativa que concilia ambos: mantener los niveles y
+  mostrar el **mejor tiempo POR nivel** (récord de tiempo por cada nivel superado),
+  lo que sí requeriría guardar tiempo-por-nivel (no cabe en `best_metric` único;
+  implicaría ampliar el esquema o una tabla de tiempos por nivel).
 
   **Factibilidad (analizada): SÍ, sin tocar la estructura de `user_progress`.**
   - La columna `completion_time_ms` YA existe en `user_progress` y `BaseGameEngine`

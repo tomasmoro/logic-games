@@ -67,6 +67,9 @@ fun GameOverOverlay(
     onPlayAgain: () -> Unit,
     onExit: () -> Unit,
     modifier: Modifier = Modifier,
+    headline: String? = null,
+    onNextLevel: (() -> Unit)? = null,
+    onChooseLevel: (() -> Unit)? = null,
 ) {
     // `visible` arranca en false: durante REVEAL_DELAY_MS no se dibuja nada y la
     // pantalla de juego queda a la vista; luego dispara scrim + entrada del card.
@@ -138,7 +141,7 @@ fun GameOverOverlay(
             NeonIcon(icon = KortexIcons.Trophy, tint = LogicColors.Amber, size = 46.dp)
 
             Text(
-                "¡Partida terminada!",
+                headline ?: "¡Partida terminada!",
                 style = MaterialTheme.typography.titleLarge,
                 color = LogicColors.OnDarkMuted,
             )
@@ -181,22 +184,53 @@ fun GameOverOverlay(
 
             Spacer(Modifier.height(2.dp))
 
-            AnimatedGameButton(
-                text = "JUGAR DE NUEVO",
-                onClick = onPlayAgain,
-                // Único bucle de la pantalla (pulse) reservado al CTA principal,
-                // como manda §9.4: guía la acción sin competir con otros elementos.
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .pulse(),
-                gradient = LogicGradients.play,
-            )
-            AnimatedGameButton(
-                text = "SALIR",
-                onClick = onExit,
-                modifier = Modifier.fillMaxWidth(),
-                gradient = LogicGradients.energy,
-            )
+            if (onNextLevel != null) {
+                // Juego LEVELED: el CTA principal es avanzar; luego repetir el nivel
+                // y volver al selector. El único bucle (pulse) va al CTA que guía (§9.4).
+                AnimatedGameButton(
+                    text = "SIGUIENTE NIVEL",
+                    onClick = onNextLevel,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pulse(),
+                    gradient = LogicGradients.play,
+                )
+                AnimatedGameButton(
+                    text = "REPETIR NIVEL",
+                    onClick = onPlayAgain,
+                    modifier = Modifier.fillMaxWidth(),
+                    gradient = LogicGradients.energy,
+                )
+                if (onChooseLevel != null) {
+                    Text(
+                        "Elegir nivel",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = LogicColors.OnDarkMuted,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .bounceClick(onClick = onChooseLevel)
+                            .padding(vertical = 8.dp),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            } else {
+                AnimatedGameButton(
+                    text = "JUGAR DE NUEVO",
+                    onClick = onPlayAgain,
+                    // Único bucle de la pantalla (pulse) reservado al CTA principal,
+                    // como manda §9.4: guía la acción sin competir con otros elementos.
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pulse(),
+                    gradient = LogicGradients.play,
+                )
+                AnimatedGameButton(
+                    text = "SALIR",
+                    onClick = onExit,
+                    modifier = Modifier.fillMaxWidth(),
+                    gradient = LogicGradients.energy,
+                )
+            }
         }
     }
 }
