@@ -39,6 +39,12 @@ object GameIds {
 
     /** Atracción Geométrica / Polarity Collision (categoría "spatial"). */
     const val POLARITY_COLLISION = "66666666-6666-4666-8666-666666666666"
+
+    /** Crucigrama Neón (categoría "language" / Lenguaje y Vocabulario). */
+    const val CRUCIGRAMA_NEON = "77777777-7777-4777-8777-777777777777"
+
+    /** Palabras Conectadas / Word Connect (categoría "language" / Lenguaje y Vocabulario). */
+    const val WORD_CONNECT = "88888888-8888-4888-8888-888888888888"
 }
 
 /**
@@ -86,11 +92,11 @@ data class GameInfo(
 )
 
 /**
- * Catálogo de juegos que alimenta la pantalla de lista. Hoy son jugables seis
- * juegos (Memoria, Reflejos, Pociones, Burbujas de Cálculo, Flujo de Energía y
- * Atracción Geométrica); el
- * resto son placeholders del roadmap para dar volumen y comunicar la visión sin
- * engañar (aparecen como "Próximamente").
+ * Catálogo de juegos que alimenta la pantalla de lista. Hoy son jugables ocho
+ * juegos (Memoria, Reflejos, Pociones, Burbujas de Cálculo, Flujo de Energía,
+ * Atracción Geométrica, Crucigrama Neón y Palabras Conectadas); el resto son
+ * placeholders del roadmap para dar volumen y comunicar la visión sin engañar
+ * (aparecen como "Próximamente").
  */
 object GameCatalog {
     val games: List<GameInfo> = listOf(
@@ -100,6 +106,8 @@ object GameCatalog {
         GameInfo(GameIds.BUBBLE_MATH, "Burbujas de Cálculo", GameCategory.MENTAL_MATH, playable = true),
         GameInfo(GameIds.ENERGY_FLOW, "Flujo de Energía", GameCategory.SPATIAL, playable = true),
         GameInfo(GameIds.POLARITY_COLLISION, "Atracción Geométrica", GameCategory.SPATIAL, playable = true),
+        GameInfo(GameIds.CRUCIGRAMA_NEON, "Crucigrama Neón", GameCategory.LANGUAGE, playable = true),
+        GameInfo(GameIds.WORD_CONNECT, "Palabras Conectadas", GameCategory.LANGUAGE, playable = true),
         GameInfo(null, "Parejas Relámpago", GameCategory.MEMORY, playable = false),
         GameInfo(null, "Cadena Lógica", GameCategory.LOGIC, playable = false),
         GameInfo(null, "Encuentra el Intruso", GameCategory.ATTENTION, playable = false),

@@ -36,11 +36,13 @@ import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.core.theme.LogicGamesTheme
 import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.bubblemath.BubbleMathScreen
+import com.example.kortexgames.game.crucigrama.CrucigramaNeonScreen
 import com.example.kortexgames.game.energyflow.EnergyFlowScreen
 import com.example.kortexgames.game.memory.SequenceMemoryScreen
 import com.example.kortexgames.game.polarity.PolarityCollisionScreen
 import com.example.kortexgames.game.reflex.ReflexTapScreen
 import com.example.kortexgames.game.watersort.WaterSortScreen
+import com.example.kortexgames.game.wordconnect.WordConnectScreen
 import com.example.kortexgames.ui.auth.AuthScreen
 import com.example.kortexgames.ui.components.RandomGameFab
 import com.example.kortexgames.ui.games.GameListScreen
@@ -107,7 +109,8 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean) {
         LaunchedEffect(currentRoute) {
             if (currentRoute == Routes.MEMORY || currentRoute == Routes.REFLEX ||
                 currentRoute == Routes.WATER_SORT || currentRoute == Routes.BUBBLE_MATH ||
-                currentRoute == Routes.ENERGY_FLOW || currentRoute == Routes.POLARITY_COLLISION
+                currentRoute == Routes.ENERGY_FLOW || currentRoute == Routes.POLARITY_COLLISION ||
+                currentRoute == Routes.CRUCIGRAMA_NEON || currentRoute == Routes.WORD_CONNECT
             ) {
                 graph.adManager.onEnterGameplay()
             } else {
@@ -223,6 +226,12 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean) {
                 }
                 composable(Routes.POLARITY_COLLISION) {
                     PolarityCollisionScreen(graph) { navController.popBackStack() }
+                }
+                composable(Routes.CRUCIGRAMA_NEON) {
+                    CrucigramaNeonScreen(graph) { navController.popBackStack() }
+                }
+                composable(Routes.WORD_CONNECT) {
+                    WordConnectScreen(graph) { navController.popBackStack() }
                 }
             }
         }
