@@ -160,6 +160,13 @@ class ReflexTapEngine(
         return if (attempts == 0) 100.0 else (reactions.size.toDouble() / attempts * 100)
     }
 
+    /**
+     * Récord = mejor (menor) reacción en ms; null si no hubo ninguna válida.
+     * Ojo: la dirección "menor = mejor" la conoce la app ([GameProgressions]); aquí
+     * se reporta el valor crudo.
+     */
+    override fun reachedMetric(): Int? = reactions.minOrNull()?.toInt()
+
     private companion object {
         const val SCORE_CAP = 600L      // reacción (ms) a partir de la cual no hay puntos
         const val ROUND_PAUSE_MS = 900L

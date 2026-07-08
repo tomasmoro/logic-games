@@ -1,10 +1,12 @@
 package com.example.kortexgames.data.remote
 
+import com.example.kortexgames.domain.model.GameProgress
 import com.example.kortexgames.domain.model.GameResult
 import com.example.kortexgames.domain.model.PercentileResult
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.rpc
+import kotlinx.datetime.Instant
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -34,6 +36,22 @@ class RemoteProgressDataSource(
         @SerialName("rank") val rank: Long,
     )
 
+    /**
+     * Fila de `user_progress` tal cual la devuelve PostgREST. Nota: `game_id` es
+     * el UUID del catálogo, que coincide 1:1 con el `gameId` local (la app usa el
+     * UUID como identificador de juego), así que no hace falta traducción.
+     */
+    @Serializable
+    private data class ProgressRow(
+        val id: String,
+        @SerialName("game_id") val gameId: String,
+        val score: Int,
+        @SerialName("completion_time_ms") val completionTimeMs: Long,
+        @SerialName("accuracy_percentage") val accuracyPercentage: Double,
+        @SerialName("difficulty_level") val difficultyLevel: Int,
+        @SerialName("created_at") val createdAt: Instant,
+    )
+
     /** Sube la partida y devuelve (idRemoto, percentil). */
     suspend fun submit(result: GameResult): Pair<String, PercentileResult> {
         val rows = client.postgrest.rpc(
@@ -55,4 +73,29 @@ class RemoteProgressDataSource(
             rank = row.rank,
         )
     }
+
+    /**
+     * Descarga TODO el historial del usuario autenticado (descarga bidireccional).
+     * RLS filtra a las filas propias (`auth.uid() = user_id`), por eso basta un
+     * `select` sin `where`. Cada fila trae su `remoteId` para deduplicar en local.
+     *
+     * @return las partidas en la nube mapeadas a dominio, marcadas `isSynced = true`.
+     */
+    suspend fun fetchAll(): List<GameProgress> =
+        client.postgrest.from("user_progress")
+            .select()
+            .decodeList<ProgressRow>()
+            .map { r ->
+                GameProgress(
+                    localId = 0L,               // lo asigna SQLite al insertar en local
+                    remoteId = r.id,
+                    gameId = r.gameId,
+                    score = r.score,
+                    completionTimeMs = r.completionTimeMs,
+                    accuracyPercentage = r.accuracyPercentage,
+                    difficultyLevel = r.difficultyLevel,
+                    createdAt = r.createdAt,
+                    isSynced = true,
+                )
+            }
 }

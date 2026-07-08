@@ -28,13 +28,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameCatalog
 import com.example.kortexgames.game.GameInfo
+import com.example.kortexgames.game.GameProgressions
 import com.example.kortexgames.ui.components.CategoryMotifSurface
 import com.example.kortexgames.ui.components.NeonIcon
 import com.example.kortexgames.ui.navigation.Routes
@@ -53,9 +56,13 @@ fun GameListScreen(
     graph: AppGraph,
     onOpenGame: (String) -> Unit,
 ) {
-    // `graph` se recibe para coherencia con el resto de pantallas y futuros datos
-    // (p. ej. destacar juegos jugados recientemente); hoy el catálogo es estático.
     val games = remember { GameCatalog.games }
+
+    // Récord por juego (local-first, sincronizado). Se observa una sola vez para
+    // toda la cuadrícula y se indexa por gameId; cada tarjeta lee el suyo.
+    val records by graph.playerProgressRepository.observeAll()
+        .collectAsStateWithLifecycle(emptyList())
+    val bestByGame = remember(records) { records.associate { it.gameId to it.bestMetric } }
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
@@ -82,6 +89,10 @@ fun GameListScreen(
             GameCard(
                 game = game,
                 index = index,
+                // Texto del récord ("Nivel máx 7" / "Mejor 320 ms") o null si aún
+                // no hay marca. Se resuelve con la progresión del juego.
+                recordText = game.id
+                    ?.let { id -> bestByGame[id]?.let { GameProgressions.forId(id)?.formatRecord(it) } },
                 onOpen = { Routes.gameRoute(game.id)?.let(onOpenGame) },
             )
         }
@@ -98,6 +109,7 @@ fun GameListScreen(
 private fun GameCard(
     game: GameInfo,
     index: Int,
+    recordText: String?,
     onOpen: () -> Unit,
 ) {
     // Aparición escalonada: cada tarjeta se revela un poco después que la anterior.
@@ -142,11 +154,23 @@ private fun GameCard(
                         style = MaterialTheme.typography.titleMedium,
                         color = LogicColors.OnDark,
                     )
-                    if (!game.playable) {
-                        Text(
+                    when {
+                        !game.playable -> Text(
                             "Próximamente",
                             style = MaterialTheme.typography.labelMedium,
                             color = LogicColors.OnDarkMuted,
+                        )
+                        // Récord del jugador teñido con el acento de la categoría:
+                        // recompensa visible sin saturar (el neón brilla por escaso).
+                        recordText != null -> Text(
+                            recordText,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = accent,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(LogicColors.SurfaceVariantDark)
+                                .padding(horizontal = 8.dp, vertical = 3.dp),
                         )
                     }
                 }

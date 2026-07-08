@@ -26,6 +26,16 @@ interface LocalProgressDataSource {
     /** Marca una fila local como sincronizada con su id remoto. */
     suspend fun markSynced(localId: Long, remoteId: String): QueryResult<Long>
 
+    /**
+     * Fusiona partidas descargadas de la nube (descarga bidireccional). Inserta
+     * solo las que aún no existen en local —deduplicando por `remoteId`— y las
+     * marca como ya sincronizadas para no reenviarlas en el próximo push.
+     *
+     * Requisito: cada fila de [remoteRows] debe traer su `remoteId` no nulo (el
+     * id de `user_progress` en Supabase).
+     */
+    suspend fun mergeRemote(remoteRows: List<GameProgress>)
+
     /** Partidas cuyo createdAt cae dentro del rango [startEpochMs, endEpochMs). */
     suspend fun countInRange(startEpochMs: Long, endEpochMs: Long): Int
 }

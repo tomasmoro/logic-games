@@ -1,0 +1,14 @@
+-- Migración v1 → v2: añade la tabla de progresión por juego (récord + reanudación).
+-- Necesaria para que las instalaciones EXISTENTES (BD creada con el esquema v1, sin
+-- esta tabla) la reciban vía onUpgrade. Las instalaciones nuevas la obtienen del
+-- CREATE en PlayerProgress.sq mediante Schema.create. El fichero .sqm eleva
+-- Schema.version a 2, disparando la migración en dispositivos con la BD antigua.
+CREATE TABLE PlayerGameProgressEntity (
+    gameId      TEXT    NOT NULL PRIMARY KEY,
+    bestMetric  INTEGER NOT NULL,
+    lastLevel   INTEGER,
+    updatedAt   INTEGER NOT NULL,
+    isSynced    INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX idx_player_progress_synced ON PlayerGameProgressEntity(isSynced);

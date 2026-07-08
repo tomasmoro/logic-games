@@ -73,12 +73,15 @@ class SequenceMemoryEngine(
     private val sequence = mutableListOf<Int>()
     private var correctTaps = 0
     private var totalTaps = 0
+    /** Rondas superadas = longitud máx de secuencia reproducida (base del récord). */
+    private var completedRounds = 0
     private var showJob: Job? = null
 
     override fun onStart() {
         sequence.clear()
         correctTaps = 0
         totalTaps = 0
+        completedRounds = 0
         _state.value = SequenceMemoryState()
         nextRound()
     }
@@ -141,6 +144,7 @@ class SequenceMemoryEngine(
 
         if (progress == sequence.size) {
             // Ronda completada: suma puntos y pasa a la siguiente.
+            completedRounds = sequence.size // longitud reproducida = récord candidato
             val newScore = _state.value.score + sequence.size * POINTS_PER_STEP
             audio.playSound(SoundEffect.SUCCESS)
             audio.hapticFeedback(HapticFeedback.SUCCESS)
@@ -159,6 +163,9 @@ class SequenceMemoryEngine(
 
     override fun currentAccuracy(): Double =
         if (totalTaps == 0) 100.0 else (correctTaps.toDouble() / totalTaps * 100).coerceIn(0.0, 100.0)
+
+    /** Récord = longitud máx de secuencia reproducida; null si no completó ninguna. */
+    override fun reachedMetric(): Int? = completedRounds.takeIf { it > 0 }
 
     private companion object {
         const val POINTS_PER_STEP = 100

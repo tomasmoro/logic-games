@@ -19,6 +19,12 @@ insert:
 INSERT INTO GameProgressEntity(gameId, score, completionTimeMs, accuracyPercentage, difficultyLevel, createdAt, isSynced)
 VALUES (?, ?, ?, ?, ?, ?, 0);
 
+-- Inserta una partida que YA existe en la nube (descarga bidireccional): nace
+-- sincronizada (isSynced = 1) y con su remoteId, para no reenviarla en el push.
+insertSynced:
+INSERT INTO GameProgressEntity(remoteId, gameId, score, completionTimeMs, accuracyPercentage, difficultyLevel, createdAt, isSynced)
+VALUES (?, ?, ?, ?, ?, ?, ?, 1);
+
 lastInsertedId:
 SELECT last_insert_rowid();
 
@@ -30,6 +36,11 @@ SELECT * FROM GameProgressEntity WHERE gameId = :gameId ORDER BY createdAt DESC;
 
 selectUnsynced:
 SELECT * FROM GameProgressEntity WHERE isSynced = 0 ORDER BY createdAt ASC;
+
+-- Ids remotos ya presentes en local. Sirve para deduplicar la descarga
+-- nube→local: no reinsertamos partidas que ya tenemos (por remoteId).
+selectRemoteIds:
+SELECT remoteId FROM GameProgressEntity WHERE remoteId IS NOT NULL;
 
 markSynced:
 UPDATE GameProgressEntity SET isSynced = 1, remoteId = :remoteId WHERE localId = :localId;

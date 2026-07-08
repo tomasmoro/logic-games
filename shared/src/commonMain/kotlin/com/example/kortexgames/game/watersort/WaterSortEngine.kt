@@ -92,8 +92,6 @@ class WaterSortEngine(
      */
     private val roundConfigs = listOf(
         LevelConfig(colorCount = 5, emptyTubes = 2, capacity = 4),
-        LevelConfig(colorCount = 6, emptyTubes = 2, capacity = 4),
-        LevelConfig(colorCount = 6, emptyTubes = 1, capacity = 4),
     )
 
     // Tablero inicial (para reiniciar) e historial de vertidos (para deshacer).
@@ -104,6 +102,8 @@ class WaterSortEngine(
     private var currentRoundIndex = 0
     private var totalMoves = 0
     private var totalReferenceMoves = 0
+    /** Rondas resueltas = nivel alcanzado (base del récord y del lastLevel). */
+    private var solvedRounds = 0
     private var pendingRoundJob: Job? = null
 
     override fun onStart() {
@@ -111,6 +111,7 @@ class WaterSortEngine(
         currentRoundIndex = 0
         totalMoves = 0
         totalReferenceMoves = 0
+        solvedRounds = 0
         startRound(currentRoundIndex)
     }
 
@@ -191,6 +192,7 @@ class WaterSortEngine(
 
             totalMoves += roundMoves
             totalReferenceMoves += currentRoundMinMoves
+            solvedRounds = currentRoundIndex + 1 // 1-based: nivel alcanzado
 
             if (currentRoundIndex < roundConfigs.lastIndex) {
                 currentRoundIndex++
@@ -249,6 +251,9 @@ class WaterSortEngine(
         if (moves == 0 || reference == 0) return 100.0
         return (reference.toDouble() / moves * 100).coerceAtMost(100.0)
     }
+
+    /** Récord = nivel alcanzado (rondas resueltas); null si no resolvió ninguna. */
+    override fun reachedMetric(): Int? = solvedRounds.takeIf { it > 0 }
 
     private companion object {
         const val PENALTY_PER_EXTRA_MOVE = 40

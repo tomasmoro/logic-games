@@ -11,7 +11,8 @@ import kotlinx.coroutines.flow.Flow
  *  - [saveResult] siempre escribe en local primero (funciona offline / invitado).
  *    Si hay sesión y red, empuja a Supabase y devuelve el percentil.
  *  - [observeHistory] lee SIEMPRE de local (fuente de verdad para la UI).
- *  - [syncPending] sube lo no sincronizado; se llama al iniciar sesión y al
+ *  - [syncPending] sincroniza en AMBAS direcciones (sube lo pendiente y descarga
+ *    el historial de la nube que falte en local); se llama al iniciar sesión y al
  *    recuperar conectividad.
  */
 interface ProgressRepository {
@@ -25,7 +26,11 @@ interface ProgressRepository {
     /** Historial observable desde local. gameId null = todos los juegos. */
     fun observeHistory(gameId: String? = null): Flow<List<GameProgress>>
 
-    /** Sube a Supabase todas las filas locales sin sincronizar. */
+    /**
+     * Sincroniza el progreso en ambas direcciones: sube a Supabase las filas
+     * locales sin sincronizar y descarga a local el historial de la nube que aún
+     * no esté presente (deduplicado por id remoto). No-op en modo invitado.
+     */
     suspend fun syncPending()
 
     /** Nº de partidas jugadas HOY (para el Daily Goal). */

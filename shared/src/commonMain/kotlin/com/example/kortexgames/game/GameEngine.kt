@@ -120,11 +120,22 @@ abstract class BaseGameEngine<S : Any>(
             completionTimeMs = elapsedActive().inWholeMilliseconds,
             accuracyPercentage = currentAccuracy(),
             difficultyLevel = difficulty,
+            reachedMetric = reachedMetric(),
         ).also { _outcome.value = it }
     }
 
     /** Precisión 0..100 de la partida (aciertos/intentos). La usa [finish]. */
     protected abstract fun currentAccuracy(): Double
+
+    /**
+     * Valor de progresión ALCANZADO en la partida (base del récord), en la unidad
+     * natural del juego: longitud máx de secuencia, nivel/ronda alcanzado, mejor
+     * reacción en ms, etc. `null` si no hubo métrica medible (default).
+     *
+     * Es distinto de [difficulty] (dificultad de INICIO) y de [calculateScore]
+     * (puntaje). Cada juego lo sobreescribe según su semántica; ver [GameProgressions].
+     */
+    protected open fun reachedMetric(): Int? = null
 
     // Hooks opcionales; por defecto no hacen nada.
     protected open fun onStart() {}

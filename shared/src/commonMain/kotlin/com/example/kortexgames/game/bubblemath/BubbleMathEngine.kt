@@ -321,6 +321,9 @@ class BubbleMathEngine(
         return if (attempts == 0) 100.0 else correctCount.toDouble() / attempts * 100
     }
 
+    /** Récord = mejor ronda alcanzada antes de perder las vidas; null si ninguna. */
+    override fun reachedMetric(): Int? = _state.value.round.takeIf { it > 0 }
+
     private companion object {
         // --- Física de la caída ---
         const val FRAME_MS = 16L          // ~60 fps

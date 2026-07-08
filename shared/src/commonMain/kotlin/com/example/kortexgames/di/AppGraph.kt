@@ -5,12 +5,15 @@ import com.example.kortexgames.core.audio.AudioAndHapticManager
 import com.example.kortexgames.core.audio.PlatformContext
 import com.example.kortexgames.core.audio.createAudioAndHapticManager
 import com.example.kortexgames.data.local.DatabaseDriverFactory
+import com.example.kortexgames.data.local.SqlDelightLocalPlayerProgressDataSource
 import com.example.kortexgames.data.local.SqlDelightLocalProgressDataSource
 import com.example.kortexgames.data.local.createDatabase
+import com.example.kortexgames.data.remote.RemotePlayerProgressDataSource
 import com.example.kortexgames.data.remote.RemoteProgressDataSource
 import com.example.kortexgames.data.remote.auth.GoogleAuthClient
 import com.example.kortexgames.data.remote.buildSupabaseClient
 import com.example.kortexgames.data.repository.AuthRepositoryImpl
+import com.example.kortexgames.data.repository.PlayerProgressRepositoryImpl
 import com.example.kortexgames.data.repository.ProgressRepositoryImpl
 import com.example.kortexgames.data.settings.OnboardingGate
 import com.example.kortexgames.data.settings.SettingsRepository
@@ -20,6 +23,7 @@ import com.example.kortexgames.game.daily.DailyGoalStore
 import com.example.kortexgames.domain.model.AuthState
 import com.example.kortexgames.domain.model.PlanType
 import com.example.kortexgames.domain.repository.AuthRepository
+import com.example.kortexgames.domain.repository.PlayerProgressRepository
 import com.example.kortexgames.domain.repository.ProgressRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -60,10 +64,13 @@ class AppGraph(context: PlatformContext) {
     // --- Persistencia local (fuente de verdad, modo invitado/offline) -------
     private val database = createDatabase(DatabaseDriverFactory(context))
     private val localProgress = SqlDelightLocalProgressDataSource(database, Dispatchers.Default)
+    private val localPlayerProgress =
+        SqlDelightLocalPlayerProgressDataSource(database, Dispatchers.Default)
 
     // --- Backend Supabase (FASE 2) ------------------------------------------
     val supabaseClient = buildSupabaseClient()
     private val remoteProgress = RemoteProgressDataSource(supabaseClient)
+    private val remotePlayerProgress = RemotePlayerProgressDataSource(supabaseClient)
 
     // --- Autenticación (email + Google) -------------------------------------
     /** Seam de plataforma para el login con Google (ID token nativo). */
@@ -79,11 +86,19 @@ class AppGraph(context: PlatformContext) {
     /** Recuerda si el usuario ya decidió en la puerta de login (onboarding). */
     val onboardingGate = OnboardingGate(preferences, appScope)
 
-    // --- Repositorio local-first --------------------------------------------
+    // --- Repositorios local-first -------------------------------------------
+    /** Progresión por juego (récord + reanudación), sincronizada con Supabase. */
+    val playerProgressRepository: PlayerProgressRepository = PlayerProgressRepositoryImpl(
+        local = localPlayerProgress,
+        remote = remotePlayerProgress,
+        authState = { authState },
+    )
+
     val progressRepository: ProgressRepository = ProgressRepositoryImpl(
         local = localProgress,
         remote = remoteProgress,
         authState = { authState },
+        playerProgress = playerProgressRepository,
     )
 
     // --- Audio & Háptica (nativo, respeta settings) -------------------------
@@ -112,6 +127,7 @@ class AppGraph(context: PlatformContext) {
                 authState = state
                 if (state is AuthState.Authenticated && !wasAuthenticated) {
                     progressRepository.syncPending()
+                    playerProgressRepository.sync()
                 }
             }
             .launchIn(appScope)

@@ -152,6 +152,9 @@ class PolarityCollisionEngine(
         return if (attempts == 0) 100.0 else (_state.value.caught.toDouble() / attempts.toDouble() * 100.0)
     }
 
+    /** Récord = mejor puntaje de la corrida; null si no sumó puntos. */
+    override fun reachedMetric(): Int? = calculateScore().takeIf { it > 0 }
+
     private fun step(state: PolarityCollisionState, dtSec: Float): PolarityCollisionState {
         val progression = roundProgress(state)
         val dynamicDifficulty = dynamicDifficultyMultiplier(progression)

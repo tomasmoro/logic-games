@@ -51,6 +51,27 @@ class SqlDelightLocalProgressDataSource(
         queries.markSynced(remoteId = remoteId, localId = localId)
     }
 
+    override suspend fun mergeRemote(remoteRows: List<GameProgress>) = withContext(io) {
+        db.transaction {
+            // Snapshot de ids ya presentes: evita reinsertar lo que subimos en el
+            // push previo o lo descargado en una sync anterior. Set para O(1) por fila.
+            val known = queries.selectRemoteIds().executeAsList().filterNotNull().toSet()
+            for (row in remoteRows) {
+                val remoteId = row.remoteId ?: continue
+                if (remoteId in known) continue
+                queries.insertSynced(
+                    remoteId = remoteId,
+                    gameId = row.gameId,
+                    score = row.score.toLong(),
+                    completionTimeMs = row.completionTimeMs,
+                    accuracyPercentage = row.accuracyPercentage,
+                    difficultyLevel = row.difficultyLevel.toLong(),
+                    createdAt = row.createdAt.toEpochMilliseconds(),
+                )
+            }
+        }
+    }
+
     override suspend fun countInRange(startEpochMs: Long, endEpochMs: Long): Int =
         withContext(io) {
             queries.countInRange(startEpochMs, endEpochMs).executeAsOne().toInt()

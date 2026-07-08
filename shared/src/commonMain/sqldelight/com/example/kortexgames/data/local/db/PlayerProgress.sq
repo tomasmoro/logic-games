@@ -1,0 +1,32 @@
+-- Estado de progresión por juego en local (récord + reanudación). Espeja la tabla
+-- Supabase player_game_progress: una fila por juego. A diferencia de
+-- GameProgressEntity (log de partidas, solo-inserta), aquí SÍ se reescribe (upsert).
+CREATE TABLE PlayerGameProgressEntity (
+    gameId      TEXT    NOT NULL PRIMARY KEY,   -- UUID del catálogo
+    bestMetric  INTEGER NOT NULL,               -- mejor marca (unidad natural del juego)
+    lastLevel   INTEGER,                        -- nivel de reanudación; NULL en ENDLESS
+    updatedAt   INTEGER NOT NULL,               -- epoch millis de la marca
+    isSynced    INTEGER NOT NULL DEFAULT 0      -- 0 = pendiente de subir, 1 = subido
+);
+
+CREATE INDEX idx_player_progress_synced ON PlayerGameProgressEntity(isSynced);
+
+selectAll:
+SELECT * FROM PlayerGameProgressEntity;
+
+selectByGame:
+SELECT * FROM PlayerGameProgressEntity WHERE gameId = :gameId;
+
+selectUnsynced:
+SELECT * FROM PlayerGameProgressEntity WHERE isSynced = 0;
+
+-- Upsert idempotente por juego. Se usa INSERT OR REPLACE (no ON CONFLICT DO
+-- UPDATE) porque el dialecto SQLite del proyecto es 3.18 y el upsert nativo llegó
+-- en 3.24. Como gameId es PK y la fila no tiene dependientes por rowid, reemplazar
+-- la fila entera es equivalente a un upsert.
+upsert:
+INSERT OR REPLACE INTO PlayerGameProgressEntity(gameId, bestMetric, lastLevel, updatedAt, isSynced)
+VALUES (:gameId, :bestMetric, :lastLevel, :updatedAt, :isSynced);
+
+markSynced:
+UPDATE PlayerGameProgressEntity SET isSynced = 1 WHERE gameId = :gameId;
