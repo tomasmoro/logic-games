@@ -241,16 +241,14 @@ data class EnergyLevel(
  */
 object EnergyFlowGenerator {
 
-    /** Tamaño de rejilla (cuadrada) por dificultad 1..5: de 4×4 a 8×8. */
+    /** Tamaño de rejilla (cuadrada) por dificultad 1..3: de 4×4 a 6×6. */
     data class Config(val rows: Int, val cols: Int)
 
     fun configForDifficulty(difficulty: Int): Config {
-        val n = when (difficulty.coerceIn(1, 5)) {
+        val n = when (difficulty.coerceIn(1, 3)) {
             1 -> 4
             2 -> 5
-            3 -> 6
-            4 -> 7
-            else -> 8
+            else -> 6
         }
         return Config(n, n)
     }

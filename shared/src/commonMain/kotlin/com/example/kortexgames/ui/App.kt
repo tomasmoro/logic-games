@@ -38,6 +38,7 @@ import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.bubblemath.BubbleMathScreen
 import com.example.kortexgames.game.energyflow.EnergyFlowScreen
 import com.example.kortexgames.game.memory.SequenceMemoryScreen
+import com.example.kortexgames.game.polarity.PolarityCollisionScreen
 import com.example.kortexgames.game.reflex.ReflexTapScreen
 import com.example.kortexgames.game.watersort.WaterSortScreen
 import com.example.kortexgames.ui.auth.AuthScreen
@@ -106,7 +107,7 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean) {
         LaunchedEffect(currentRoute) {
             if (currentRoute == Routes.MEMORY || currentRoute == Routes.REFLEX ||
                 currentRoute == Routes.WATER_SORT || currentRoute == Routes.BUBBLE_MATH ||
-                currentRoute == Routes.ENERGY_FLOW
+                currentRoute == Routes.ENERGY_FLOW || currentRoute == Routes.POLARITY_COLLISION
             ) {
                 graph.adManager.onEnterGameplay()
             } else {
@@ -219,6 +220,9 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean) {
                 }
                 composable(Routes.ENERGY_FLOW) {
                     EnergyFlowScreen(graph) { navController.popBackStack() }
+                }
+                composable(Routes.POLARITY_COLLISION) {
+                    PolarityCollisionScreen(graph) { navController.popBackStack() }
                 }
             }
         }

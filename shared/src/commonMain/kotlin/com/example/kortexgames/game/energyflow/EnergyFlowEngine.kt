@@ -6,9 +6,12 @@ import com.example.kortexgames.core.audio.SoundEffect
 import com.example.kortexgames.game.BaseGameEngine
 import com.example.kortexgames.game.GameIds
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 /**
@@ -27,6 +30,8 @@ data class EnergyFlowState(
     val grid: EnergyGrid = EnergyGrid(0, 0, emptyList()),
     val powered: Set<Int> = emptySet(),
     val rotations: Int = 0,
+    val round: Int = 1,
+    val totalRounds: Int = 3,
     val solved: Boolean = false,
     val lastRotated: Int? = null,
     val rotationSeq: Long = 0,
@@ -47,6 +52,9 @@ data class EnergyFlowState(
  *
  * Guarda el tablero inicial barajado para poder **reiniciar** el mismo nivel.
  *
+ * Esta versión se juega en **tres rondas** consecutivas: 4x4, 5x5 y 6x6. Solo al
+ * cerrar la tercera se finaliza la partida.
+ *
  * @param random fuente aleatoria (sembrable en tests para niveles deterministas).
  */
 class EnergyFlowEngine(
@@ -59,21 +67,43 @@ class EnergyFlowEngine(
     private val _state = MutableStateFlow(EnergyFlowState())
     override val state: StateFlow<EnergyFlowState> = _state.asStateFlow()
 
-    private val config = EnergyFlowGenerator.configForDifficulty(difficulty)
+    /** Secuencia fija de rondas pedida para este juego. */
+    private val roundConfigs = listOf(
+        EnergyFlowGenerator.Config(4, 4),
+        EnergyFlowGenerator.Config(5, 5),
+        EnergyFlowGenerator.Config(6, 6),
+    )
 
-    // Tablero inicial (para reiniciar) y óptimo de giros (para puntuar la eficiencia).
+    // Tablero inicial (para reiniciar) y óptimo de giros acumulado (para puntuar la eficiencia).
     private var initialGrid: EnergyGrid = EnergyGrid(0, 0, emptyList())
-    private var optimalRotations = 0
+    private var currentRoundOptimalRotations = 0
+    private var completedRotations = 0
+    private var completedOptimalRotations = 0
     private var rotationSeq = 0L
+    private var currentRoundIndex = 0
+    private var pendingRoundJob: Job? = null
+
+    private val currentConfig: EnergyFlowGenerator.Config
+        get() = roundConfigs[currentRoundIndex]
 
     override fun onStart() {
-        val level = EnergyFlowGenerator.generate(config, random)
+        pendingRoundJob?.cancel()
+        currentRoundIndex = 0
+        completedRotations = 0
+        completedOptimalRotations = 0
+        startRound()
+    }
+
+    private fun startRound() {
+        val level = EnergyFlowGenerator.generate(currentConfig, random)
         initialGrid = level.grid
-        optimalRotations = level.optimalRotations
+        currentRoundOptimalRotations = level.optimalRotations
         rotationSeq = 0
         _state.value = EnergyFlowState(
             grid = level.grid,
             powered = level.grid.poweredIndices(),
+            round = currentRoundIndex + 1,
+            totalRounds = roundConfigs.size,
         )
     }
 
@@ -97,10 +127,23 @@ class EnergyFlowEngine(
         )
 
         if (solved) {
-            // Clímax del nivel: refuerzo marcado antes de que el VM cierre la partida.
+            // Clímax de cada ronda: refuerzo marcado antes de avanzar o cerrar la partida.
             audio.playSound(SoundEffect.SUCCESS)
             audio.hapticFeedback(HapticFeedback.HEAVY)
-            finish()
+
+            completedRotations += _state.value.rotations
+            completedOptimalRotations += currentRoundOptimalRotations
+
+            if (currentRoundIndex < roundConfigs.lastIndex) {
+                currentRoundIndex++
+                pendingRoundJob?.cancel()
+                pendingRoundJob = scope.launch {
+                    delay(ROUND_TRANSITION_DELAY_MS)
+                    startRound()
+                }
+            } else {
+                finish()
+            }
         } else {
             audio.playSound(SoundEffect.TAP)
             audio.hapticFeedback(HapticFeedback.LIGHT)
@@ -109,10 +152,13 @@ class EnergyFlowEngine(
 
     /** Reinicia el MISMO nivel a su barajado inicial (no genera uno nuevo). */
     fun restart() {
+        pendingRoundJob?.cancel()
         rotationSeq = 0
         _state.value = EnergyFlowState(
             grid = initialGrid,
             powered = initialGrid.poweredIndices(),
+            round = currentRoundIndex + 1,
+            totalRounds = roundConfigs.size,
         )
     }
 
@@ -122,19 +168,23 @@ class EnergyFlowEngine(
      * nunca baja de 0.
      */
     override fun calculateScore(): Int {
-        val base = difficulty * 1_000
-        val extra = (_state.value.rotations - optimalRotations).coerceAtLeast(0)
+        val base = difficulty * 1_000 * roundConfigs.size
+        val totalRotations = completedRotations + _state.value.rotations
+        val totalOptimalRotations = completedOptimalRotations + currentRoundOptimalRotations
+        val extra = (totalRotations - totalOptimalRotations).coerceAtLeast(0)
         return (base - extra * PENALTY_PER_EXTRA_ROTATION).coerceAtLeast(0)
     }
 
     /** Precisión = eficiencia: giros óptimos / giros reales (tope 100 %). */
     override fun currentAccuracy(): Double {
-        val rotations = _state.value.rotations
-        if (rotations == 0 || optimalRotations == 0) return 100.0
-        return (optimalRotations.toDouble() / rotations * 100).coerceAtMost(100.0)
+        val totalRotations = completedRotations + _state.value.rotations
+        val totalOptimalRotations = completedOptimalRotations + currentRoundOptimalRotations
+        if (totalRotations == 0 || totalOptimalRotations == 0) return 100.0
+        return (totalOptimalRotations.toDouble() / totalRotations * 100).coerceAtMost(100.0)
     }
 
     private companion object {
         const val PENALTY_PER_EXTRA_ROTATION = 25
+        const val ROUND_TRANSITION_DELAY_MS = 3_000L
     }
 }

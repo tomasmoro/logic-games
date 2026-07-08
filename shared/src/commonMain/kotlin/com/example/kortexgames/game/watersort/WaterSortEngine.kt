@@ -6,9 +6,12 @@ import com.example.kortexgames.core.audio.SoundEffect
 import com.example.kortexgames.game.BaseGameEngine
 import com.example.kortexgames.game.GameIds
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 /**
@@ -31,6 +34,8 @@ data class PourEvent(
  * Estado de UI de "Ordena las Pociones".
  *
  * @property tubes tablero actual (fuente de verdad para pintar).
+ * @property round ronda actual (1-based).
+ * @property totalRounds número total de rondas de la partida.
  * @property selected índice del tubo "levantado" (origen elegido), o null.
  * @property moves nº de vertidos realizados (para puntuar la eficiencia).
  * @property solved true cuando todos los tubos están resueltos (victoria).
@@ -40,6 +45,8 @@ data class PourEvent(
 data class WaterSortState(
     val tubes: List<Tube> = emptyList(),
     val capacity: Int = TUBE_CAPACITY,
+    val round: Int = 1,
+    val totalRounds: Int = 3,
     val selected: Int? = null,
     val moves: Int = 0,
     val solved: Boolean = false,
@@ -77,20 +84,47 @@ class WaterSortEngine(
     private val _state = MutableStateFlow(WaterSortState())
     override val state: StateFlow<WaterSortState> = _state.asStateFlow()
 
-    private val config = LevelConfig.forDifficulty(difficulty)
+    /**
+     * Secuencia fija pedida para el juego:
+     *  1) 6 tubos, capacidad 4, 1 libre  => 5 colores
+     *  2) 8 tubos, capacidad 4, 2 libres => 6 colores
+     *  3) 8 tubos, capacidad 5, 2 libres => 6 colores
+     */
+    private val roundConfigs = listOf(
+        LevelConfig(colorCount = 5, emptyTubes = 2, capacity = 4),
+        LevelConfig(colorCount = 6, emptyTubes = 2, capacity = 4),
+        LevelConfig(colorCount = 6, emptyTubes = 1, capacity = 4),
+    )
 
     // Tablero inicial (para reiniciar) e historial de vertidos (para deshacer).
     private var initialTubes: List<Tube> = emptyList()
     private val history = ArrayDeque<List<Tube>>()
-    private var minMoves = 0
+    private var currentRoundMinMoves = 0
     private var pourSeq = 0L
+    private var currentRoundIndex = 0
+    private var totalMoves = 0
+    private var totalReferenceMoves = 0
+    private var pendingRoundJob: Job? = null
 
     override fun onStart() {
-        val level = WaterSortGenerator.generate(config, random)
+        pendingRoundJob?.cancel()
+        currentRoundIndex = 0
+        totalMoves = 0
+        totalReferenceMoves = 0
+        startRound(currentRoundIndex)
+    }
+
+    private fun startRound(index: Int) {
+        val level = WaterSortGenerator.generate(roundConfigs[index], random)
         initialTubes = level.tubes
-        minMoves = level.minMoves
+        currentRoundMinMoves = level.minMoves
         history.clear()
-        _state.value = WaterSortState(tubes = level.tubes, capacity = level.capacity)
+        _state.value = WaterSortState(
+            tubes = level.tubes,
+            capacity = level.capacity,
+            round = index + 1,
+            totalRounds = roundConfigs.size,
+        )
     }
 
     /**
@@ -140,16 +174,35 @@ class WaterSortEngine(
         audio.hapticFeedback(if (result.dstNowComplete) HapticFeedback.HEAVY else HapticFeedback.MEDIUM)
 
         val solved = WaterSortRules.isSolved(result.tubes, s.capacity)
+        val roundMoves = s.moves + 1
         _state.value = s.copy(
             tubes = result.tubes,
             selected = null,
-            moves = s.moves + 1,
+            moves = roundMoves,
             solved = solved,
             canUndo = true,
             lastPour = PourEvent(pourSeq++, from, to, result.color, result.count),
         )
 
-        if (solved) finish()
+        if (solved) {
+            // Cierre de ronda: feedback explícito antes de pasar de nivel o terminar.
+            audio.playSound(SoundEffect.SUCCESS)
+            audio.hapticFeedback(HapticFeedback.HEAVY)
+
+            totalMoves += roundMoves
+            totalReferenceMoves += currentRoundMinMoves
+
+            if (currentRoundIndex < roundConfigs.lastIndex) {
+                currentRoundIndex++
+                pendingRoundJob?.cancel()
+                pendingRoundJob = scope.launch {
+                    delay(ROUND_TRANSITION_DELAY_MS)
+                    startRound(currentRoundIndex)
+                }
+            } else {
+                finish()
+            }
+        }
     }
 
     /** Deshace el último vertido restaurando el tablero previo. */
@@ -168,8 +221,14 @@ class WaterSortEngine(
 
     /** Reinicia el MISMO nivel a su estado inicial (no genera uno nuevo). */
     fun restart() {
+        pendingRoundJob?.cancel()
         history.clear()
-        _state.value = WaterSortState(tubes = initialTubes, capacity = config.capacity)
+        _state.value = WaterSortState(
+            tubes = initialTubes,
+            capacity = roundConfigs[currentRoundIndex].capacity,
+            round = currentRoundIndex + 1,
+            totalRounds = roundConfigs.size,
+        )
     }
 
     /**
@@ -178,19 +237,21 @@ class WaterSortEngine(
      * movimientos; nunca baja de 0.
      */
     override fun calculateScore(): Int {
-        val base = difficulty * 1_000
-        val extraMoves = (_state.value.moves - minMoves).coerceAtLeast(0)
+        val base = difficulty * 1_000 * roundConfigs.size
+        val extraMoves = (totalMoves - totalReferenceMoves).coerceAtLeast(0)
         return (base - extraMoves * PENALTY_PER_EXTRA_MOVE).coerceAtLeast(0)
     }
 
     /** Precisión = eficiencia: movimientos de referencia / movimientos reales. */
     override fun currentAccuracy(): Double {
-        val moves = _state.value.moves
-        if (moves == 0 || minMoves == 0) return 100.0
-        return (minMoves.toDouble() / moves * 100).coerceAtMost(100.0)
+        val moves = totalMoves + _state.value.moves
+        val reference = totalReferenceMoves + currentRoundMinMoves
+        if (moves == 0 || reference == 0) return 100.0
+        return (reference.toDouble() / moves * 100).coerceAtMost(100.0)
     }
 
     private companion object {
         const val PENALTY_PER_EXTRA_MOVE = 40
+        const val ROUND_TRANSITION_DELAY_MS = 1_000L
     }
 }

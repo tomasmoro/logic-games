@@ -38,6 +38,7 @@ object Routes {
     const val WATER_SORT = "game/watersort"
     const val BUBBLE_MATH = "game/bubblemath"
     const val ENERGY_FLOW = "game/energyflow"
+    const val POLARITY_COLLISION = "game/polarity-collision"
 
     /**
      * Ruta de juego para un [GameIds] concreto, o null si el juego aún no es
@@ -50,6 +51,7 @@ object Routes {
         GameIds.WATER_SORT -> WATER_SORT
         GameIds.BUBBLE_MATH -> BUBBLE_MATH
         GameIds.ENERGY_FLOW -> ENERGY_FLOW
+        GameIds.POLARITY_COLLISION -> POLARITY_COLLISION
         else -> null
     }
 

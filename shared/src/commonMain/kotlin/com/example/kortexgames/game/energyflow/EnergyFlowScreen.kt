@@ -130,6 +130,11 @@ fun EnergyFlowScreen(graph: AppGraph, onExit: () -> Unit) {
                 color = LogicColors.Electric,
             )
             Text(
+                "Nivel ${game.round}/${game.totalRounds}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = LogicColors.NeonGreen,
+            )
+            Text(
                 "Gira las piezas para llevar la energía de la batería a la bombilla",
                 style = MaterialTheme.typography.bodyMedium,
                 color = LogicColors.OnDarkMuted,

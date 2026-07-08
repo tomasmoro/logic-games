@@ -53,12 +53,15 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.kortexgames.core.theme.CategoryPalette
 import com.example.kortexgames.core.theme.LogicColors
+import com.example.kortexgames.core.theme.LogicGamesTheme
 import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.ui.components.ArcadeBrickBackground
@@ -68,6 +71,7 @@ import com.example.kortexgames.ui.components.NeonIcon
 import com.example.kortexgames.ui.components.bounceClick
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
@@ -142,10 +146,9 @@ private data class LiquidBand(val colorIndex: Int, val heightSlots: Float)
  * motor ya está actualizado, así que se reconstruye el estado *previo* al vertido
  * a partir del propio evento para animar el trasvase.
  *
- * Se crea un `Animatable` **nuevo por cada id de vertido** (`remember(pour?.id)`),
- * de modo que `p` (=`progress.value`) vale 0 en el primer frame de cada vertido sin
- * carreras de reseteo: así el tubo viajero nunca aparece un frame en la posición de
- * destino antes de arrancar desde el origen.
+ * El progreso efectivo se calcula de forma **síncrona** (`p`): mientras el
+ * `LaunchedEffect` aún no ha arrancado la animación del vertido nuevo, `p` vale 0
+ * (estado inicial), evitando el "frame fantasma" en que se vería el estado final.
  */
 @Composable
 fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
@@ -160,30 +163,24 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
     var containerCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val tubeCoords = remember { mutableMapOf<Int, LayoutCoordinates>() }
 
+    val progress = remember { Animatable(0f) }
+    // Id del vertido cuya animación ya arrancó. Sirve para (1) lanzar la animación
+    // y (2) saber si el `progress` actual corresponde ya al vertido en curso.
+    var animId by remember { mutableStateOf<Long?>(null) }
+
     val pour = game.lastPour
-    // Un Animatable NUEVO por cada id de vertido (`remember(pour?.id)`): garantiza
-    // que `progress.value` vale 0 en el PRIMER frame de cada vertido, porque es una
-    // instancia recién creada, no una reutilizada con un valor viejo. Esto elimina
-    // POR CONSTRUCCIÓN el "frame fantasma" en la posición de destino: no depende del
-    // orden de `snapTo`/marca de arranque ni del mutex del Animatable (esas carreras
-    // dejaban colarse un `progress` a media animación anterior al interrumpir un
-    // vertido con otro toque, y el tubo destellaba un frame al costado/destino).
-    val progress = remember(pour?.id) { Animatable(0f) }
+
     LaunchedEffect(pour?.id) {
-        if (pour != null) progress.animateTo(1f, tween(POUR_DURATION_MS, easing = FastOutSlowInEasing))
+        val pr = pour ?: return@LaunchedEffect
+        animId = pr.id
+        progress.snapTo(0f)
+        progress.animateTo(1f, tween(POUR_DURATION_MS, easing = FastOutSlowInEasing))
     }
 
-    // Anclas (rects de origen y destino) CONGELADAS al inicio de cada vertido. Es la
-    // clave del bug reportado: `boundsOf` se recalcula por frame a partir de
-    // `tubeCoords`/`containerCoords`, que se reescriben en relayouts durante el
-    // vertido (el origen pasa a placeholder, el destino se repinta con menos bandas,
-    // el texto "N movimientos" cambia de ancho y re-centra la fila…). Eso movía
-    // `fromRect`/`destRect` a media animación → el tubo saltaba. Al fijar las anclas
-    // una sola vez, la trayectoria es estable de principio a fin.
-    val anchors = remember(pour?.id) { mutableStateOf<Pair<Rect, Rect>?>(null) }
-
-    val p = progress.value                    // 0 en el primer frame de cada vertido
-    val animating = pour != null && p < 1f
+    val raw = progress.value                  // registra lecturas → recomposición por frame
+    val started = pour != null && animId == pour.id
+    val p = if (started) raw else 0f          // aún sin arrancar ⇒ estado inicial (p=0)
+    val animating = pour != null && (!started || raw < 1f)
 
     /** Rect del tubo [i] en coordenadas del contenedor (o null si aún no medido). */
     fun boundsOf(i: Int): Rect? {
@@ -213,6 +210,11 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
                 "${game.moves} movimientos",
                 style = MaterialTheme.typography.titleMedium,
                 color = LogicColors.Electric,
+            )
+            Text(
+                "Ronda ${game.round}/${game.totalRounds}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = LogicColors.NeonGreen,
             )
             Text(
                 "Vierte colores iguales hasta dejar cada tubo de un solo color",
@@ -298,17 +300,9 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
 
                 // --- Capa superior: tubo viajero + chorro (solo durante el vertido) ---
                 if (activePour != null) {
-                    // Congela las anclas la primera vez que ambas están medidas y
-                    // reutilízalas el resto del vertido (posición estable, sin saltos
-                    // por relayouts). En el primer frame se calculan de las medidas
-                    // actuales, que ya son válidas porque los tubos llevan pintados.
-                    val frozen = anchors.value ?: run {
-                        val f = boundsOf(activePour.from)
-                        val d = boundsOf(activePour.to)
-                        if (f != null && d != null) (f to d).also { anchors.value = it } else null
-                    }
-                    val fromRect = frozen?.first
-                    val destRect = frozen?.second
+
+                    val fromRect = boundsOf(activePour.from)
+                    val destRect = boundsOf(activePour.to)
                     if (fromRect != null && destRect != null) {
                         val travel = travelFactor(p)
                         val dir = if (destRect.center.x >= fromRect.center.x) 1f else -1f
@@ -686,3 +680,137 @@ private fun ActionButton(
         Text(label, style = MaterialTheme.typography.labelLarge, color = effectiveTint)
     }
 }
+
+@Preview
+@Composable
+private fun PreviewTubeNormal() {
+    LogicGamesTheme {
+        Box(
+            modifier = Modifier
+                .background(LogicColors.BackgroundDark)
+                .padding(16.dp),
+        ) {
+            TubeView(
+                bands = listOf(LiquidBand(0, 1f), LiquidBand(2, 1f), LiquidBand(5, 1f)),
+                capacity = 4,
+                highlightColor = null,
+                lifted = false,
+                glowing = false,
+                glowColor = LogicColors.NeonCyan,
+                tiltDegrees = 0f,
+                enabled = true,
+                onClick = {},
+                modifier = Modifier.width(TubeWidth),
+            )
+        }
+    }
+}
+
+@Preview
+@Composable
+private fun PreviewTubeSeleccionado() {
+    LogicGamesTheme {
+        Box(
+            modifier = Modifier
+                .background(LogicColors.BackgroundDark)
+                .padding(16.dp),
+        ) {
+            TubeView(
+                bands = listOf(LiquidBand(1, 1f), LiquidBand(1, 1f), LiquidBand(3, 1f)),
+                capacity = 4,
+                highlightColor = LogicColors.NeonCyan,
+                lifted = true,
+                glowing = false,
+                glowColor = LogicColors.NeonCyan,
+                tiltDegrees = 0f,
+                enabled = true,
+                onClick = {},
+                modifier = Modifier.width(TubeWidth),
+            )
+        }
+    }
+}
+
+@Preview
+@Composable
+private fun PreviewTubeCompletado() {
+    LogicGamesTheme {
+        Box(
+            modifier = Modifier
+                .background(LogicColors.BackgroundDark)
+                .padding(16.dp),
+        ) {
+            TubeView(
+                bands = listOf(
+                    LiquidBand(4, 1f),
+                    LiquidBand(4, 1f),
+                    LiquidBand(4, 1f),
+                    LiquidBand(4, 1f),
+                ),
+                capacity = 4,
+                highlightColor = null,
+                lifted = false,
+                glowing = true,
+                glowColor = LogicColors.Amber,
+                tiltDegrees = 0f,
+                enabled = true,
+                onClick = {},
+                modifier = Modifier.width(TubeWidth),
+            )
+        }
+    }
+}
+
+@Preview
+@Composable
+private fun PreviewTubeSirviendo() {
+    LogicGamesTheme {
+        Box(
+            modifier = Modifier
+                .background(LogicColors.BackgroundDark)
+                .padding(16.dp),
+        ) {
+            TubeView(
+                bands = listOf(LiquidBand(6, 1f), LiquidBand(6, 1f), LiquidBand(6, 0.45f)),
+                capacity = 4,
+                highlightColor = LogicColors.Blue,
+                lifted = false,
+                glowing = false,
+                glowColor = LogicColors.Blue,
+                tiltDegrees = -38f,
+                enabled = false,
+                onClick = {},
+                modifier = Modifier.width(TubeWidth),
+            )
+        }
+    }
+}
+
+@Preview
+@Composable
+private fun PreviewActionButtons() {
+    LogicGamesTheme {
+        Row(
+            modifier = Modifier
+                .background(LogicColors.BackgroundDark)
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            ActionButton(
+                icon = KortexIcons.Undo,
+                label = "Deshacer",
+                tint = LogicColors.NeonCyan,
+                enabled = true,
+                onClick = {},
+            )
+            ActionButton(
+                icon = KortexIcons.Refresh,
+                label = "Reiniciar",
+                tint = LogicColors.Amber,
+                enabled = false,
+                onClick = {},
+            )
+        }
+    }
+}
+

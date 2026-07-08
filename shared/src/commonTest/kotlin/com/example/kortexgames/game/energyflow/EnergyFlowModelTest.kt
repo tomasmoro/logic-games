@@ -111,10 +111,10 @@ class EnergyFlowModelTest {
 
     @Test
     fun todoNivelGeneradoEsResolubleParaCadaDificultad() {
-        // Invariante clave: con semilla fija, cada dificultad produce un nivel que
-        // (1) no nace ya resuelto y (2) se resuelve aplicando a cada pieza sus giros
-        // mínimos (la validez de cada celda es independiente de las demás).
-        for (difficulty in 1..5) {
+        // Invariante clave: con semilla fija, cada dificultad de la campaña produce
+        // un nivel que (1) no nace ya resuelto y (2) se resuelve aplicando a cada
+        // pieza sus giros mínimos (la validez de cada celda es independiente).
+        for (difficulty in 1..3) {
             val config = EnergyFlowGenerator.configForDifficulty(difficulty)
             val level = EnergyFlowGenerator.generate(config, Random(seed = 42L + difficulty))
             val grid = level.grid
@@ -134,6 +134,13 @@ class EnergyFlowModelTest {
                 "Resuelto ⇒ toda la red energizada desde la fuente",
             )
         }
+    }
+
+    @Test
+    fun lasTresDificultadesUsanLasCuadriculasPedidas() {
+        assertEquals(EnergyFlowGenerator.Config(4, 4), EnergyFlowGenerator.configForDifficulty(1))
+        assertEquals(EnergyFlowGenerator.Config(5, 5), EnergyFlowGenerator.configForDifficulty(2))
+        assertEquals(EnergyFlowGenerator.Config(6, 6), EnergyFlowGenerator.configForDifficulty(3))
     }
 
     @Test

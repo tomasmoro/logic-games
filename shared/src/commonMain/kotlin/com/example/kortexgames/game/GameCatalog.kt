@@ -36,6 +36,9 @@ object GameIds {
 
     /** Flujo de Energía (categoría "spatial" / Visión Espacial). */
     const val ENERGY_FLOW = "55555555-5555-4555-8555-555555555555"
+
+    /** Atracción Geométrica / Polarity Collision (categoría "spatial"). */
+    const val POLARITY_COLLISION = "66666666-6666-4666-8666-666666666666"
 }
 
 /**
@@ -83,8 +86,9 @@ data class GameInfo(
 )
 
 /**
- * Catálogo de juegos que alimenta la pantalla de lista. Hoy son jugables cinco
- * juegos (Memoria, Reflejos, Pociones, Burbujas de Cálculo y Flujo de Energía); el
+ * Catálogo de juegos que alimenta la pantalla de lista. Hoy son jugables seis
+ * juegos (Memoria, Reflejos, Pociones, Burbujas de Cálculo, Flujo de Energía y
+ * Atracción Geométrica); el
  * resto son placeholders del roadmap para dar volumen y comunicar la visión sin
  * engañar (aparecen como "Próximamente").
  */
@@ -95,6 +99,7 @@ object GameCatalog {
         GameInfo(GameIds.WATER_SORT, "Ordena las Pociones", GameCategory.LOGIC, playable = true),
         GameInfo(GameIds.BUBBLE_MATH, "Burbujas de Cálculo", GameCategory.MENTAL_MATH, playable = true),
         GameInfo(GameIds.ENERGY_FLOW, "Flujo de Energía", GameCategory.SPATIAL, playable = true),
+        GameInfo(GameIds.POLARITY_COLLISION, "Atracción Geométrica", GameCategory.SPATIAL, playable = true),
         GameInfo(null, "Parejas Relámpago", GameCategory.MEMORY, playable = false),
         GameInfo(null, "Cadena Lógica", GameCategory.LOGIC, playable = false),
         GameInfo(null, "Encuentra el Intruso", GameCategory.ATTENTION, playable = false),

@@ -1,4 +1,4 @@
-TEAM_ID=
+TEAM_ID=XRVAAUV9DG
 
 PRODUCT_NAME=KortexGames
 PRODUCT_BUNDLE_IDENTIFIER=com.example.kortexgames.KortexGames$(TEAM_ID)
