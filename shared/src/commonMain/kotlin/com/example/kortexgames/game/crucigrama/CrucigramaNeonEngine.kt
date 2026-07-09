@@ -71,8 +71,12 @@ class CrucigramaNeonEngine(
         val current = _state.value
         if (letter !in current.letters || current.slots.all { it.solved }) return
 
-        val pending = unsolvedSlots(current)
-        val maxLen = pending.maxOfOrNull { it.answer.length } ?: return
+        // Tope de escritura = palabra más larga del nivel COMPLETO (no solo las
+        // pendientes). Antes se usaba el máximo de las pendientes y, al resolver las
+        // palabras largas, el buffer se bloqueaba antes de tiempo dando la sensación
+        // de que "no deja escribir". Con el total, el jugador siempre puede teclear
+        // cualquier letra y corregir con el botón de borrado.
+        val maxLen = current.slots.maxOf { it.answer.length }
         if (current.inputBuffer.length >= maxLen) return
 
         val next = current.inputBuffer + letter
@@ -81,17 +85,14 @@ class CrucigramaNeonEngine(
         audio.hapticFeedback(HapticFeedback.LIGHT)
         _state.update { it.copy(inputBuffer = next) }
 
-        val exact = pending.filter { it.answer == next }
+        // Validación no punitiva: solo reaccionamos ante un acierto exacto (auto-
+        // colocación). Ya NO marcamos "error" por llenar el buffer; la escritura es
+        // libre y el jugador decide cuándo borrar. Esto elimina el auto-limpiado que
+        // interrumpía al escribir.
+        val exact = unsolvedSlots(current).filter { it.answer == next }
         if (exact.isNotEmpty()) {
             // Si hay varias exactas idénticas, resolver cualquiera es consistente.
             onCorrect(slotNumber = exact.first().number)
-            return
-        }
-
-        // Solo evaluamos "mal" cuando el jugador ya terminó de escribir una
-        // palabra completa posible (longitud final máxima pendiente).
-        if (next.length >= maxLen) {
-            onWrong()
         }
     }
 
@@ -154,21 +155,6 @@ class CrucigramaNeonEngine(
         }
 
         if (solvedSlots.all { it.solved }) finish()
-    }
-
-    private fun onWrong() {
-        val feedbackTick = _state.value.feedbackTick + 1
-        audio.playSound(SoundEffect.ERROR)
-        audio.hapticFeedback(HapticFeedback.ERROR)
-        _state.update {
-            it.copy(
-                inputBuffer = "",
-                combo = 0,
-                wrongAttempts = it.wrongAttempts + 1,
-                lastOutcome = CrucigramaNeonOutcome.WRONG,
-                feedbackTick = feedbackTick,
-            )
-        }
     }
 
     private fun unsolvedSlots(state: CrucigramaNeonState): List<CrucigramaNeonSlotState> =

@@ -5,14 +5,6 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
 
 ## Cuenta / sincronización
 
-- [x] **Sync bidireccional (descarga nube → local).** Hecho: `syncPending()` ahora
-  hace push (local→nube) y luego pull (`RemoteProgressDataSource.fetchAll()` →
-  `LocalProgressDataSource.mergeRemote()`), deduplicando por `remoteId`. Al iniciar
-  sesión en otro dispositivo o tras reinstalar, el historial de la nube se descarga
-  a SQLDelight. Ref: `data/repository/ProgressRepositoryImpl.kt`.
-- [ ] **Leer el plan real (premium).** `AuthRepositoryImpl` fija `PlanType.FREE`
-  siempre; no consulta `public.users.plan_type`. Un usuario premium seguiría
-  viendo anuncios. Ref: `data/repository/AuthRepositoryImpl.kt`.
 - [ ] **Login con Google en iOS.** Android ya usa Credential Manager (real). iOS
   sigue con fallback documentado; falta el SDK GoogleSignIn (o el flujo OAuth por
   navegador) + config en Xcode. Ref: `data/remote/auth/GoogleAuthClient.ios.kt`.
@@ -142,43 +134,38 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
     normalizar por nivel (tiempo/nivel) o medir por nivel individual.
   Ref: `game/energyflow/EnergyFlowEngine.kt`, `game/GameProgression.kt`.
 
-## Bugs conocidos
-
-- [x] **Polarity Collision: colisiones de color a veces se cuentan como fallo.**
-  ARREGLADO. Se muestrea el ángulo de impacto en el **punto de cruce del borde**
-  (nuevo `borderCrossing()`: interpola posición previa→nueva hasta `catchRadius` y
-  usa ESE ángulo, el que el jugador ve) en vez de en la posición final ya hundida y
-  desviada por el magnetismo. Además, `isColorMatch()` da **beneficio de la duda**
-  en la costura entre sectores (±`SECTOR_EDGE_TOLERANCE_RAD`, ~5.7°): si el color
-  coincide con cualquiera de los dos sectores contiguos, cuenta como acierto.
-  Ref: `game/polarity/PolarityCollisionEngine.kt` (`step()`, `borderCrossing()`,
-  `isColorMatch()`).
-
-  <details><summary>Diagnóstico original (histórico)</summary>
-
-  Cuando un asteroide violeta impacta el sector violeta del centro (y análogamente
-  con todos los colores), a veces se registra como mismatch (`ERROR` + penalización)
-  aunque visualmente el color coincide.
-
-  **Causa probable:** el sector de impacto se calcula con la posición **post-step**
-  de la partícula (`atan2(py - centerY, px - centerX)` en `step()`), que ya está
-  DENTRO del disco y ha sido desviada tangencialmente por la curva magnética justo
-  antes del impacto. Cerca de los límites entre sectores, ese ángulo cae en el
-  sector contiguo al que el jugador ve, y `targetSector != particle.colorIndex`
-  marca fallo. Con pasos de tiempo discretos (dt) el punto muestreado puede estar
-  bastante pasado el borde, agravándolo.
-
-  **Arreglo sugerido:** calcular el ángulo de impacto en el **punto de cruce del
-  borde** (interpolar entre la posición previa y la nueva hasta `catchRadius`), no en
-  la posición final; muestrear `rotationRad` de forma coherente con ese instante; y/o
-  añadir una pequeña tolerancia angular (snap) cerca de los límites de sector.
-
-  </details>
-
 ## Logros
 
-- [ ] **Logros (achievements).** Las tablas `achievements` / `user_achievements`
-  existen en el backend, pero no hay lógica en la app (desbloqueo, UI, sync).
+- [~] **Logros (achievements).** Conexión al backend HECHA; faltan evaluador de
+  desbloqueo y UI. Hecho en este pase:
+  - **Seed del catálogo** (`0012_seed_achievements.sql`, idempotente): 16 logros
+    base que cubren los 6 tipos de `achievement_condition` (games_played,
+    total_score, streak_days, daily_goal_completed, perfect_accuracy y
+    category_mastery para Memoria/Cálculo/Lenguaje). UUIDs fijos.
+  - **Catálogo en código** (`game/achievements/AchievementCatalog.kt` +
+    `AchievementIds`), espejo del seed con los mismos UUID. En código (no leído de
+    Supabase) porque `achievements` solo es legible por `authenticated` y el
+    invitado debe verlo offline — mismo criterio que `GameCatalog`.
+  - **Dominio** (`domain/model/Achievement.kt`): `AchievementCondition`,
+    `Achievement`, `UserAchievement`, `AchievementStatus` (con `isUnlocked`/`fraction`).
+  - **Datos local-first**: tabla SQLDelight `UserAchievementEntity` (`Achievements.sq`
+    + migración `2.sqm`, v2→v3), `LocalAchievementsDataSource` (+impl),
+    `RemoteAchievementsDataSource` (`user_achievements`), y
+    `AchievementsRepository`(+Impl) con fusión bidireccional (mayor progreso gana;
+    `unlockedAt` más temprano gana). **Solo se suben desbloqueos** a la nube (el
+    `unlocked_at NOT NULL` de la tabla no distingue "en progreso"); el progreso
+    parcial se queda local y es recalculable. Cableado en `AppGraph` + `sync()` al
+    autenticarse.
+
+  **Pendiente:**
+  - **Evaluador de desbloqueo.** Nada llama aún a `recordProgress`: falta el motor
+    que, tras cada partida / cambio de racha / meta diaria, calcule el avance de cada
+    condición desde las estadísticas (`ProgressRepository`, `DailyGoalManager`,
+    streak) y llame a `AchievementsRepository.recordProgress`. Devuelve si desbloqueó
+    (para celebración tipo `FireworksOverlay`).
+  - **UI de Logros.** Pantalla/entrada que consuma `observeAll()` (grid de tarjetas
+    con estado desbloqueado/bloqueado + barra de progreso). Falta también mapear el
+    `icon_key`/slug a un `ImageVector` (Material Rounded, nunca emoji, CLAUDE.md §9.5).
 
 ## Técnico / limpieza
 

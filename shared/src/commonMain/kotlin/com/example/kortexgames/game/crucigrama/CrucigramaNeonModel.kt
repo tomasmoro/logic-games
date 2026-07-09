@@ -38,6 +38,11 @@ data class CrucigramaNeonLevelSpec(
 
         val board = mutableMapOf<Pair<Int, Int>, Char>()
         val available = letters.toSet()
+        // Pares de celdas contiguas que SÍ pertenecen a una misma palabra (por eje).
+        // Sirven para validar después que ninguna otra adyacencia exista.
+        val horizontalPairs = mutableSetOf<Pair<Pair<Int, Int>, Pair<Int, Int>>>()
+        val verticalPairs = mutableSetOf<Pair<Pair<Int, Int>, Pair<Int, Int>>>()
+
         slots.forEach { slot ->
             require(slot.answer.isNotBlank()) { "Las respuestas no pueden estar vacías." }
             require(slot.answer == slot.answer.uppercase()) {
@@ -46,6 +51,7 @@ data class CrucigramaNeonLevelSpec(
             require(slot.answer.all { it in available }) {
                 "La respuesta '${slot.answer}' usa letras que no existen en el teclado del nivel."
             }
+            var prev: Pair<Int, Int>? = null
             slot.answer.forEachIndexed { index, letter ->
                 val r = if (slot.direction == CrucigramaDirection.VERTICAL) slot.row + index else slot.row
                 val c = if (slot.direction == CrucigramaDirection.HORIZONTAL) slot.col + index else slot.col
@@ -58,6 +64,29 @@ data class CrucigramaNeonLevelSpec(
                     "Cruce inválido en ($r,$c): '$existing' vs '$letter'."
                 }
                 board[key] = letter
+                // Registrar el par contiguo dentro de la palabra según su dirección.
+                prev?.let { p ->
+                    if (slot.direction == CrucigramaDirection.HORIZONTAL) horizontalPairs.add(p to key)
+                    else verticalPairs.add(p to key)
+                }
+                prev = key
+            }
+        }
+
+        // Validación de crucigrama (entrelazado correcto): dos celdas ADYACENTES
+        // rellenas deben pertenecer a una MISMA palabra en esa dirección. Si no, al
+        // leer la fila/columna se formaría una palabra falsa —p. ej. una 'A' pegada al
+        // lateral de "MORA" se lee "AMORA"—. Esto obliga a que las palabras solo se
+        // toquen en cruces legítimos (una celda compartida perpendicular), nunca lado
+        // a lado ni prolongándose unas a otras.
+        board.keys.forEach { (r, c) ->
+            val right = r to (c + 1)
+            require(right !in board || (r to c to right) in horizontalPairs) {
+                "Entrelazado inválido: las celdas ($r,$c) y $right se tocan en horizontal sin ser la misma palabra (formarían una palabra falsa). Sepáralas o crúzalas en una sola celda."
+            }
+            val down = (r + 1) to c
+            require(down !in board || (r to c to down) in verticalPairs) {
+                "Entrelazado inválido: las celdas ($r,$c) y $down se tocan en vertical sin ser la misma palabra (formarían una palabra falsa). Sepáralas o crúzalas en una sola celda."
             }
         }
     }
@@ -103,36 +132,42 @@ data class CrucigramaNeonPuzzle(
  */
 object CrucigramaNeonGenerator {
     private val levels: List<CrucigramaNeonLevelSpec> = listOf(
+        // Nivel 1 (A,M,O,R,S): las palabras solo se tocan en cruces perpendiculares.
+        // AMOR (H, fila 0) — MAR baja por su M, RAMO baja por su R y ROSA cruza a RAMO
+        // por su O. Ninguna corre pegada de lado a otra: no hay "AMORA".
         CrucigramaNeonLevelSpec(
-            rows = 8,
-            cols = 8,
-            letters = listOf('A', 'M', 'O', 'R'),
+            rows = 4,
+            cols = 6,
+            letters = listOf('A', 'M', 'O', 'R', 'S'),
             slots = listOf(
-                CrucigramaNeonSlotSpec(1, "AMOR", "Sentimiento de afecto", 0, 3, CrucigramaDirection.VERTICAL),
-                CrucigramaNeonSlotSpec(2, "ROMA", "Capital italiana", 1, 1, CrucigramaDirection.HORIZONTAL),
-                CrucigramaNeonSlotSpec(3, "MORA", "Fruta morada", 2, 2, CrucigramaDirection.HORIZONTAL),
-                CrucigramaNeonSlotSpec(4, "RAMO", "Conjunto de flores", 1, 1, CrucigramaDirection.VERTICAL),
+                CrucigramaNeonSlotSpec(1, "AMOR", "Sentimiento de afecto", 0, 0, CrucigramaDirection.HORIZONTAL),
+                CrucigramaNeonSlotSpec(2, "MAR", "Gran masa de agua salada", 0, 1, CrucigramaDirection.VERTICAL),
+                CrucigramaNeonSlotSpec(3, "RAMO", "Conjunto de flores", 0, 3, CrucigramaDirection.VERTICAL),
+                CrucigramaNeonSlotSpec(4, "ROSA", "Flor con espinas", 3, 2, CrucigramaDirection.HORIZONTAL),
             ),
         ),
+        // Nivel 2 (C,A,S,O): escalera CASA → SACO → COSA → ASA, cada palabra cruza a la
+        // anterior en una única celda compartida.
         CrucigramaNeonLevelSpec(
-            rows = 8,
-            cols = 8,
+            rows = 5,
+            cols = 6,
             letters = listOf('C', 'A', 'S', 'O'),
             slots = listOf(
-                CrucigramaNeonSlotSpec(1, "CASA", "Lugar donde vives", 0, 3, CrucigramaDirection.VERTICAL),
-                CrucigramaNeonSlotSpec(2, "CASO", "Situación o asunto", 1, 2, CrucigramaDirection.HORIZONTAL),
-                CrucigramaNeonSlotSpec(3, "COSA", "Objeto o asunto", 2, 1, CrucigramaDirection.HORIZONTAL),
-                CrucigramaNeonSlotSpec(4, "SACO", "Bolsa grande", 1, 4, CrucigramaDirection.VERTICAL),
+                CrucigramaNeonSlotSpec(1, "CASA", "Lugar donde vives", 0, 0, CrucigramaDirection.HORIZONTAL),
+                CrucigramaNeonSlotSpec(2, "SACO", "Bolsa grande", 0, 2, CrucigramaDirection.VERTICAL),
+                CrucigramaNeonSlotSpec(3, "COSA", "Objeto o asunto", 2, 2, CrucigramaDirection.HORIZONTAL),
+                CrucigramaNeonSlotSpec(4, "ASA", "Parte por donde se agarra una taza", 2, 5, CrucigramaDirection.VERTICAL),
             ),
         ),
+        // Nivel 3 (P,A,T): PATA (H) cruza TAPA (V) por la T; APTA (H) cruza TAPA por la P.
         CrucigramaNeonLevelSpec(
-            rows = 8,
-            cols = 8,
+            rows = 4,
+            cols = 5,
             letters = listOf('P', 'A', 'T'),
             slots = listOf(
-                CrucigramaNeonSlotSpec(1, "TAPA", "Cubre un recipiente", 0, 3, CrucigramaDirection.VERTICAL),
-                CrucigramaNeonSlotSpec(2, "PATA", "Extremidad de animal", 1, 2, CrucigramaDirection.HORIZONTAL),
-                CrucigramaNeonSlotSpec(3, "APTA", "Adecuada", 2, 2, CrucigramaDirection.HORIZONTAL),
+                CrucigramaNeonSlotSpec(1, "PATA", "Extremidad de un animal", 0, 0, CrucigramaDirection.HORIZONTAL),
+                CrucigramaNeonSlotSpec(2, "TAPA", "Cubre un recipiente", 0, 2, CrucigramaDirection.VERTICAL),
+                CrucigramaNeonSlotSpec(3, "APTA", "Adecuada o capaz", 2, 1, CrucigramaDirection.HORIZONTAL),
             ),
         ),
     )

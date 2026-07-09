@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Backspace
 import androidx.compose.material.icons.rounded.Casino
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -73,6 +74,9 @@ object KortexIcons {
 
     /** Interrogación: botón de ayuda / cómo se juega (antesala de cada juego). */
     val Help: ImageVector = Icons.AutoMirrored.Rounded.HelpOutline
+
+    /** Borrar la última letra escrita (tecla de borrado del teclado de juego). */
+    val Backspace: ImageVector = Icons.AutoMirrored.Rounded.Backspace
 }
 
 /**

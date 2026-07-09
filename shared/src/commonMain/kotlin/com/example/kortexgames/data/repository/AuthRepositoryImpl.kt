@@ -10,11 +10,17 @@ import io.github.jan.supabase.auth.providers.Google
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.auth.providers.builtin.IDToken
 import io.github.jan.supabase.auth.status.SessionStatus
+import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.postgrest.query.Columns
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlin.time.Clock
+import kotlin.time.Instant
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
 /**
  * Implementación de [AuthRepository] sobre **Supabase Auth**.
@@ -23,9 +29,13 @@ import kotlinx.coroutines.flow.stateIn
  *  - La sesión se deriva de `auth.sessionStatus` (Supabase persiste y refresca el
  *    token por su cuenta), así que al reabrir la app el usuario sigue logueado sin
  *    lógica extra por nuestra parte.
- *  - El plan (`FREE`/`PREMIUM`) no se resuelve aquí para no acoplar el login a la
- *    tabla `public.users`; se asume [PlanType.FREE] y la lógica premium se calcula
- *    donde corresponda. Los invitados y usuarios free ven anuncios igualmente.
+ *  - El plan (`FREE`/`PREMIUM`) se resuelve leyendo `public.users.plan_type` en
+ *    cuanto hay sesión (RLS restringe a la fila propia). Se valida contra
+ *    `premium_until`: un premium caducado degrada a [PlanType.FREE] aunque la
+ *    columna siga en `'premium'`. Ante cualquier fallo (offline, fila aún no
+ *    creada) se cae a [PlanType.FREE] para no romper el login ni el arranque
+ *    offline; el peor caso es que un premium sin red vea anuncios hasta que la
+ *    sesión se reemita (refresco de token) con red disponible.
  *  - Google delega en [GoogleAuthClient] (seam de plataforma) para obtener el ID
  *    token y aquí solo se canjea por sesión — así el flujo común no conoce SDKs
  *    nativos.
@@ -40,6 +50,10 @@ class AuthRepositoryImpl(
 
     override val sessionState: StateFlow<AuthState> =
         client.auth.sessionStatus
+            // `map` acepta un transform suspend: resolvemos el plan (una lectura a
+            // `public.users`) por cada emisión de sesión. Las emisiones son escasas
+            // (login/logout/refresco de token), así que el coste es despreciable y
+            // además revalida el plan en cada refresco.
             .map { it.toAuthState() }
             .stateIn(scope, SharingStarted.Eagerly, AuthState.Guest)
 
@@ -78,18 +92,58 @@ class AuthRepositoryImpl(
     override suspend fun signOut() {
         runCatching { client.auth.signOut() }
     }
-}
 
-/**
- * Proyecta el estado del SDK de Supabase al modelo de dominio. Solo la sesión
- * autenticada con id de usuario válido cuenta como [AuthState.Authenticated];
- * cualquier otro estado (inicializando, sin sesión, fallo de refresco) se trata
- * como invitado para que la app siempre tenga un estado usable y offline.
- */
-private fun SessionStatus.toAuthState(): AuthState = when (this) {
-    is SessionStatus.Authenticated -> {
-        val userId = session.user?.id
-        if (userId != null) AuthState.Authenticated(userId, PlanType.FREE) else AuthState.Guest
+    /**
+     * Proyecta el estado del SDK de Supabase al modelo de dominio. Solo la sesión
+     * autenticada con id de usuario válido cuenta como [AuthState.Authenticated];
+     * cualquier otro estado (inicializando, sin sesión, fallo de refresco) se trata
+     * como invitado para que la app siempre tenga un estado usable y offline.
+     *
+     * Es `suspend` porque para el caso autenticado consulta el plan real en la BD.
+     */
+    private suspend fun SessionStatus.toAuthState(): AuthState = when (this) {
+        is SessionStatus.Authenticated -> {
+            val userId = session.user?.id
+            if (userId != null) AuthState.Authenticated(userId, fetchPlan(userId)) else AuthState.Guest
+        }
+        else -> AuthState.Guest
     }
-    else -> AuthState.Guest
+
+    /**
+     * Lee `plan_type`/`premium_until` de la fila propia en `public.users` y los
+     * resuelve a [PlanType]. La RLS ya restringe el `select` a la fila del usuario
+     * autenticado, pero filtramos por `id` igualmente por claridad y para forzar la
+     * fila única esperada. Cualquier error (offline, fila aún no propagada por el
+     * trigger) degrada a [PlanType.FREE]: preferimos mostrar anuncios de más antes
+     * que bloquear el arranque.
+     */
+    private suspend fun fetchPlan(userId: String): PlanType = runCatching {
+        client.postgrest.from("users")
+            .select(Columns.list("plan_type", "premium_until")) {
+                filter { eq("id", userId) }
+            }
+            .decodeSingleOrNull<UserPlanRow>()
+            ?.toPlanType()
+            ?: PlanType.FREE
+    }.getOrDefault(PlanType.FREE)
+
+    /** Proyección mínima de `public.users` para resolver el plan. */
+    @Serializable
+    private data class UserPlanRow(
+        @SerialName("plan_type") val planType: String,
+        @SerialName("premium_until") val premiumUntil: Instant? = null,
+    ) {
+        /**
+         * `plan_type` es la fuente, pero se **valida** contra `premium_until` (ver
+         * comentario de la columna en `0001_initial_schema.sql`): un premium con
+         * fecha ya pasada cuenta como [PlanType.FREE]. `premium_until` nulo con plan
+         * `'premium'` se interpreta como premium sin caducidad (p. ej. concedido
+         * manualmente), no como ausencia de suscripción.
+         */
+        fun toPlanType(): PlanType {
+            if (planType != "premium") return PlanType.FREE
+            val until = premiumUntil ?: return PlanType.PREMIUM
+            return if (until > Clock.System.now()) PlanType.PREMIUM else PlanType.FREE
+        }
+    }
 }

@@ -5,13 +5,16 @@ import com.example.kortexgames.core.audio.AudioAndHapticManager
 import com.example.kortexgames.core.audio.PlatformContext
 import com.example.kortexgames.core.audio.createAudioAndHapticManager
 import com.example.kortexgames.data.local.DatabaseDriverFactory
+import com.example.kortexgames.data.local.SqlDelightLocalAchievementsDataSource
 import com.example.kortexgames.data.local.SqlDelightLocalPlayerProgressDataSource
 import com.example.kortexgames.data.local.SqlDelightLocalProgressDataSource
 import com.example.kortexgames.data.local.createDatabase
+import com.example.kortexgames.data.remote.RemoteAchievementsDataSource
 import com.example.kortexgames.data.remote.RemotePlayerProgressDataSource
 import com.example.kortexgames.data.remote.RemoteProgressDataSource
 import com.example.kortexgames.data.remote.auth.GoogleAuthClient
 import com.example.kortexgames.data.remote.buildSupabaseClient
+import com.example.kortexgames.data.repository.AchievementsRepositoryImpl
 import com.example.kortexgames.data.repository.AuthRepositoryImpl
 import com.example.kortexgames.data.repository.PlayerProgressRepositoryImpl
 import com.example.kortexgames.data.repository.ProgressRepositoryImpl
@@ -22,6 +25,7 @@ import com.example.kortexgames.game.daily.DailyGoalManager
 import com.example.kortexgames.game.daily.DailyGoalStore
 import com.example.kortexgames.domain.model.AuthState
 import com.example.kortexgames.domain.model.PlanType
+import com.example.kortexgames.domain.repository.AchievementsRepository
 import com.example.kortexgames.domain.repository.AuthRepository
 import com.example.kortexgames.domain.repository.PlayerProgressRepository
 import com.example.kortexgames.domain.repository.ProgressRepository
@@ -66,11 +70,14 @@ class AppGraph(context: PlatformContext) {
     private val localProgress = SqlDelightLocalProgressDataSource(database, Dispatchers.Default)
     private val localPlayerProgress =
         SqlDelightLocalPlayerProgressDataSource(database, Dispatchers.Default)
+    private val localAchievements =
+        SqlDelightLocalAchievementsDataSource(database, Dispatchers.Default)
 
     // --- Backend Supabase (FASE 2) ------------------------------------------
     val supabaseClient = buildSupabaseClient()
     private val remoteProgress = RemoteProgressDataSource(supabaseClient)
     private val remotePlayerProgress = RemotePlayerProgressDataSource(supabaseClient)
+    private val remoteAchievements = RemoteAchievementsDataSource(supabaseClient)
 
     // --- Autenticación (email + Google) -------------------------------------
     /** Seam de plataforma para el login con Google (ID token nativo). */
@@ -101,6 +108,13 @@ class AppGraph(context: PlatformContext) {
         playerProgress = playerProgressRepository,
     )
 
+    /** Logros del jugador (progreso + desbloqueo), sincronizados con Supabase. */
+    val achievementsRepository: AchievementsRepository = AchievementsRepositoryImpl(
+        local = localAchievements,
+        remote = remoteAchievements,
+        authState = { authState },
+    )
+
     // --- Audio & Háptica (nativo, respeta settings) -------------------------
     val audio: AudioAndHapticManager =
         createAudioAndHapticManager(context, settingsRepository).apply { preload() }
@@ -128,6 +142,7 @@ class AppGraph(context: PlatformContext) {
                 if (state is AuthState.Authenticated && !wasAuthenticated) {
                     progressRepository.syncPending()
                     playerProgressRepository.sync()
+                    achievementsRepository.sync()
                 }
             }
             .launchIn(appScope)
