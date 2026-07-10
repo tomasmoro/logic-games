@@ -396,27 +396,27 @@ object CrucigramaNeonGenerator {
         // --- 7 palabras -----------------------------------------------------
         LevelDef(
             listOf(
-                "PLANTA" to "Vegetal / piso de un edificio",
                 "PLATO" to "Vajilla donde comes",
                 "SALTO" to "Brinco",
-                "SANTO" to "Persona venerada",
                 "PALO" to "Trozo de madera",
-                "LATA" to "Envase metálico",
                 "SOPA" to "Plato con caldo",
+                "ALTO" to "De gran estatura",
+                "LAPSO" to "Periodo breve de tiempo",
+                "POSTA" to "Parada o relevo en un trayecto",
             ),
-            extras = listOf("PASTO", "PLANO", "LOSA", "PASO", "ALTO", "TOPA"),
+            extras = listOf("TOPA", "PATO", "PASO", "SOLA", "LATA"),
         ),
         LevelDef(
             listOf(
                 "CARTON" to "Papel grueso y rígido",
-                "CENTRO" to "Punto medio",
-                "CARTA" to "Escrito que se envía",
-                "RATON" to "Roedor pequeño",
                 "CANTO" to "Acción de cantar / borde",
-                "RETO" to "Desafío",
-                "ONCE" to "Número once",
+                "RATON" to "Roedor pequeño",
+                "CARO" to "De precio elevado",
+                "RATO" to "Momento breve",
+                "ARCO" to "Elemento curvo de una estructura",
+                "ROCA" to "Masa de piedra sólida",
             ),
-            extras = listOf("TRONCO", "RENTA", "CARNE", "ARCO", "ORCA", "ACTOR"),
+            extras = listOf("ACTOR", "TRONCO", "CORTA", "RONCA"),
         ),
         LevelDef(
             listOf(
@@ -434,37 +434,13 @@ object CrucigramaNeonGenerator {
             listOf(
                 "SARTEN" to "Utensilio para freír",
                 "RESTA" to "Operación de quitar",
-                "TENSO" to "Estirado, en tensión",
+                "TENSA" to "En estado de tensión",
                 "ANTES" to "En un momento previo",
-                "RETO" to "Desafío",
-                "RANA" to "Anfibio que croa",
+                "ARNES" to "Equipo de sujeción para seguridad",
                 "SERA" to "verbo ser: él ___ (futuro)",
+                "RANA" to "Anfibio que croa",
             ),
-            extras = listOf("TENOR", "RENTA", "NOTAS", "SONAR", "ROSA", "SANTO"),
-        ),
-        LevelDef(
-            listOf(
-                "CARTON" to "Papel grueso y rígido",
-                "CANTO" to "Acción de cantar / borde",
-                "RENTA" to "Ingreso periódico",
-                "TORNO" to "Máquina que gira",
-                "RETO" to "Desafío",
-                "CARNE" to "Tejido muscular comestible",
-                "ONCE" to "Número once",
-            ),
-            extras = listOf("CENTRO", "TRONCO", "ACTOR", "ARCO", "ORCA"),
-        ),
-        LevelDef(
-            listOf(
-                "PALOMA" to "Ave símbolo de la paz",
-                "MORAL" to "Relativo a la ética",
-                "LORO" to "Ave que imita la voz",
-                "RAMO" to "Conjunto de flores",
-                "AMOR" to "Sentimiento de afecto",
-                "LOMA" to "Colina baja",
-                "MALO" to "Sin bondad o calidad",
-            ),
-            extras = listOf("ROMA", "PALMA", "PLOMO", "RAMPA", "MOLAR"),
+            extras = listOf("TERNA", "SARNA", "ARTE", "RASA", "SETA"),
         ),
         LevelDef(
             listOf(
@@ -480,15 +456,39 @@ object CrucigramaNeonGenerator {
         ),
         LevelDef(
             listOf(
+                "PALOMA" to "Ave símbolo de la paz",
+                "MORAL" to "Relativo a la ética",
+                "LORO" to "Ave que imita la voz",
+                "RAMO" to "Conjunto de flores",
+                "AMOR" to "Sentimiento de afecto",
+                "LOMA" to "Colina baja",
+                "MALO" to "Sin bondad o calidad",
+            ),
+            extras = listOf("ROMA", "PALMA", "PLOMO", "RAMPA", "MOLAR"),
+        ),
+        LevelDef(
+            listOf(
+                "MORAL" to "Relativo a la ética",
+                "LORO" to "Ave que imita la voz",
+                "RAMO" to "Conjunto de flores",
+                "AMOR" to "Sentimiento de afecto",
+                "LOMA" to "Colina baja",
+                "MALO" to "Sin bondad o calidad",
+                "ROMA" to "Capital de Italia",
+            ),
+            extras = listOf("AROMA", "MOLAR", "RAMAL", "ORAL", "LORA"),
+        ),
+        LevelDef(
+            listOf(
                 "CARTEL" to "Anuncio pegado en la pared",
                 "RECTA" to "Línea sin curvas",
                 "CARTA" to "Escrito que se envía",
                 "LETRA" to "Signo del alfabeto",
-                "ATLAS" to "Libro de mapas",
                 "CALLE" to "Vía urbana entre casas",
-                "SAL" to "Condimento blanco",
+                "TELAR" to "Máquina para tejer",
+                "ARTE" to "Expresión creativa",
             ),
-            extras = listOf("CLASE", "ALERTA", "RELATA", "ESCALA", "CASTA"),
+            extras = listOf("LACRE", "CATRE", "CALAR", "REAL", "TRAE"),
         ),
     )
 
