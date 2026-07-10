@@ -35,6 +35,14 @@ data class CrucigramaNeonState(
     val wrongAttempts: Int = 0,
     val lastOutcome: CrucigramaNeonOutcome? = null,
     val feedbackTick: Long = 0L,
+    /** Palabras bonus del nivel (formables pero no en la rejilla). */
+    val extraWords: List<String> = emptyList(),
+    /** Palabras bonus ya descubiertas por el jugador. */
+    val extraFound: Set<String> = emptySet(),
+    /** Última palabra extra descubierta (para el feedback de la UI). */
+    val lastExtra: String? = null,
+    /** Contador que sube cada vez que se descubre una extra (dispara chispas + panel). */
+    val extraTick: Long = 0L,
 )
 
 /**
@@ -89,10 +97,20 @@ class CrucigramaNeonEngine(
         // colocación). Ya NO marcamos "error" por llenar el buffer; la escritura es
         // libre y el jugador decide cuándo borrar. Esto elimina el auto-limpiado que
         // interrumpía al escribir.
-        val exact = unsolvedSlots(current).filter { it.answer == next }
+        val unsolved = unsolvedSlots(current)
+        val exact = unsolved.filter { it.answer == next }
         if (exact.isNotEmpty()) {
             // Si hay varias exactas idénticas, resolver cualquiera es consistente.
             onCorrect(slotNumber = exact.first().number)
+            return
+        }
+
+        // Palabra extra (bonus): se acepta solo si NO es prefijo de una palabra de
+        // rejilla pendiente (para no consumir letras camino a completarla) y aún no se
+        // ha descubierto.
+        val isPrefixOfPending = unsolved.any { it.answer != next && it.answer.startsWith(next) }
+        if (!isPrefixOfPending && next in current.extraWords && next !in current.extraFound) {
+            onExtraFound(next)
         }
     }
 
@@ -157,6 +175,35 @@ class CrucigramaNeonEngine(
         if (solvedSlots.all { it.solved }) finish()
     }
 
+    /**
+     * Registra una palabra extra descubierta: bonus de puntos y feedback positivo, sin
+     * tocar la rejilla ni el conteo de palabras principales (no adelanta el fin de nivel).
+     */
+    private fun onExtraFound(word: String) {
+        val current = _state.value
+        val tick = current.feedbackTick + 1
+        val combo = current.combo + 1
+        // Bonus menor que una palabra de rejilla (es un "extra", no el objetivo).
+        val gained = word.length * 90 + current.level * 10
+
+        audio.playSound(SoundEffect.SUCCESS)
+        audio.hapticFeedback(HapticFeedback.SUCCESS)
+
+        _state.update {
+            it.copy(
+                inputBuffer = "",
+                extraFound = it.extraFound + word,
+                lastExtra = word,
+                extraTick = it.extraTick + 1,
+                score = it.score + gained,
+                combo = combo,
+                bestCombo = maxOf(it.bestCombo, combo),
+                lastOutcome = CrucigramaNeonOutcome.CORRECT,
+                feedbackTick = tick,
+            )
+        }
+    }
+
     private fun unsolvedSlots(state: CrucigramaNeonState): List<CrucigramaNeonSlotState> =
         state.slots.filter { !it.solved }
 
@@ -169,6 +216,7 @@ class CrucigramaNeonEngine(
             letters = puzzle.letters,
             cells = puzzle.cells,
             slots = puzzle.slots,
+            extraWords = puzzle.extraWords,
         )
     }
 

@@ -28,12 +28,15 @@ import com.example.kortexgames.core.theme.LogicColors
  * @param activeAmt 0 = apagado (contorno tenue, hueco), 1 = encendido (color pleno + relleno).
  * @param cornerRadius radio de esquina del contorno (debe coincidir con el `clip` del tile).
  * @param sparks si true, dibuja tres chispas sobre el borde superior mientras enciende.
+ * @param baseMargin margen base entre el borde del tile y el tubo (más pequeño = tubo
+ *   más grande dentro del recuadro). Crece un poco al encender para dejar sitio al halo.
  */
 fun DrawScope.drawNeonTile(
     baseColor: Color,
     activeAmt: Float,
     cornerRadius: Dp = 22.dp,
     sparks: Boolean = true,
+    baseMargin: Dp = 7.dp,
 ) {
     val corner = CornerRadius(cornerRadius.toPx(), cornerRadius.toPx())
 
@@ -43,7 +46,7 @@ fun DrawScope.drawNeonTile(
 
     val stroke = (2.4.dp + 1.8.dp * activeAmt).toPx()
     // Margen para que los halos quepan dentro de los límites del tile (crece al encender).
-    val margin = (7.dp + 2.dp * activeAmt).toPx()
+    val margin = (baseMargin + 2.dp * activeAmt).toPx()
     val topLeft = Offset(margin, margin)
     val rectSize = Size(size.width - margin * 2f, size.height - margin * 2f)
 

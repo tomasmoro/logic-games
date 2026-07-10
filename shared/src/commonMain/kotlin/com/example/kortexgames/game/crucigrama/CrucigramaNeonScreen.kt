@@ -15,6 +15,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,9 +25,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,7 +40,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.font.FontWeight
@@ -67,8 +67,8 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-private val CellSize = 52.dp
-private val BankLetterSize = 58.dp
+private val CellSize = 60.dp
+private val BankLetterSize = 60.dp
 
 /**
  * Colores neón asignados por palabra. Cada slot recibe un color estable según su
@@ -134,9 +134,7 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 12.dp, vertical = 14.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(horizontal = 12.dp, vertical = 14.dp),
         ) {
             CrosswordHud(
                 level = game.level,
@@ -147,17 +145,23 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
                 onHint = { showHintAd = true },
             )
 
-            CrosswordGrid(
-                rows = game.rows,
-                cols = game.cols,
-                cells = game.cells,
-                slots = game.slots,
-            )
+            // La rejilla ocupa el espacio libre y queda centrada; así el elemento de
+            // escritura y el teclado bajan hacia la zona cómoda del pulgar.
+            Box(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                CrosswordGrid(
+                    rows = game.rows,
+                    cols = game.cols,
+                    cells = game.cells,
+                    slots = game.slots,
+                )
+            }
 
-            InputStrip(
-                input = game.inputBuffer,
-                hint = state.revealedHint,
-            )
+            CurrentWord(input = game.inputBuffer, hint = state.revealedHint)
+
+            Spacer(Modifier.height(14.dp))
 
             LetterBank(
                 letters = game.letters,
@@ -166,6 +170,9 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
                 onDelete = { vm.onIntent(CrucigramaNeonIntent.Backspace) },
             )
         }
+
+        // Panel lateral semioculto con las palabras extra (bonus) del nivel.
+        ExtrasPanel(words = game.extraWords, found = game.extraFound, foundTick = game.extraTick)
 
         FeedbackFlash(eventId = game.feedbackTick, result = game.lastOutcome)
 
@@ -252,52 +259,36 @@ private fun HintButton(onClick: () -> Unit) {
     }
 }
 
+/**
+ * Palabra que se está escribiendo. Sin recuadro (pedido del usuario): solo el texto,
+ * grande y centrado, con las letras ~25% más grandes que antes para dar protagonismo.
+ */
 @Composable
-private fun InputStrip(
+private fun CurrentWord(
     input: String,
     hint: String?,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            CategoryPalette.Language.copy(alpha = 0.18f),
-                            LogicColors.SurfaceDark,
-                        ),
-                    ),
-                )
-                .border(
-                    BorderStroke(1.4.dp, CategoryPalette.Language.copy(alpha = 0.65f)),
-                    RoundedCornerShape(20.dp),
-                )
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-        ) {
-            Text(
-                text = if (input.isBlank()) "_ _ _ _" else input.toCharArray().joinToString(" "),
-                style = MaterialTheme.typography.displaySmall,
-                color = if (input.isBlank()) LogicColors.OnDarkMuted else LogicColors.OnDark,
-                fontWeight = FontWeight.Black,
-                letterSpacing = 1.6.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
         Text(
-            text = "Palabra actual",
+            text = if (input.isBlank()) "_ _ _ _" else input.toCharArray().joinToString(" "),
+            // displaySmall (~36sp) escalado ~25% -> 45sp para agrandar las letras.
+            fontSize = 45.sp,
+            style = MaterialTheme.typography.displaySmall,
+            color = if (input.isBlank()) LogicColors.OnDarkMuted else LogicColors.OnDark,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 2.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            text = hint ?: "Palabra actual",
             style = MaterialTheme.typography.labelLarge,
             color = CategoryPalette.Language,
         )
-        if (hint != null) {
-            Text(
-                text = hint,
-                style = MaterialTheme.typography.bodyMedium,
-                color = CategoryPalette.Language,
-            )
-        }
     }
 }
 
@@ -326,24 +317,33 @@ private fun CrosswordGrid(
         }
     }
 
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        repeat(rows) { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                repeat(cols) { col ->
-                    val cell = byCoord[row to col]
-                    if (cell == null) {
-                        Spacer(Modifier.size(CellSize))
-                    } else {
-                        val (wordColor, tick) = cellVisual[cell.index] ?: (null to null)
-                        GridCell(
-                            cell = cell,
-                            wordColor = wordColor ?: CategoryPalette.Language,
-                            solvedTick = tick,
-                        )
+    // Tamaño de celda adaptativo: crece hasta [CellSize] pero se encoge para que la
+    // rejilla completa quepa (los niveles avanzados tienen más columnas/filas).
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val gap = 4.dp
+        val byWidth = (maxWidth - gap * (cols - 1)) / cols
+        val byHeight = if (maxHeight.value.isFinite()) (maxHeight - gap * (rows - 1)) / rows else CellSize
+        val cell = minOf(CellSize, byWidth, byHeight)
+
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(gap),
+        ) {
+            repeat(rows) { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    repeat(cols) { col ->
+                        val cellState = byCoord[row to col]
+                        if (cellState == null) {
+                            Spacer(Modifier.size(cell))
+                        } else {
+                            val (wordColor, tick) = cellVisual[cellState.index] ?: (null to null)
+                            GridCell(
+                                cell = cellState,
+                                wordColor = wordColor ?: CategoryPalette.Language,
+                                solvedTick = tick,
+                                cellSize = cell,
+                            )
+                        }
                     }
                 }
             }
@@ -366,6 +366,7 @@ private fun GridCell(
     cell: CrucigramaNeonCellState,
     wordColor: Color,
     solvedTick: Long?,
+    cellSize: androidx.compose.ui.unit.Dp,
 ) {
     val solved = cell.fixed
     val shape = RoundedCornerShape(12.dp)
@@ -407,10 +408,11 @@ private fun GridCell(
 
     Box(
         modifier = Modifier
-            .size(CellSize)
+            .size(cellSize)
             .drawBehind {
                 // Borde neón tipo tubo (misma estética que Memoria vía [drawNeonTile]).
-                drawNeonTile(tileColor, activeAmt, cornerRadius = 12.dp, sparks = false)
+                // baseMargin reducido ~20% (7 -> 5.6dp) para que el tubo llene más la celda.
+                drawNeonTile(tileColor, activeAmt, cornerRadius = 12.dp, sparks = false, baseMargin = 5.6.dp)
 
                 // Chispas propias del crucigrama: partículas radiales que salen del
                 // centro y se apagan al encender la palabra.
@@ -515,85 +517,140 @@ private fun LetterBank(
 }
 
 /**
- * Tecla de letra con aspecto de **keycap** de juego: degradado vertical (brillo
- * arriba, sombra abajo), borde neón y halo suave. Rebota con [bounceClick] al pulsar.
+ * Tecla de letra con la **misma estética neón del crucigrama**: un tubo de neón
+ * encendido ([drawNeonTile]) con la letra dentro. Rebota con [bounceClick] al pulsar.
  */
 @Composable
 private fun LetterKey(letter: Char, accent: Color, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(16.dp)
     Box(
         modifier = Modifier
             .size(BankLetterSize)
-            .drawBehind {
-                val r = size.minDimension * 0.85f
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(accent.copy(alpha = 0.35f), Color.Transparent),
-                        center = center,
-                        radius = r,
-                    ),
-                    radius = r,
-                    center = center,
-                )
-            }
+            .drawBehind { drawNeonTile(accent, activeAmt = 0.85f, cornerRadius = 16.dp, sparks = false, baseMargin = 5.dp) }
             .clip(shape)
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        accent,
-                        accent.copy(alpha = 0.65f),
-                        LogicColors.SurfaceDark,
-                    ),
-                ),
-            )
-            .border(BorderStroke(1.4.dp, accent), shape)
             .bounceClick(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        // Brillo superior tipo keycap (media pastilla clara translúcida arriba).
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(BankLetterSize / 2)
-                .align(Alignment.TopCenter)
-                .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color.White.copy(alpha = 0.28f), Color.Transparent),
-                    ),
-                ),
-        )
         Text(
             text = letter.toString(),
             style = MaterialTheme.typography.headlineSmall,
-            color = LogicColors.BackgroundDark,
+            color = LogicColors.OnDark,
             fontWeight = FontWeight.Black,
         )
     }
 }
 
-/** Tecla de **Borrar** (backspace): controla la corrección del buffer. */
+/** Tecla de **Borrar** (backspace): mismo tubo neón (en cian) que las letras. */
 @Composable
 private fun DeleteKey(onClick: () -> Unit) {
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(16.dp)
     val tint = LogicColors.NeonCyan
     Row(
         modifier = Modifier
             .height(BankLetterSize)
+            .drawBehind { drawNeonTile(tint, activeAmt = 0.7f, cornerRadius = 16.dp, sparks = false, baseMargin = 5.dp) }
             .clip(shape)
-            .background(
-                Brush.verticalGradient(
-                    listOf(LogicColors.SurfaceVariantDark, LogicColors.SurfaceDark),
-                ),
-            )
-            .border(BorderStroke(1.4.dp, tint.copy(alpha = 0.7f)), shape)
             .bounceClick(onClick = onClick)
-            .padding(horizontal = 22.dp),
+            .padding(horizontal = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         NeonIcon(icon = KortexIcons.Backspace, tint = tint, size = 24.dp, glow = false)
         Text("Borrar", style = MaterialTheme.typography.labelLarge, color = tint, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+/**
+ * Panel lateral **semioculto** con las palabras extra (bonus). Colapsado por defecto:
+ * solo una pestaña con el contador en el borde derecho; al tocarla se despliega la
+ * lista. Las encontradas se revelan en ámbar; las pendientes se enmascaran con puntos.
+ *
+ * Al descubrir una extra ([foundTick] cambia), el panel se **abre solo 3 s** y luego se
+ * oculta, y salta una **ráfaga de chispas** ámbar sobre la pestaña para que el jugador
+ * entienda que encontró una palabra extra. Ámbar = recompensa (§9.2).
+ */
+@Composable
+private fun BoxScope.ExtrasPanel(words: List<String>, found: Set<String>, foundTick: Long) {
+    if (words.isEmpty()) return
+    var open by remember { mutableStateOf(false) }
+    var pinned by remember { mutableStateOf(false) } // abierto manualmente por el usuario
+    val accent = LogicColors.Amber
+    val edgeShape = RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp)
+    val spark = remember { Animatable(0f) }
+
+    // Al encontrar una extra: chispas + auto-abrir 3 s (salvo que el usuario lo haya fijado).
+    LaunchedEffect(foundTick) {
+        if (foundTick == 0L) return@LaunchedEffect
+        launch {
+            spark.snapTo(0f)
+            spark.animateTo(1f, tween(650, easing = LinearEasing))
+        }
+        open = true
+        delay(3000)
+        if (!pinned) open = false
+    }
+
+    Row(
+        modifier = Modifier.align(Alignment.CenterEnd),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (open) {
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 150.dp)
+                    .clip(edgeShape)
+                    .background(LogicColors.SurfaceDark.copy(alpha = 0.96f))
+                    .border(BorderStroke(1.dp, accent.copy(alpha = 0.55f)), edgeShape)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text("EXTRAS", style = MaterialTheme.typography.labelLarge, color = accent, fontWeight = FontWeight.Bold)
+                words.forEach { w ->
+                    val f = w in found
+                    Text(
+                        text = if (f) w else "•".repeat(w.length),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (f) accent else LogicColors.OnDarkMuted,
+                        fontWeight = if (f) FontWeight.Black else FontWeight.Normal,
+                        letterSpacing = if (f) 1.sp else 3.sp,
+                    )
+                }
+            }
+        }
+        // Pestaña siempre visible (semioculta, pegada al borde), con las chispas detrás.
+        Column(
+            modifier = Modifier
+                .drawBehind {
+                    val sp = spark.value
+                    if (sp > 0f && sp < 1f) {
+                        val count = 9
+                        val dist = size.minDimension * (0.4f + 1.1f * sp)
+                        val fade = 1f - sp
+                        val dot = (3f * (1f - sp * 0.4f)).dp.toPx()
+                        for (i in 0 until count) {
+                            val ang = i * (2f * PI.toFloat() / count)
+                            drawCircle(
+                                color = accent.copy(alpha = fade),
+                                radius = dot,
+                                center = Offset(center.x + cos(ang) * dist, center.y + sin(ang) * dist),
+                            )
+                        }
+                    }
+                }
+                .clip(edgeShape)
+                .background(accent.copy(alpha = 0.16f))
+                .border(BorderStroke(1.dp, accent.copy(alpha = 0.5f)), edgeShape)
+                .bounceClick {
+                    open = !open
+                    pinned = open
+                }
+                .padding(horizontal = 8.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            NeonIcon(icon = KortexIcons.Star, tint = accent, size = 18.dp, glow = true)
+            Text("${found.size}/${words.size}", style = MaterialTheme.typography.labelLarge, color = accent, fontWeight = FontWeight.Bold)
+        }
     }
 }
 

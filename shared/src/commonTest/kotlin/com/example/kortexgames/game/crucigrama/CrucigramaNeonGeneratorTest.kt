@@ -17,14 +17,14 @@ class CrucigramaNeonGeneratorTest {
     @Test
     fun generarNivelesBaseNoLanzaExcepciones() {
         // Si un nivel tuviera un cruce inválido, esta llamada lanzaría IllegalArgumentException.
-        (1..6).forEach { level ->
+        (1..20).forEach { level ->
             CrucigramaNeonGenerator.generate(level, Random(level.toLong()))
         }
     }
 
     @Test
     fun todasLasCeldasRespetanLaSolucionDelSlot() {
-        (1..6).forEach { level ->
+        (1..20).forEach { level ->
             val puzzle = CrucigramaNeonGenerator.generate(level, Random(level.toLong()))
             puzzle.slots.forEach { slot ->
                 slot.cellIndices.forEachIndexed { idx, cellIndex ->
@@ -41,7 +41,7 @@ class CrucigramaNeonGeneratorTest {
 
     @Test
     fun todasLasLetrasDelPuzzleEstanEnElBancoInferior() {
-        (1..6).forEach { level ->
+        (1..20).forEach { level ->
             val puzzle = CrucigramaNeonGenerator.generate(level, Random(level.toLong()))
             val bank = puzzle.letters.toSet()
             assertTrue(
@@ -59,7 +59,7 @@ class CrucigramaNeonGeneratorTest {
      */
     @Test
     fun ningunTramoContiguoFormaPalabraFalsa() {
-        (1..6).forEach { level ->
+        (1..20).forEach { level ->
             val puzzle = CrucigramaNeonGenerator.generate(level, Random(level.toLong()))
             val filled = puzzle.cells.associate { (it.row to it.col) to it.solution }
             val palabras = puzzle.slots.map { it.answer }.toSet()
@@ -94,6 +94,38 @@ class CrucigramaNeonGeneratorTest {
             }
             revisarTramos(horizontal = true)
             revisarTramos(horizontal = false)
+        }
+    }
+
+    /** La dificultad sube: 4 palabras y +1 cada 4 niveles hasta un máximo de 7. */
+    @Test
+    fun dificultadCreceCadaCuatroNiveles() {
+        val esperado = listOf(4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7)
+        (1..20).forEach { level ->
+            val puzzle = CrucigramaNeonGenerator.generate(level, Random(level.toLong()))
+            assertEquals(esperado[level - 1], puzzle.slots.size, "Nivel $level: nº de palabras")
+        }
+    }
+
+    /**
+     * Las palabras extra (bonus) deben ser formables con el teclado, no coincidir con
+     * una palabra de la rejilla y no ser prefijo de ninguna (si no, se consumirían antes
+     * de poder completar esa palabra en la rejilla).
+     */
+    @Test
+    fun palabrasExtraSonValidasYNoColisionan() {
+        (1..20).forEach { level ->
+            val puzzle = CrucigramaNeonGenerator.generate(level, Random(level.toLong()))
+            val bank = puzzle.letters.toSet()
+            val gridWords = puzzle.slots.map { it.answer }.toSet()
+            puzzle.extraWords.forEach { extra ->
+                assertTrue(extra.all { it in bank }, "Nivel $level: extra '$extra' con letras fuera del teclado.")
+                assertTrue(extra !in gridWords, "Nivel $level: extra '$extra' coincide con palabra de rejilla.")
+                assertTrue(
+                    gridWords.none { it != extra && it.startsWith(extra) },
+                    "Nivel $level: extra '$extra' es prefijo de una palabra de rejilla.",
+                )
+            }
         }
     }
 }
