@@ -45,6 +45,9 @@ object GameIds {
 
     /** Palabras Conectadas / Word Connect (categoría "language" / Lenguaje y Vocabulario). */
     const val WORD_CONNECT = "88888888-8888-4888-8888-888888888888"
+
+    /** Tornillos Neón / Neon Screws & Bolts (categoría "spatial" / Visión Espacial). */
+    const val NEON_SCREWS = "99999999-9999-4999-8999-999999999999"
 }
 
 /**
@@ -92,11 +95,11 @@ data class GameInfo(
 )
 
 /**
- * Catálogo de juegos que alimenta la pantalla de lista. Hoy son jugables ocho
+ * Catálogo de juegos que alimenta la pantalla de lista. Hoy son jugables nueve
  * juegos (Memoria, Reflejos, Pociones, Burbujas de Cálculo, Flujo de Energía,
- * Atracción Geométrica, Crucigrama Neón y Palabras Conectadas); el resto son
- * placeholders del roadmap para dar volumen y comunicar la visión sin engañar
- * (aparecen como "Próximamente").
+ * Atracción Geométrica, Crucigrama Neón, Palabras Conectadas y Tornillos Neón);
+ * el resto son placeholders del roadmap para dar volumen y comunicar la visión
+ * sin engañar (aparecen como "Próximamente").
  */
 object GameCatalog {
     val games: List<GameInfo> = listOf(
@@ -108,6 +111,7 @@ object GameCatalog {
         GameInfo(GameIds.POLARITY_COLLISION, "Atracción Geométrica", GameCategory.SPATIAL, playable = true),
         GameInfo(GameIds.CRUCIGRAMA_NEON, "Crucigrama Neón", GameCategory.LANGUAGE, playable = true),
         GameInfo(GameIds.WORD_CONNECT, "Palabras Conectadas", GameCategory.LANGUAGE, playable = true),
+        GameInfo(GameIds.NEON_SCREWS, "Tornillos Neón", GameCategory.SPATIAL, playable = true),
         GameInfo(null, "Parejas Relámpago", GameCategory.MEMORY, playable = false),
         GameInfo(null, "Cadena Lógica", GameCategory.LOGIC, playable = false),
         GameInfo(null, "Encuentra el Intruso", GameCategory.ATTENTION, playable = false),

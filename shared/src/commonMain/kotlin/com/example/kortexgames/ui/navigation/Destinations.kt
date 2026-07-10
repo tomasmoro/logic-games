@@ -41,6 +41,7 @@ object Routes {
     const val POLARITY_COLLISION = "game/polarity-collision"
     const val CRUCIGRAMA_NEON = "game/crucigrama-neon"
     const val WORD_CONNECT = "game/word-connect"
+    const val NEON_SCREWS = "game/neon-screws"
 
     /**
      * Ruta de juego para un [GameIds] concreto, o null si el juego aún no es
@@ -56,6 +57,7 @@ object Routes {
         GameIds.POLARITY_COLLISION -> POLARITY_COLLISION
         GameIds.CRUCIGRAMA_NEON -> CRUCIGRAMA_NEON
         GameIds.WORD_CONNECT -> WORD_CONNECT
+        GameIds.NEON_SCREWS -> NEON_SCREWS
         else -> null
     }
 

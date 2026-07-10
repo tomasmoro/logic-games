@@ -41,6 +41,7 @@ import com.example.kortexgames.game.energyflow.EnergyFlowScreen
 import com.example.kortexgames.game.memory.SequenceMemoryScreen
 import com.example.kortexgames.game.polarity.PolarityCollisionScreen
 import com.example.kortexgames.game.reflex.ReflexTapScreen
+import com.example.kortexgames.game.screws.ScrewGameScreen
 import com.example.kortexgames.game.watersort.WaterSortScreen
 import com.example.kortexgames.game.wordconnect.WordConnectScreen
 import com.example.kortexgames.ui.auth.AuthScreen
@@ -110,7 +111,8 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean) {
             if (currentRoute == Routes.MEMORY || currentRoute == Routes.REFLEX ||
                 currentRoute == Routes.WATER_SORT || currentRoute == Routes.BUBBLE_MATH ||
                 currentRoute == Routes.ENERGY_FLOW || currentRoute == Routes.POLARITY_COLLISION ||
-                currentRoute == Routes.CRUCIGRAMA_NEON || currentRoute == Routes.WORD_CONNECT
+                currentRoute == Routes.CRUCIGRAMA_NEON || currentRoute == Routes.WORD_CONNECT ||
+                currentRoute == Routes.NEON_SCREWS
             ) {
                 graph.adManager.onEnterGameplay()
             } else {
@@ -232,6 +234,9 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean) {
                 }
                 composable(Routes.WORD_CONNECT) {
                     WordConnectScreen(graph) { navController.popBackStack() }
+                }
+                composable(Routes.NEON_SCREWS) {
+                    ScrewGameScreen(graph) { navController.popBackStack() }
                 }
             }
         }

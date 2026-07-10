@@ -101,6 +101,9 @@ object GameProgressions {
         GameIds.WORD_CONNECT to GameProgression(
             ProgressionKind.LEVELED, MetricDirection.HIGHER_IS_BETTER, "Nivel máx", MetricUnit.LEVEL,
         ),
+        GameIds.NEON_SCREWS to GameProgression(
+            ProgressionKind.LEVELED, MetricDirection.HIGHER_IS_BETTER, "Nivel máx", MetricUnit.LEVEL,
+        ),
     )
 
     /** Progresión de un juego, o null si el id es null o no está registrado. */
