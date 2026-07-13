@@ -14,52 +14,6 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
 
 ## Juegos / progresión
 
-- [~] **Sistema de niveles/progresión por juego.** Núcleo IMPLEMENTADO (alcance
-  elegido: tabla sincronizada en Supabase). Hecho:
-  - Backend: tabla `player_game_progress` (best_metric, last_level) + RLS
-    (`0010_player_game_progress.sql`). El servidor no interpreta la métrica; el
-    cliente resuelve la mejor marca (local-first) y sube ya resuelta.
-  - Dominio: `ProgressionKind`/`MetricDirection`/`GameProgression` + registro
-    `GameProgressions` (`game/GameProgression.kt`); `GameResult.reachedMetric` y
-    modelo `PlayerGameProgress`.
-  - Motores: cada uno reporta el valor ALCANZADO (`BaseGameEngine.reachedMetric()`).
-  - Datos: SQLDelight `PlayerProgress.sq` + local/remote datasources +
-    `PlayerProgressRepositoryImpl` (local-first con fusión bidireccional: mejor
-    marca gana; `lastLevel` más reciente gana). Sync al autenticarse (AppGraph).
-  - UI: la tarjeta del catálogo muestra el récord ("Nivel máx 7" / "Mejor 320 ms").
-  - **Selección/continuación de niveles (LEVELED) — HECHO.** Water Sort y Energy
-    Flow ahora tienen **curva de dificultad paramétrica** (`configForLevel(N)`,
-    nivel 1 = config base) y juegan **un nivel elegido** por partida
-    (`startAtLevel`). El selector de niveles vive dentro de la **antesala/intro**
-    (ver ítem "Antesala (intro) de cada juego"): un carril horizontal muestra los
-    niveles superados (con check), el actual/frontera (número en acento) y los
-    bloqueados (candado); el elegido se resalta y "Comenzar" lo lanza. Los VMs
-    tienen fase `LEVEL_SELECT`/`PLAYING` y observan `playerProgressRepository` para
-    el nivel máx desbloqueado. Game-over con "Siguiente nivel"/"Repetir"/"Elegir
-    nivel" (`GameOverOverlay` extendido, opcional para no afectar a los no-LEVELED).
-
-  **Pendiente (polish, siguiente pase):**
-  - [x] Badge "¡Nuevo récord!" en el overlay de fin de partida — HECHO. En vez del
-    snapshot por-ViewModel se resuelve en la **capa de repositorio** (más DRY y sin
-    tocar la DI de los VMs ENDLESS): `PlayerProgressRepository.recordResult` devuelve
-    si batió el récord PREVIO (solo si había marca anterior; la primera no cuenta),
-    `ProgressRepository.saveResult` lo propaga en un nuevo `SaveOutcome`
-    (percentil + `isNewRecord`) y cada VM lo pasa a `GameOverInfo.isNewRecord`. El
-    `GameOverOverlay` muestra la píldora animada + **fuegos artificiales neón**
-    (`FireworksOverlay`, puntual, no en bucle) con **sonido/háptica arcade**
-    (`SoundEffect.SUCCESS` por estallido, háptica HEAVY en el primero) sincronizados
-    a cada explosión. Nota: reusa el SFX `sfx_success` existente; si se quiere una
-    fanfarria propia, añadir un `.wav` nuevo + entrada en `SoundEffect`.
-  - Menor: en la **antesala (intro)** el `AdManager` sigue contando "gameplay" (la
-    ruta del juego está activa aunque el jugador aún no haya pulsado "Comenzar").
-    Los juegos ENDLESS quedan en `GameStatus.IDLE` durante la intro, así que la
-    condición podría afinarse para pausar el contador mientras el estado sea IDLE /
-    fase `LEVEL_SELECT` (`onEnterMenuOrPause`).
-  - SQLDelight: `PlayerGameProgressEntity` se añadió con migración versionada
-    (`1.sqm`, v1→v2), así que las instalaciones existentes la reciben vía onUpgrade
-    (no hace falta reinstalar). Es la PRIMERA migración `.sqm` del proyecto: las
-    próximas altas de tabla/columna deben seguir el mismo patrón (nuevo `.sqm`).
-
 - [x] **Antesala (intro) de cada juego.** HECHO. Nuevo componente neón reutilizable
   `ui/components/GameIntroScreen.kt`: pantalla previa común a todos los juegos con
   icono (placeholder vacío por ahora), título, descripción, botón de **ayuda**
@@ -80,6 +34,23 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
     guardarlo: un campo `icon` en `GameInfo`/`GameCatalog` o junto a `GameProgressions`.
   - **Contenido del botón de ayuda.** El botón "?" existe pero es un no-op; falta la
     hoja/diálogo de "cómo se juega" (reglas, ejemplos) por juego.
+
+- [x] **Neon Block Grid (Block Puzzle 8×8, Visión Espacial).** HECHO (primer pase).
+  Juego ENDLESS completo en `game/blockgrid/`: dominio puro (`BlockGridModel`),
+  motor con líneas simultáneas y puntuación cuadrática (`BlockGridEngine` + tests),
+  MVI (`BlockGridContract`/`ViewModel`) y pantalla con drag & drop, fantasma gris
+  y limpieza fade+shrink (`BlockGridScreen`). Registrado en catálogo, rutas,
+  AdManager y seed Supabase (`0013_seed_neon_block_grid.sql`).
+
+  **Pendiente (polish):**
+  - **Animación de retorno de pieza rechazada.** Hoy, si el drop falla, la pieza
+    reaparece en su slot sin transición; falta animar el "vuelo de vuelta" a la mano.
+  - **Limpieza escalonada por línea.** El fade+shrink es simultáneo para todas las
+    celdas; una onda por línea (stagger desde la pieza colocada) daría más "juice".
+  - **Ponderar el generador de mano.** Hoy las 23 formas salen uniformes; ponderar
+    por tamaño (menos 3×3/líneas de 5) suavizaría la dificultad inicial.
+  - **SFX propios.** Reutiliza TAP/SUCCESS/ERROR; valorar un SFX de "romper línea"
+    dedicado y otro de anclaje más "seco".
 
 - [ ] **Desafíos (challenges) por juego.** Feature de retención inspirada en el
   mockup: bajo la intro, una tarjeta **DESAFÍO** con un objetivo acotado en el
@@ -134,6 +105,29 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
     normalizar por nivel (tiempo/nivel) o medir por nivel individual.
   Ref: `game/energyflow/EnergyFlowEngine.kt`, `game/GameProgression.kt`.
 
+- [ ] **Hallazgos del security advisor (preexistentes, revisados 2026-07-10).**
+  Ninguno introducido por los seeds de juegos; los "reales" pendientes:
+  - Particiones `user_progress_2026_*` y `_default` con RLS activo pero **sin
+    políticas propias** (INFO). El acceso pasa por la tabla madre (que sí tiene
+    políticas), pero conviene confirmar que PostgREST no expone las particiones
+    directamente. Relacionado con el ítem de automatizar particiones.
+  - Extensión `citext` instalada en `public` (WARN): moverla a un schema propio
+    en una migración nueva.
+  - **Leaked password protection desactivada** en Auth (WARN): activarla en el
+    dashboard (chequeo contra HaveIBeenPwned), sin impacto en código.
+  - `get_score_percentile` SECURITY DEFINER ejecutable por `authenticated`: es
+    **por diseño** (RPC de percentiles que solo devuelve agregados, CLAUDE.md §5);
+    no requiere acción.
+
+- [ ] **Starport Escape: pulido.**
+  - Más niveles diseñados (hoy 10, verificados por BFS; el catálogo cicla a
+    partir del 11). El solver está en el scratchpad de la sesión — considerar
+    versionarlo en `tools/` para diseñar tandas nuevas.
+  - Tutorial visual en el nivel 1 (mano/flecha que sugiere el primer gesto).
+  - Sonido propio de "deslizamiento" (hoy reutiliza TAP del catálogo de SFX).
+  - Valorar variar el borde de la esclusa entre niveles (el motor ya es
+    genérico; solo es diseño de niveles).
+
 ## Logros
 
 - [~] **Logros (achievements).** Conexión al backend HECHA; faltan evaluador de
@@ -168,12 +162,6 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
     `icon_key`/slug a un `ImageVector` (Material Rounded, nunca emoji, CLAUDE.md §9.5).
 
 ## Técnico / limpieza
-
-- [ ] **Unificar assets de audio.** Los `.wav` están duplicados en
-  `androidApp/src/main/res/raw/` (Android) y `shared/.../composeResources/files/`
-  (iOS, añadido para arreglar el sonido en iOS). Unificar en una sola fuente
-  (p. ej. mover Android a composeResources también) para no mantener dos copias.
-
 - [ ] **Automatizar particiones de `user_progress`.** La tabla está particionada
   por mes sobre `created_at`, pero solo existen las particiones jul/ago/sep 2026
   (`0001_initial_schema.sql`). A partir de **octubre 2026** todos los inserts caen
@@ -182,3 +170,24 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
   particionado. Automatizar la creación mensual anticipada (job/cron con `SECURITY
   DEFINER` que haga `create table … partition of …`, o la extensión `pg_partman`).
   Nueva migración; no editar la `0001` ya aplicada. Ref: `supabase/migrations/`.
+
+## Extras
+
+- [ ] **Mejorar niveles de crucigrama y Word Connect** (HACERLO MANUAL) Menos letras igual cantidad de 
+      palabras.
+- [ ] **Mejorar flujo de energia** Mejorar efecto neon, conectores sobresalen, 
+      agregar chispas al conectar. Progresion mas lenta de niveles, separar mas conector de entrada y salida
+- [ ] **Crear torneos de juegos y rankings**
+
+- [ ] **Neon Circuit Flow — catálogo de niveles + solver.** Hoy solo hay
+      `test5x5` (hardcoded) y "Siguiente nivel" cicla sobre él. Falta diseñar
+      niveles 5×5→8×8 de dificultad creciente y verificarlos con un solver
+      (resolubilidad + unicidad/teselado), como se hizo con Starport. Ref:
+      `game/neoncircuit/NeonCircuitLevels.kt`.
+- [ ] **Neon Circuit Flow — SFX de "estática" por celda.** El avance de cable
+      (`CellAdvanced`) solo da háptica; el catálogo `SoundEffect` no tiene aún un
+      sonido de estática suave. Añadir el asset y cablearlo en
+      `NeonCircuitViewModel.onEngineEvent`.
+- [ ] **Neon Circuit Flow — seed en Supabase.** Falta la migración que inserta el
+      juego (`GameIds.NEON_CIRCUIT`) en la tabla `games` para que persista score y
+      percentiles, como las `0013/0014/0015` de los últimos juegos.

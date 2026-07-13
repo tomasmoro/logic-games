@@ -1,13 +1,16 @@
 package com.example.kortexgames.game.bubblemath
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -33,9 +36,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -51,6 +58,10 @@ import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.bounceClick
+import com.example.kortexgames.ui.components.drawNeonBubble
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.random.Random
 
 /**
  * Paleta de colores de las burbujas. Se asigna por id de burbuja (no por si es la
@@ -68,6 +79,9 @@ private val BubbleColors = listOf(
 
 /** Diámetro de una burbuja. Fijo para que el cálculo de posición sea simple. */
 private val BubbleSize = 74.dp
+
+/** 2π: círculo completo en radianes, para repartir las chispas en todas direcciones. */
+private const val TAU = 6.2831855f
 
 /** Alto de la banda inferior donde vive el objetivo (el "suelo"). */
 private val FloorBand = 104.dp
@@ -147,6 +161,14 @@ fun BubbleMathScreen(graph: AppGraph, onExit: () -> Unit) {
             TargetBase(
                 target = game.target,
                 modifier = Modifier.align(Alignment.BottomCenter),
+            )
+
+            // Chispas del estallido de la última burbuja tocada (encima de las burbujas):
+            // muchas al acertar, pocas y rojas al fallar.
+            BubbleBurstLayer(
+                burst = game.lastBurst,
+                eventId = game.eventId,
+                floorLine = floorLine,
             )
 
             // Destello de feedback a pantalla completa (verde acierto / rojo fallo).
@@ -307,14 +329,10 @@ private fun FallingBubble(
             .offset(x = xDp, y = yDp)
             .size(BubbleSize)
             .scale(appear.value)
+            // Globo de neón hueco: misma estética de "tubo neón" que las teclas de
+            // Memoria (halo + aro + núcleo blanco), centralizada en [drawNeonBubble].
+            .drawBehind { drawNeonBubble(color) }
             .clip(CircleShape)
-            // Degradado radial: da volumen de "burbuja" (brillo arriba, sombra abajo).
-            .background(
-                Brush.radialGradient(
-                    colors = listOf(color, color.copy(alpha = 0.55f)),
-                ),
-            )
-            .border(BorderStroke(1.5.dp, color.copy(alpha = 0.9f)), CircleShape)
             .bounceClick(onClick = onTap),
         contentAlignment = Alignment.Center,
     ) {
@@ -338,18 +356,10 @@ private fun TargetBase(target: Int, modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // Línea de suelo neón, tenue (referencia visual sin robar protagonismo).
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .height(2.dp)
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(Color.Transparent, LogicColors.NeonCyan.copy(alpha = 0.6f), Color.Transparent),
-                    ),
-                ),
-        )
+        // Línea de suelo: neón ROJO con glow. Es una frontera de peligro ("no crucen
+        // más allá"): el resplandor rojo la carga de significado semántico —cuanto más
+        // se acerca una burbuja, más evidente el límite— sin robar el foco del objetivo.
+        DangerFloorLine()
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -366,6 +376,160 @@ private fun TargetBase(target: Int, modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.displayLarge,
                 color = LogicColors.NeonGreen,
                 fontWeight = FontWeight.Black,
+            )
+        }
+    }
+}
+
+/**
+ * Línea de suelo de **peligro**: un tubo de neón rojo con halo que late suavemente.
+ * Comunica el límite que las burbujas no deben cruzar. El resplandor se dibuja apilando
+ * trazos horizontales (halo ancho translúcido → intermedio → línea nítida → núcleo
+ * blanco), el mismo truco "sin blur" del resto de neón de la app; el latido lento y de
+ * baja amplitud sigue §9.4 (bucles ambientales suaves, sin robar atención).
+ */
+@Composable
+private fun DangerFloorLine() {
+    // Latido lento del halo (respira entre 0.6 y 1): marca "zona viva" de peligro.
+    val transition = rememberInfiniteTransition(label = "dangerGlow")
+    val glow by transition.animateFloat(
+        initialValue = 0.6f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1400),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "glow",
+    )
+
+    val red = LogicColors.Error
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .height(18.dp),
+    ) {
+        val cy = size.height / 2f
+        val w = 3.dp.toPx()
+        // Se desvanece en los extremos para que el tubo "flote" y no choque con los bordes.
+        fun line(alpha: Float, width: Float) = drawLine(
+            brush = Brush.horizontalGradient(
+                colors = listOf(
+                    Color.Transparent,
+                    red.copy(alpha = alpha),
+                    red.copy(alpha = alpha),
+                    Color.Transparent,
+                ),
+            ),
+            start = Offset(0f, cy),
+            end = Offset(size.width, cy),
+            strokeWidth = width,
+            cap = StrokeCap.Round,
+        )
+        line(0.22f * glow, w * 5f)   // Halo ancho translúcido (respira con glow).
+        line(0.45f * glow, w * 2.4f) // Halo intermedio.
+        line(0.95f, w)               // Línea nítida del tubo.
+        // Núcleo blanco-rojizo interior: el look de neón "encendido".
+        drawLine(
+            brush = Brush.horizontalGradient(
+                listOf(Color.Transparent, Color.White.copy(alpha = 0.7f), Color.Transparent),
+            ),
+            start = Offset(0f, cy),
+            end = Offset(size.width, cy),
+            strokeWidth = w * 0.4f,
+            cap = StrokeCap.Round,
+        )
+    }
+}
+
+/** Nº de chispas de un estallido según el resultado: el acierto libera muchas más. */
+private const val BurstSparksSuccess = 16
+private const val BurstSparksFail = 6
+
+/**
+ * Semilla de una chispa: dirección y alcance fijos durante toda su animación (se generan
+ * una vez por evento para que las chispas no "salten" entre recomposiciones).
+ *
+ * @property angle ángulo de salida en radianes.
+ * @property reach fracción del alcance máximo (0.7..1) para que no vuelen todas igual.
+ * @property length longitud de la estela, como múltiplo de una unidad base.
+ */
+private data class SparkSeed(val angle: Float, val reach: Float, val length: Float)
+
+/**
+ * Capa de **chispas** que estalla en el sitio exacto donde explotó la última burbuja
+ * tocada (dato [BubbleBurst] del motor). Se dispara **una sola vez** por [eventId] y
+ * anima un `progress` 0→1 con el que las estelas salen disparadas hacia afuera mientras
+ * se desvanecen, más un anillo de choque que se expande. Refuerza el feedback de acierto
+ * (muchas chispas, en el color de la burbuja) frente al de fallo (pocas, en rojo error).
+ *
+ * @param floorLine altura (Dp) a la que el motor mapea `y = 1` (el suelo); se usa para
+ *   convertir la posición fraccional del estallido a píxeles, igual que las burbujas.
+ */
+@Composable
+private fun BubbleBurstLayer(burst: BubbleBurst?, eventId: Int, floorLine: Dp) {
+    if (burst == null) return
+
+    val progress = remember { Animatable(0f) }
+    // Chispas fijas por evento: dirección/alcance deterministas mientras dura la animación.
+    val sparks = remember(eventId) {
+        val count = if (burst.success) BurstSparksSuccess else BurstSparksFail
+        val rnd = Random(eventId)
+        List(count) {
+            SparkSeed(
+                angle = rnd.nextFloat() * TAU,
+                reach = 0.7f + rnd.nextFloat() * 0.3f,
+                length = 0.7f + rnd.nextFloat() * 0.6f,
+            )
+        }
+    }
+
+    LaunchedEffect(eventId) {
+        if (eventId == 0) return@LaunchedEffect
+        progress.snapTo(0f)
+        progress.animateTo(1f, tween(durationMillis = 520))
+    }
+    val p = progress.value
+    if (p <= 0f || p >= 1f) return
+
+    val color = if (burst.success) BubbleColors[burst.colorId % BubbleColors.size] else LogicColors.Error
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val cx = size.width * burst.x
+        val cy = (floorLine.toPx() * burst.y).coerceIn(0f, size.height)
+
+        // Desaceleración: salen rápido y frenan (ease-out), como esquirlas reales.
+        val ease = 1f - (1f - p) * (1f - p)
+        val alpha = 1f - p
+        val maxDist = (if (burst.success) BubbleSize * 1.6f else BubbleSize * 0.9f).toPx()
+        val unit = 10.dp.toPx()
+
+        // Anillo de choque que se expande desde el borde de la burbuja.
+        drawCircle(
+            color = color.copy(alpha = 0.4f * alpha),
+            radius = (BubbleSize / 2).toPx() + ease * maxDist * 0.5f,
+            center = Offset(cx, cy),
+            style = Stroke(width = 2.dp.toPx()),
+        )
+
+        sparks.forEach { s ->
+            val dist = ease * maxDist * s.reach
+            val dx = cos(s.angle)
+            val dy = sin(s.angle)
+            val head = Offset(cx + dx * dist, cy + dy * dist)
+            val tail = Offset(cx + dx * (dist - unit * s.length), cy + dy * (dist - unit * s.length))
+            // Estela de la chispa (color del resultado).
+            drawLine(
+                color = color.copy(alpha = alpha),
+                start = tail,
+                end = head,
+                strokeWidth = 2.5.dp.toPx(),
+                cap = StrokeCap.Round,
+            )
+            // Cabeza blanca incandescente.
+            drawCircle(
+                color = Color.White.copy(alpha = 0.9f * alpha),
+                radius = 1.6.dp.toPx(),
+                center = head,
             )
         }
     }

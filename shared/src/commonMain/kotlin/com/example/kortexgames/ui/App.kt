@@ -39,9 +39,14 @@ import com.example.kortexgames.game.bubblemath.BubbleMathScreen
 import com.example.kortexgames.game.crucigrama.CrucigramaNeonScreen
 import com.example.kortexgames.game.energyflow.EnergyFlowScreen
 import com.example.kortexgames.game.memory.SequenceMemoryScreen
+import com.example.kortexgames.game.hypergate.HypergateScreen
 import com.example.kortexgames.game.polarity.PolarityCollisionScreen
 import com.example.kortexgames.game.reflex.ReflexTapScreen
+import com.example.kortexgames.game.blockgrid.BlockGridScreen
+import com.example.kortexgames.game.wordsearch.NeonLexiconScreen
 import com.example.kortexgames.game.screws.ScrewGameScreen
+import com.example.kortexgames.game.neoncircuit.NeonCircuitScreen
+import com.example.kortexgames.game.starport.StarportScreen
 import com.example.kortexgames.game.watersort.WaterSortScreen
 import com.example.kortexgames.game.wordconnect.WordConnectScreen
 import com.example.kortexgames.ui.auth.AuthScreen
@@ -112,7 +117,9 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean) {
                 currentRoute == Routes.WATER_SORT || currentRoute == Routes.BUBBLE_MATH ||
                 currentRoute == Routes.ENERGY_FLOW || currentRoute == Routes.POLARITY_COLLISION ||
                 currentRoute == Routes.CRUCIGRAMA_NEON || currentRoute == Routes.WORD_CONNECT ||
-                currentRoute == Routes.NEON_SCREWS
+                currentRoute == Routes.NEON_SCREWS || currentRoute == Routes.NEON_BLOCK_GRID ||
+                currentRoute == Routes.NEON_LEXICON || currentRoute == Routes.STARPORT_ESCAPE ||
+                currentRoute == Routes.NEON_CIRCUIT || currentRoute == Routes.HYPERGATE
             ) {
                 graph.adManager.onEnterGameplay()
             } else {
@@ -237,6 +244,21 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean) {
                 }
                 composable(Routes.NEON_SCREWS) {
                     ScrewGameScreen(graph) { navController.popBackStack() }
+                }
+                composable(Routes.NEON_BLOCK_GRID) {
+                    BlockGridScreen(graph) { navController.popBackStack() }
+                }
+                composable(Routes.NEON_LEXICON) {
+                    NeonLexiconScreen(graph) { navController.popBackStack() }
+                }
+                composable(Routes.STARPORT_ESCAPE) {
+                    StarportScreen(graph) { navController.popBackStack() }
+                }
+                composable(Routes.NEON_CIRCUIT) {
+                    NeonCircuitScreen(graph) { navController.popBackStack() }
+                }
+                composable(Routes.HYPERGATE) {
+                    HypergateScreen(graph) { navController.popBackStack() }
                 }
             }
         }

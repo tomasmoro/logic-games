@@ -125,7 +125,7 @@ class AppGraph(context: PlatformContext) {
         isPremium = { (authState as? AuthState.Authenticated)?.plan == PlanType.PREMIUM },
     ).also { it.start() }
 
-    // --- Objetivo diario (5 ejercicios/día → recompensa) --------------------
+    // --- Objetivo diario (misión de 3 juegos del día → recompensa) ----------
     val dailyGoalManager = DailyGoalManager(
         progress = progressRepository,
         store = DailyGoalStore(preferences),

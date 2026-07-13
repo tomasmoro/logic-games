@@ -108,6 +108,55 @@ fun DrawScope.drawNeonTile(
 }
 
 /**
+ * Dibuja una burbuja como **globo de neón**: el mismo lenguaje visual que
+ * [drawNeonTile] (halo ancho translúcido → halo intermedio → aro nítido → núcleo
+ * blanco) pero circular, para que las burbujas de "Burbujas de Cálculo" compartan la
+ * estética de tubo neón de las teclas de Memoria. Sobre esos aros hay un relleno
+ * radial tenue que "enciende el cristal" sin tapar el texto del centro, y un pequeño
+ * reflejo especular arriba que le da volumen de globo.
+ *
+ * A diferencia de las teclas, una burbuja está siempre "encendida" (es un objeto vivo
+ * en caída), por lo que no interpola apagado→encendido; [glow] solo modula la
+ * intensidad del halo por si se quiere un latido externo (no abusar: §9.4 pide no
+ * pulsar muchos elementos a la vez).
+ *
+ * @param baseColor color neón de la burbuja (identidad + halo).
+ * @param glow multiplicador del halo exterior; 1 = pleno.
+ */
+fun DrawScope.drawNeonBubble(baseColor: Color, glow: Float = 1f) {
+    val center = Offset(size.width / 2f, size.height / 2f)
+    // Margen para que el halo ancho quepa dentro de los límites del composable.
+    val margin = 6.dp.toPx()
+    val radius = size.minDimension / 2f - margin
+    val stroke = 3.dp.toPx()
+
+    // Relleno "cristal": tinte radial suave, más brillante en la zona alta (como si
+    // la luz entrara por arriba); se apaga hacia el borde para no comerse el texto.
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(
+                baseColor.copy(alpha = 0.34f),
+                baseColor.copy(alpha = 0.12f),
+                baseColor.copy(alpha = 0.03f),
+            ),
+            center = Offset(size.width / 2f, size.height * 0.38f),
+            radius = radius * 1.25f,
+        ),
+        radius = radius,
+        center = center,
+    )
+    // Halo exterior ancho y translúcido (respira con [glow]).
+    drawCircle(baseColor.copy(alpha = 0.26f * glow), radius, center, style = Stroke(stroke * 4.5f))
+    // Halo intermedio: da cuerpo al resplandor.
+    drawCircle(baseColor.copy(alpha = 0.50f * glow), radius, center, style = Stroke(stroke * 2.1f))
+    // Aro nítido del "tubo" neón.
+    drawCircle(baseColor, radius, center, style = Stroke(stroke))
+    // Núcleo blanco interior del tubo (el look "prendido" del neón real).
+    drawCircle(Color.White.copy(alpha = 0.55f), radius, center, style = Stroke(stroke * 0.4f))
+
+}
+
+/**
  * Tres chispas sobre el borde superior del tile: una vertical al centro y dos
  * diagonales a los lados, con alfa proporcional a [amt] para que aparezcan y se
  * apaguen junto con el encendido.

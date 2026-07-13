@@ -48,12 +48,33 @@ data class Bubble(
 )
 
 /**
+ * Datos del último "estallido" de una burbuja, para que la UI dibuje las chispas
+ * exactamente donde estaba la burbuja al explotar. Es un dato **derivado y de un solo
+ * uso**: se regenera con cada evento ([BubbleMathState.eventId]) y la UI lo consume
+ * una vez (igual patrón que el destello de feedback).
+ *
+ * @property x posición horizontal fraccional (0..1) del centro de la burbuja.
+ * @property y posición vertical fraccional (0 = arriba, 1 = suelo) al explotar.
+ * @property colorId id de la burbuja; la UI deriva su color de la paleta de burbujas.
+ * @property success true si era la burbuja correcta (libera MÁS chispas); false si
+ *           fue un fallo (menos chispas, tinte de error).
+ */
+data class BubbleBurst(
+    val x: Float,
+    val y: Float,
+    val colorId: Int,
+    val success: Boolean,
+)
+
+/**
  * Estado de UI del juego.
  *
  * @property combo aciertos consecutivos; a más combo, más multiplicador de puntos.
  * @property eventId contador que se incrementa en cada acierto/fallo/escape; la UI
  *           lo observa para disparar UNA vez el destello de feedback (evita
  *           reproducirlo en cada recomposición o al recalcular posiciones).
+ * @property lastBurst datos del estallido del último toque (acierto/fallo) para las
+ *           chispas; null tras un escape (la burbuja se fue por abajo, no explota).
  */
 data class BubbleMathState(
     val phase: BubblePhase = BubblePhase.PLAYING,
@@ -66,6 +87,7 @@ data class BubbleMathState(
     val bestCombo: Int = 0,
     val lastResult: TapResult? = null,
     val eventId: Int = 0,
+    val lastBurst: BubbleBurst? = null,
 ) {
     companion object {
         const val MAX_LIVES = 3
@@ -253,6 +275,8 @@ class BubbleMathEngine(
                 bubbles = emptyList(),
                 lastResult = TapResult.CORRECT,
                 eventId = it.eventId + 1,
+                // Estallido "generoso" (acierto) en el sitio exacto de la burbuja.
+                lastBurst = BubbleBurst(bubble.x, bubble.y.coerceIn(0f, 1f), bubble.id, success = true),
             )
         }
         scheduleNextRound()
@@ -271,6 +295,8 @@ class BubbleMathEngine(
                 bubbles = it.bubbles.filterNot { b -> b.id == bubble.id },
                 lastResult = TapResult.WRONG,
                 eventId = it.eventId + 1,
+                // Estallido "pobre" (fallo): menos chispas y tinte de error.
+                lastBurst = BubbleBurst(bubble.x, bubble.y.coerceIn(0f, 1f), bubble.id, success = false),
             )
         }
         if (lives <= 0) gameOver()
@@ -288,6 +314,8 @@ class BubbleMathEngine(
                 bubbles = emptyList(),
                 lastResult = TapResult.MISSED,
                 eventId = it.eventId + 1,
+                // Un escape no "explota" (la burbuja se fue por abajo): sin chispas.
+                lastBurst = null,
             )
         }
         if (lives <= 0) gameOver() else scheduleNextRound()

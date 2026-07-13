@@ -14,9 +14,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -57,12 +59,14 @@ import com.example.kortexgames.game.GameCatalog
 import com.example.kortexgames.game.GameCategory
 import com.example.kortexgames.game.GameInfo
 import com.example.kortexgames.game.daily.DailyGoalState
+import com.example.kortexgames.game.daily.DailyMissionGame
 import com.example.kortexgames.game.daily.calculateStreakDays
 import com.example.kortexgames.ui.components.CategoryMotifSurface
 import com.example.kortexgames.ui.components.CircularProgressRing
 import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.NeonIcon
 import com.example.kortexgames.ui.components.bounceClick
+import com.example.kortexgames.ui.components.dashedBorder
 import com.example.kortexgames.ui.components.pulse
 import com.example.kortexgames.ui.components.softGlow
 import com.example.kortexgames.ui.navigation.Routes
@@ -136,6 +140,10 @@ fun HomeScreen(
             } else {
                 DailyGoalCard(
                     goal = dailyGoal,
+                    onPlay = onQuickPlay,
+                    onOpenGame = { game ->
+                        Routes.gameRoute(game.id)?.let(onOpenGame) ?: onSeeGames()
+                    },
                     onClaim = {
                         scope.launch {
                             if (graph.dailyGoalManager.claimReward()) {
@@ -144,8 +152,6 @@ fun HomeScreen(
                         }
                     },
                 )
-
-                PlayNowButton(onClick = onQuickPlay)
             }
 
             // Juego estrella: el más jugado con mejor precisión media. Se calcula a partir
@@ -268,104 +274,184 @@ private fun StreakPill(streakDays: Int) {
 }
 
 /**
- * Tarjeta del objetivo diario con [CircularProgressRing] que se llena al entrar.
- * Muestra el porcentaje y "X / Y" en el centro y, al cumplirse, el botón de premio.
+ * Tarjeta del objetivo diario con [CircularProgressRing] que se llena al entrar, la
+ * fila **"Tu misión de hoy"** con los juegos del día ([DailyMissionRow]) y el botón
+ * circular de jugar ([PlayNowFab]) anclado a la esquina inferior derecha, que
+ * **sobresale** del borde de la tarjeta para destacar la acción (acento escaso).
+ *
+ * @param goal estado del objetivo (progreso + misión del día).
+ * @param onPlay abre una partida rápida (botón circular).
+ * @param onOpenGame abre un juego concreto de la misión al tocar su celda.
+ * @param onClaim reclama la recompensa cuando la misión está completa.
  */
 @Composable
-private fun DailyGoalCard(goal: DailyGoalState, onClaim: () -> Unit) {
+private fun DailyGoalCard(
+    goal: DailyGoalState,
+    onPlay: () -> Unit,
+    onOpenGame: (GameInfo) -> Unit,
+    onClaim: () -> Unit,
+) {
     val percent = (goal.progress * 100).roundToInt()
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(28.dp))
-            .background(LogicColors.SurfaceDark)
-            .padding(vertical = 24.dp, horizontal = 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("OBJETIVO DIARIO", style = MaterialTheme.typography.titleLarge, color = LogicColors.OnDark)
-            Text("Potencia tu mente hoy", style = MaterialTheme.typography.bodyMedium, color = LogicColors.OnDarkMuted)
-        }
-
-        CircularProgressRing(
-            progress = goal.progress,
-            size = 168.dp,
-            strokeWidth = 15.dp,
-            progressColors = LogicGradients.ring,
+    // Box contenedor SIN recorte: deja que el botón circular sobresalga del borde.
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(28.dp))
+                .background(LogicColors.SurfaceDark)
+                .padding(vertical = 24.dp, horizontal = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("$percent%", style = MaterialTheme.typography.displayLarge, color = LogicColors.OnDark)
-                Text(
-                    "${goal.completed} / ${goal.target} juegos",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = LogicColors.OnDarkMuted,
-                )
+                Text("OBJETIVO DIARIO", style = MaterialTheme.typography.titleLarge, color = LogicColors.OnDark)
+                Text("Potencia tu mente hoy", style = MaterialTheme.typography.bodyMedium, color = LogicColors.OnDarkMuted)
+            }
+
+            CircularProgressRing(
+                progress = goal.progress,
+                size = 168.dp,
+                strokeWidth = 15.dp,
+                progressColors = LogicGradients.ring,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("$percent%", style = MaterialTheme.typography.displayLarge, color = LogicColors.OnDark)
+                    Text(
+                        "${goal.completed} / ${goal.target} juegos",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = LogicColors.OnDarkMuted,
+                    )
+                }
+            }
+
+            // "Tu misión de hoy": los juegos del día con su estado (hecho/pendiente).
+            if (goal.mission.isNotEmpty()) {
+                DailyMissionRow(mission = goal.mission, onOpenGame = onOpenGame)
             }
         }
 
-        Text(
-            if (goal.isComplete) "¡Objetivo completado! Mantén viva la racha."
-            else "¡Mantén viva la racha!\nCompleta ${goal.remaining} juegos más.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = LogicColors.OnDarkMuted,
-            textAlign = TextAlign.Center,
+        // Botón circular "jugar ahora": anclado abajo-derecha y desplazado hacia
+        // fuera para sobresalir del borde de la tarjeta (muy visible, acento escaso).
+        PlayNowFab(
+            onClick = onPlay,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .offset(x = 22.dp, y = 26.dp),
         )
+    }
+}
 
-        if (goal.canClaim) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Brush.horizontalGradient(LogicGradients.reward))
-                    .bounceClick(onClick = onClaim)
-                    .padding(horizontal = 24.dp, vertical = 12.dp),
-            ) {
-                Text("Reclamar recompensa", color = LogicColors.BackgroundDark, fontWeight = FontWeight.Bold)
+/**
+ * Botón circular de **jugar ahora**: el acento más llamativo de la Home. Va anclado
+ * a la esquina de la tarjeta de entrenamiento y combina [softGlow] (brillo verde
+ * continuo), [pulse] (latido) y [bounceClick] (rebote al tocar). Es el ÚNICO
+ * elemento con animación en bucle de la pantalla (CLAUDE.md §9.4).
+ */
+@Composable
+private fun PlayNowFab(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(64.dp)
+            .pulse()
+            .softGlow(color = LogicColors.NeonGreen, shape = CircleShape, maxElevation = 24.dp)
+            .clip(CircleShape)
+            .background(Brush.horizontalGradient(LogicGradients.play))
+            .bounceClick(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        NeonIcon(icon = KortexIcons.Play, tint = LogicColors.BackgroundDark, size = 30.dp, glow = false)
+    }
+}
+
+/**
+ * Fila **"Tu misión de hoy"**: los juegos del día en celdas cuadradas iguales. Cada
+ * celda muestra su estado: **hecha** (relleno tenue + check en el color de la
+ * categoría) o **pendiente** (borde punteado + icono de la categoría). Tocar una
+ * celda abre ese juego para completarlo.
+ */
+@Composable
+private fun DailyMissionRow(mission: List<DailyMissionGame>, onOpenGame: (GameInfo) -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            "Tu misión de hoy",
+            style = MaterialTheme.typography.titleMedium,
+            color = LogicColors.OnDark,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            mission.forEach { item ->
+                MissionGameCell(
+                    item = item,
+                    onClick = { onOpenGame(item.game) },
+                    modifier = Modifier.weight(1f),
+                )
             }
-        } else if (goal.rewardClaimed) {
-            Text("Recompensa de hoy reclamada", style = MaterialTheme.typography.labelLarge, color = LogicColors.Success)
         }
     }
 }
 
 /**
- * Botón "PLAY NOW": el elemento más llamativo de la Home. Combina [softGlow]
- * (brillo verde continuo), [pulse] (latido) y [bounceClick] (rebote al tocar). Es
- * el ÚNICO elemento con animación en bucle de la pantalla (CLAUDE.md §9.4).
+ * Celda de un juego de la misión: cuadrado con el estado del día y el título debajo.
+ * Toma el color de identidad de la categoría del juego ([GameCategory.accent]) para
+ * el marco y el icono, coherente con el resto del catálogo.
+ *
+ * @param item juego de la misión + si ya se jugó hoy.
+ * @param onClick abre ese juego.
  */
 @Composable
-private fun PlayNowButton(onClick: () -> Unit) {
-    val shape = RoundedCornerShape(30.dp)
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(66.dp)
-            .pulse()
-            .softGlow(color = LogicColors.NeonGreen, shape = shape, maxElevation = 26.dp)
-            .clip(shape)
-            .background(Brush.horizontalGradient(LogicGradients.play))
-            .bounceClick(onClick = onClick)
-            .padding(horizontal = 24.dp),
-        contentAlignment = Alignment.Center,
+private fun MissionGameCell(
+    item: DailyMissionGame,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val accent = item.game.category.accent
+    val shape = RoundedCornerShape(18.dp)
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "Completa tu entrenamiento",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = LogicColors.BackgroundDark,
-            )
-            Spacer(Modifier.width(10.dp))
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .background(LogicColors.BackgroundDark.copy(alpha = 0.18f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                NeonIcon(icon = KortexIcons.Play, tint = LogicColors.BackgroundDark, size = 18.dp, glow = false)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(shape)
+                .then(
+                    // Hecho → relleno + marco sólido en el acento; pendiente → marco
+                    // punteado que se lee como "hueco por completar".
+                    if (item.isDone) {
+                        Modifier
+                            .background(accent.copy(alpha = 0.14f))
+                            .border(2.dp, accent, shape)
+                    } else {
+                        Modifier.dashedBorder(color = accent.copy(alpha = 0.55f), cornerRadius = 18.dp)
+                    },
+                )
+                .bounceClick(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (item.isDone) {
+                NeonIcon(icon = KortexIcons.Check, tint = accent, size = 30.dp)
+            } else {
+                NeonIcon(
+                    icon = item.game.category.icon,
+                    tint = accent.copy(alpha = 0.7f),
+                    size = 28.dp,
+                    glow = false,
+                )
             }
         }
+        Text(
+            item.game.title,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (item.isDone) accent else LogicColors.OnDarkMuted,
+            textAlign = TextAlign.Center,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 2,
+        )
     }
 }
 

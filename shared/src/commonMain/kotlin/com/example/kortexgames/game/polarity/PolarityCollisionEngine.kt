@@ -6,6 +6,7 @@ import com.example.kortexgames.core.audio.SoundEffect
 import com.example.kortexgames.game.BaseGameEngine
 import com.example.kortexgames.game.GameIds
 import com.example.kortexgames.game.GameStatus
+import com.example.kortexgames.game.physics.FrameClock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -85,12 +86,15 @@ class PolarityCollisionEngine(
     private val _state = MutableStateFlow(PolarityCollisionState())
     override val state: StateFlow<PolarityCollisionState> = _state.asStateFlow()
 
-    private var lastFrameNanos: Long? = null
+    // Reloj de frames compartido: deriva el `dt` sano de los timestamps de `withFrameNanos`
+    // (descarta el primer frame, recorta saltos). Antes vivía inline aquí; ahora es común con
+    // Hypergate para no duplicar esa lógica sensible. Ver [FrameClock].
+    private val frameClock = FrameClock(maxDtSec = MAX_DT_SEC)
     private var spawnAccumulatorSec = 0f
     private var nextParticleId = 1L
 
     override fun onStart() {
-        lastFrameNanos = null
+        frameClock.reset()
         spawnAccumulatorSec = 0f
         nextParticleId = 1L
         _state.value = PolarityCollisionState()
@@ -98,7 +102,7 @@ class PolarityCollisionEngine(
 
     override fun onPause() {
         // Al reanudar descartamos el delta acumulado para evitar un salto de física.
-        lastFrameNanos = null
+        frameClock.reset()
     }
 
     /** Actualiza el tamaño útil del juego para spawns y colisiones. */
@@ -127,12 +131,8 @@ class PolarityCollisionEngine(
         val current = _state.value
         if (current.viewportWidthPx <= 0f || current.viewportHeightPx <= 0f) return
 
-        val previousFrame = lastFrameNanos
-        lastFrameNanos = frameNanos
-        if (previousFrame == null) return
-
-        val dtSec = ((frameNanos - previousFrame) / 1_000_000_000f).coerceIn(0f, MAX_DT_SEC)
-        if (dtSec == 0f) return
+        // `null` = primer frame tras arrancar/reanudar o dt==0: no integramos este frame.
+        val dtSec = frameClock.tick(frameNanos) ?: return
 
         val updated = step(current, dtSec)
         _state.value = updated

@@ -104,6 +104,23 @@ object GameProgressions {
         GameIds.NEON_SCREWS to GameProgression(
             ProgressionKind.LEVELED, MetricDirection.HIGHER_IS_BETTER, "Nivel máx", MetricUnit.LEVEL,
         ),
+        // Block Puzzle es una corrida hasta que ninguna pieza cabe: ENDLESS con
+        // récord de puntaje (no hay niveles ni tiempo objetivo).
+        GameIds.NEON_BLOCK_GRID to GameProgression(
+            ProgressionKind.ENDLESS, MetricDirection.HIGHER_IS_BETTER, "Mejor", MetricUnit.POINTS,
+        ),
+        // Sopa de Letras: niveles discretos (rejillas/palabras crecientes).
+        GameIds.NEON_LEXICON to GameProgression(
+            ProgressionKind.LEVELED, MetricDirection.HIGHER_IS_BETTER, "Nivel máx", MetricUnit.LEVEL,
+        ),
+        GameIds.STARPORT_ESCAPE to GameProgression(
+            ProgressionKind.LEVELED, MetricDirection.HIGHER_IS_BETTER, "Nivel máx", MetricUnit.LEVEL,
+        ),
+        // Hypergate es una corrida por tiempo (score-attack) igual que Atracción
+        // Geométrica: ENDLESS con récord de mejor puntaje.
+        GameIds.HYPERGATE to GameProgression(
+            ProgressionKind.ENDLESS, MetricDirection.HIGHER_IS_BETTER, "Mejor", MetricUnit.POINTS,
+        ),
     )
 
     /** Progresión de un juego, o null si el id es null o no está registrado. */
