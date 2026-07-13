@@ -69,3 +69,18 @@ data class PercentileResult(
     val totalPlayers: Long,
     val rank: Long,
 )
+
+/**
+ * Resultado de persistir una partida ([com.example.kortexgames.domain.repository.ProgressRepository.saveResult]).
+ * Reúne en un solo objeto lo que la UI de fin de partida necesita, resuelto en la
+ * misma ruta local-first para que ningún ViewModel tenga que recalcularlo.
+ *
+ * @property percentile percentil global (usuario autenticado + online); null si no.
+ * @property isNewRecord true si la partida **batió el récord previo** del jugador en
+ *   ese juego (según la dirección de su métrica). Es false en la primera marca
+ *   registrada (sin récord anterior que superar) para no celebrar la primera partida.
+ */
+data class SaveOutcome(
+    val percentile: PercentileResult?,
+    val isNewRecord: Boolean,
+)

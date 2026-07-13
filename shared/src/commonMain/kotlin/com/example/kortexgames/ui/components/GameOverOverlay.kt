@@ -37,6 +37,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
+import com.example.kortexgames.core.audio.AudioAndHapticManager
+import com.example.kortexgames.core.audio.HapticFeedback
+import com.example.kortexgames.core.audio.SoundEffect
 import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.core.theme.LogicGradients
 import com.example.kortexgames.game.GameOverInfo
@@ -67,6 +71,10 @@ fun GameOverOverlay(
     onPlayAgain: () -> Unit,
     onExit: () -> Unit,
     modifier: Modifier = Modifier,
+    headline: String? = null,
+    onNextLevel: (() -> Unit)? = null,
+    onChooseLevel: (() -> Unit)? = null,
+    audio: AudioAndHapticManager? = null,
 ) {
     // `visible` arranca en false: durante REVEAL_DELAY_MS no se dibuja nada y la
     // pantalla de juego queda a la vista; luego dispara scrim + entrada del card.
@@ -120,6 +128,9 @@ fun GameOverOverlay(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                // Hacemos explícito el orden de capas para no depender del orden
+                // implícito de dibujo cuando hay varias graphics layers animadas.
+                .zIndex(0f)
                 .scale(cardScale)
                 .alpha(cardAlpha)
                 // Borde neón en degradado cian→verde: la identidad "Juego" enmarca
@@ -134,11 +145,16 @@ fun GameOverOverlay(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            // Badge de nuevo récord: aparece con un "pop" por encima del trofeo.
+            if (info.isNewRecord) {
+                NewRecordBadge(visible = visible)
+            }
+
             // Trofeo con halo: remate visual de recompensa.
             NeonIcon(icon = KortexIcons.Trophy, tint = LogicColors.Amber, size = 46.dp)
 
             Text(
-                "¡Partida terminada!",
+                headline ?: "¡Partida terminada!",
                 style = MaterialTheme.typography.titleLarge,
                 color = LogicColors.OnDarkMuted,
             )
@@ -181,23 +197,109 @@ fun GameOverOverlay(
 
             Spacer(Modifier.height(2.dp))
 
-            AnimatedGameButton(
-                text = "JUGAR DE NUEVO",
-                onClick = onPlayAgain,
-                // Único bucle de la pantalla (pulse) reservado al CTA principal,
-                // como manda §9.4: guía la acción sin competir con otros elementos.
+            if (onNextLevel != null) {
+                // Juego LEVELED: el CTA principal es avanzar; luego repetir el nivel
+                // y volver al selector. El único bucle (pulse) va al CTA que guía (§9.4).
+                AnimatedGameButton(
+                    text = "SIGUIENTE NIVEL",
+                    onClick = onNextLevel,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pulse(),
+                    gradient = LogicGradients.play,
+                )
+                AnimatedGameButton(
+                    text = "REPETIR NIVEL",
+                    onClick = onPlayAgain,
+                    modifier = Modifier.fillMaxWidth(),
+                    gradient = LogicGradients.energy,
+                )
+                if (onChooseLevel != null) {
+                    Text(
+                        "Elegir nivel",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = LogicColors.OnDarkMuted,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .bounceClick(onClick = onChooseLevel)
+                            .padding(vertical = 8.dp),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            } else {
+                AnimatedGameButton(
+                    text = "JUGAR DE NUEVO",
+                    onClick = onPlayAgain,
+                    // Único bucle de la pantalla (pulse) reservado al CTA principal,
+                    // como manda §9.4: guía la acción sin competir con otros elementos.
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pulse(),
+                    gradient = LogicGradients.play,
+                )
+                AnimatedGameButton(
+                    text = "SALIR",
+                    onClick = onExit,
+                    modifier = Modifier.fillMaxWidth(),
+                    gradient = LogicGradients.energy,
+                )
+            }
+        }
+
+        // Celebración de nuevo récord: fuegos artificiales neón POR DELANTE de la
+        // tarjeta (se dibuja al final ⇒ queda encima) con sonido/háptica arcade
+        // sincronizados a cada estallido. Puntual, no en bucle (§9.4). El Canvas no
+        // lleva modificadores de pointer input, así que NO intercepta toques: los
+        // botones del diálogo, por debajo, siguen siendo pulsables.
+        if (info.isNewRecord) {
+            FireworksOverlay(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .pulse(),
-                gradient = LogicGradients.play,
-            )
-            AnimatedGameButton(
-                text = "SALIR",
-                onClick = onExit,
-                modifier = Modifier.fillMaxWidth(),
-                gradient = LogicGradients.energy,
+                    .fillMaxSize()
+                    .zIndex(1f),
+                onBurst = { index ->
+                    audio?.playSound(SoundEffect.SUCCESS)
+                    audio?.hapticFeedback(if (index == 0) HapticFeedback.HEAVY else HapticFeedback.LIGHT)
+                },
             )
         }
+    }
+}
+
+/**
+ * Píldora "¡NUEVO RÉCORD!" que corona la tarjeta cuando la partida bate el récord.
+ * Entra con un "pop" de resorte (sensación táctil, §9.4) y respira un halo ámbar
+ * ([softGlow]) para reforzar la recompensa sin recurrir a imágenes.
+ */
+@Composable
+private fun NewRecordBadge(visible: Boolean) {
+    // Pop-in con rebote: escala 0→1 en cuanto la tarjeta se revela.
+    val scale by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow,
+        ),
+        label = "recordBadgeScale",
+    )
+    val shape = RoundedCornerShape(percent = 50)
+    Row(
+        modifier = Modifier
+            .scale(scale)
+            .softGlow(LogicColors.Amber, shape = shape)
+            .clip(shape)
+            .background(Brush.horizontalGradient(LogicGradients.reward))
+            .border(BorderStroke(1.5.dp, LogicColors.Amber), shape)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        NeonIcon(icon = KortexIcons.Star, tint = LogicColors.BackgroundDark, size = 20.dp, glow = false)
+        Text(
+            "¡NUEVO RÉCORD!",
+            style = MaterialTheme.typography.labelLarge,
+            color = LogicColors.BackgroundDark,
+            fontWeight = FontWeight.Black,
+        )
     }
 }
 

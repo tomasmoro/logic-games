@@ -38,9 +38,11 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.kortexgames.core.theme.CategoryPalette
 import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameStatus
+import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.SpaceBackdrop
 import kotlin.math.PI
@@ -62,6 +64,20 @@ fun PolarityCollisionScreen(graph: AppGraph, onExit: () -> Unit) {
     }
     val state by vm.state.collectAsStateWithLifecycle()
     val game = state.game
+
+    // Antesala del juego: mientras no ha arrancado (IDLE) se muestra la intro (evita,
+    // de paso, que el bucle de física corra bajo la intro).
+    if (state.status == GameStatus.IDLE) {
+        GameIntroScreen(
+            title = "Atracción Geométrica",
+            description = "Rota el círculo para capturar las piezas de tu color y evita las contrarias antes de que se acabe el tiempo.",
+            accent = CategoryPalette.SpatialVision,
+            onStart = { vm.onIntent(PolarityCollisionIntent.Start) },
+            onExit = onExit,
+            background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },
+        )
+        return
+    }
 
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
     var lastDragAngle by remember { mutableStateOf<Float?>(null) }
@@ -177,6 +193,7 @@ fun PolarityCollisionScreen(graph: AppGraph, onExit: () -> Unit) {
         if (state.status == GameStatus.FINISHED && state.gameOver != null) {
             GameOverOverlay(
                 info = state.gameOver!!,
+                audio = graph.audio,
                 onPlayAgain = { vm.onIntent(PolarityCollisionIntent.PlayAgain) },
                 onExit = onExit,
             )

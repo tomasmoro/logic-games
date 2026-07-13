@@ -39,6 +39,14 @@ object Routes {
     const val BUBBLE_MATH = "game/bubblemath"
     const val ENERGY_FLOW = "game/energyflow"
     const val POLARITY_COLLISION = "game/polarity-collision"
+    const val CRUCIGRAMA_NEON = "game/crucigrama-neon"
+    const val WORD_CONNECT = "game/word-connect"
+    const val NEON_SCREWS = "game/neon-screws"
+    const val NEON_BLOCK_GRID = "game/neon-block-grid"
+    const val NEON_LEXICON = "game/neon-lexicon"
+    const val STARPORT_ESCAPE = "game/starport-escape"
+    const val NEON_CIRCUIT = "game/neon-circuit"
+    const val HYPERGATE = "game/hypergate"
 
     /**
      * Ruta de juego para un [GameIds] concreto, o null si el juego aún no es
@@ -52,6 +60,14 @@ object Routes {
         GameIds.BUBBLE_MATH -> BUBBLE_MATH
         GameIds.ENERGY_FLOW -> ENERGY_FLOW
         GameIds.POLARITY_COLLISION -> POLARITY_COLLISION
+        GameIds.CRUCIGRAMA_NEON -> CRUCIGRAMA_NEON
+        GameIds.WORD_CONNECT -> WORD_CONNECT
+        GameIds.NEON_SCREWS -> NEON_SCREWS
+        GameIds.NEON_BLOCK_GRID -> NEON_BLOCK_GRID
+        GameIds.NEON_LEXICON -> NEON_LEXICON
+        GameIds.STARPORT_ESCAPE -> STARPORT_ESCAPE
+        GameIds.NEON_CIRCUIT -> NEON_CIRCUIT
+        GameIds.HYPERGATE -> HYPERGATE
         else -> null
     }
 

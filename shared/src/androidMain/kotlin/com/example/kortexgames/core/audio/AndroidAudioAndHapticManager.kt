@@ -2,8 +2,6 @@ package com.example.kortexgames.core.audio
 
 import android.content.Context
 import android.media.AudioAttributes
-import android.media.AudioFormat
-import android.media.AudioTrack
 import android.media.MediaPlayer
 import android.media.SoundPool
 import android.os.Build
@@ -11,6 +9,14 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import com.example.kortexgames.data.settings.SettingsRepository
+import kortexgames.shared.generated.resources.Res
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.ExperimentalResourceApi
+import java.io.File
 
 /**
  * Implementación Android:
@@ -18,15 +24,21 @@ import com.example.kortexgames.data.settings.SettingsRepository
  *   - Música: [MediaPlayer] (streaming en bucle).
  *   - Háptica: [Vibrator] / [VibratorManager] con [VibrationEffect].
  *
+ * Los assets de audio viven en una **única fuente** compartida con iOS:
+ * `commonMain/composeResources/files/`. Se leen vía `Res.readBytes` (no hay copia
+ * duplicada en `res/raw`) y, como [SoundPool] carga desde un descriptor de archivo,
+ * se materializan una vez en la caché para poder cargarlos por ruta.
+ *
  * Respeta las preferencias del usuario: consulta el snapshot de [settings]
  * antes de cada acción, así un toggle en ajustes tiene efecto inmediato.
  */
+@OptIn(ExperimentalResourceApi::class)
 class AndroidAudioAndHapticManager(
     private val context: Context,
     private val settings: SettingsRepository,
 ) : AudioAndHapticManager {
 
-    /** Atributos de audio de juego, compartidos por SoundPool y AudioTrack. */
+    /** Atributos de audio de juego para el SoundPool. */
     private val gameAudioAttributes: AudioAttributes = AudioAttributes.Builder()
         .setUsage(AudioAttributes.USAGE_GAME)
         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -41,11 +53,11 @@ class AndroidAudioAndHapticManager(
     private var musicPlayer: MediaPlayer? = null
 
     /**
-     * Caché de PCM por (frecuencia|duración): sintetizar la onda en cada toque es
-     * barato, pero el juego reutiliza las mismas 9 notas una y otra vez, así que
-     * memorizarlas evita recomputar en el hilo de UI durante la reproducción.
+     * Scope de precarga. `Res.readBytes` es suspend, así que la carga es
+     * asíncrona; [preload] la lanza y no bloquea el arranque. Se cancela en
+     * [release]. Dispatchers.Default: el trabajo es I/O ligero + copia a caché.
      */
-    private val toneCache = mutableMapOf<Long, ByteArray>()
+    private val loadScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     private val vibrator: Vibrator by lazy {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -58,9 +70,21 @@ class AndroidAudioAndHapticManager(
     }
 
     override fun preload() {
-        SoundEffect.entries.forEach { effect ->
-            val resId = context.resources.getIdentifier(effect.fileName, "raw", context.packageName)
-            if (resId != 0) soundIds[effect] = soundPool.load(context, resId, 1)
+        // Directorio de caché donde materializamos los assets para SoundPool.
+        val sfxDir = File(context.cacheDir, "sfx").apply { mkdirs() }
+        loadScope.launch {
+            SoundEffect.entries.forEach { effect ->
+                runCatching {
+                    val bytes = Res.readBytes("files/${effect.fileName}")
+                    // Reutiliza el archivo si ya existe con el mismo tamaño (arranques
+                    // posteriores no reescriben); si no, lo vuelca una vez.
+                    val file = File(sfxDir, effect.fileName)
+                    if (!file.exists() || file.length() != bytes.size.toLong()) {
+                        file.writeBytes(bytes)
+                    }
+                    soundIds[effect] = soundPool.load(file.path, 1)
+                }
+            }
         }
     }
 
@@ -68,38 +92,6 @@ class AndroidAudioAndHapticManager(
         if (!settings.current.isSfxEnabled) return
         val id = soundIds[effect] ?: return
         soundPool.play(id, 1f, 1f, 1, 0, 1f)
-    }
-
-    override fun playTone(frequencyHz: Float, durationMs: Int) {
-        if (!settings.current.isSfxEnabled) return
-        // Clave estable combinando bits de la frecuencia y la duración.
-        val key = (frequencyHz.toRawBits().toLong() shl 20) or (durationMs.toLong() and 0xFFFFF)
-        val pcm = toneCache.getOrPut(key) { ToneSynth.squarePcm16(frequencyHz, durationMs) }
-
-        // AudioTrack en MODO_STATIC: escribimos todo el buffer y lo disparamos.
-        // Cada toque crea un track efímero que se auto-libera al llegar al final
-        // (marker), así varias notas pueden solaparse sin cortarse entre sí.
-        val track = AudioTrack.Builder()
-            .setAudioAttributes(gameAudioAttributes)
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setSampleRate(ToneSynth.SAMPLE_RATE)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .build()
-            )
-            .setBufferSizeInBytes(pcm.size)
-            .setTransferMode(AudioTrack.MODE_STATIC)
-            .build()
-
-        track.write(pcm, 0, pcm.size)
-        // Marca el final (en frames) para liberar el track cuando termina de sonar.
-        track.setNotificationMarkerPosition(pcm.size / 2)
-        track.setPlaybackPositionUpdateListener(object : AudioTrack.OnPlaybackPositionUpdateListener {
-            override fun onMarkerReached(t: AudioTrack?) { t?.release() }
-            override fun onPeriodicNotification(t: AudioTrack?) {}
-        })
-        track.play()
     }
 
     override fun hapticFeedback(type: HapticFeedback) {
@@ -129,6 +121,7 @@ class AndroidAudioAndHapticManager(
     }
 
     override fun release() {
+        loadScope.cancel()
         soundPool.release()
         soundIds.clear()
         stopMusic()

@@ -18,10 +18,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -42,6 +46,35 @@ fun Modifier.clickableNoRipple(
 /** Aplica alpha solo si [condition] es cierta. */
 fun Modifier.alphaIf(condition: Boolean, value: Float): Modifier =
     if (condition) this.alpha(value) else this
+
+/**
+ * Borde **punteado** redondeado, dibujado con [drawBehind] (Compose no ofrece un
+ * `border` con guiones). Se usa para estados "por rellenar" —marcos vacíos que
+ * invitan a completarse—, como las celdas de la misión diaria aún no jugadas.
+ *
+ * @param color color de los guiones.
+ * @param cornerRadius radio de las esquinas (a juego con el `clip` de la celda).
+ * @param strokeWidth grosor del trazo.
+ * @param dashLength longitud de cada guion y del hueco entre guiones.
+ */
+fun Modifier.dashedBorder(
+    color: Color,
+    cornerRadius: Dp = 18.dp,
+    strokeWidth: Dp = 1.5.dp,
+    dashLength: Dp = 6.dp,
+): Modifier = drawBehind {
+    val stroke = Stroke(
+        width = strokeWidth.toPx(),
+        pathEffect = PathEffect.dashPathEffect(
+            floatArrayOf(dashLength.toPx(), dashLength.toPx()),
+        ),
+    )
+    drawRoundRect(
+        color = color,
+        cornerRadius = CornerRadius(cornerRadius.toPx()),
+        style = stroke,
+    )
+}
 
 /**
  * **Interacción táctil por defecto de la app** (CLAUDE.md §9.4). Al presionar,

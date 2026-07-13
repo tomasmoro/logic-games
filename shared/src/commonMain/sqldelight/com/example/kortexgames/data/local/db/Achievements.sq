@@ -1,0 +1,32 @@
+-- Estado por-usuario de los logros en local (progreso + desbloqueo). Espeja la
+-- tabla Supabase user_achievements: una fila por logro. El CATÁLOGO no se guarda
+-- aquí (vive en código, AchievementCatalog), solo el estado del jugador. Igual que
+-- PlayerGameProgressEntity, aquí SÍ se reescribe (upsert) y hay cola de sync.
+CREATE TABLE UserAchievementEntity (
+    achievementId TEXT    NOT NULL PRIMARY KEY,  -- UUID del catálogo/backend
+    progress      INTEGER NOT NULL,              -- avance hacia el umbral
+    unlockedAt    INTEGER,                       -- epoch millis; NULL = no desbloqueado
+    isSynced      INTEGER NOT NULL DEFAULT 0     -- 0 = pendiente de subir, 1 = subido
+);
+
+CREATE INDEX idx_user_ach_synced ON UserAchievementEntity(isSynced);
+
+selectAll:
+SELECT * FROM UserAchievementEntity;
+
+selectById:
+SELECT * FROM UserAchievementEntity WHERE achievementId = :achievementId;
+
+selectUnsynced:
+SELECT * FROM UserAchievementEntity WHERE isSynced = 0;
+
+-- Upsert idempotente por logro. INSERT OR REPLACE (no ON CONFLICT DO UPDATE) por el
+-- mismo motivo que PlayerProgress.sq: el dialecto SQLite del proyecto es 3.18 y el
+-- upsert nativo llegó en 3.24; como achievementId es PK, reemplazar la fila entera
+-- equivale a un upsert.
+upsert:
+INSERT OR REPLACE INTO UserAchievementEntity(achievementId, progress, unlockedAt, isSynced)
+VALUES (:achievementId, :progress, :unlockedAt, :isSynced);
+
+markSynced:
+UPDATE UserAchievementEntity SET isSynced = 1 WHERE achievementId = :achievementId;

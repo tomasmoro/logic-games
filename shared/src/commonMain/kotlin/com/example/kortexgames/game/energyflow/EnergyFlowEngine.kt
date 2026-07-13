@@ -6,12 +6,9 @@ import com.example.kortexgames.core.audio.SoundEffect
 import com.example.kortexgames.game.BaseGameEngine
 import com.example.kortexgames.game.GameIds
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 /**
@@ -67,46 +64,52 @@ class EnergyFlowEngine(
     private val _state = MutableStateFlow(EnergyFlowState())
     override val state: StateFlow<EnergyFlowState> = _state.asStateFlow()
 
-    /** Secuencia fija de rondas pedida para este juego. */
-    private val roundConfigs = listOf(
-        EnergyFlowGenerator.Config(4, 4),
-        EnergyFlowGenerator.Config(5, 5),
-        EnergyFlowGenerator.Config(6, 6),
-    )
+    /**
+     * Nivel en juego (1-based). Lo fija [startAtLevel] al elegir un nivel en el
+     * selector; su tamaño de rejilla sale de la curva paramétrica [configForLevel].
+     * Es la base del récord (nivel máximo) y del punto de reanudación.
+     */
+    private var currentLevel = 1
 
-    // Tablero inicial (para reiniciar) y óptimo de giros acumulado (para puntuar la eficiencia).
+    // Tablero inicial (para reiniciar) y óptimo de giros del nivel (para la eficiencia).
     private var initialGrid: EnergyGrid = EnergyGrid(0, 0, emptyList())
     private var currentRoundOptimalRotations = 0
-    private var completedRotations = 0
-    private var completedOptimalRotations = 0
     private var rotationSeq = 0L
-    private var currentRoundIndex = 0
-    /** Rondas resueltas = nivel alcanzado (base del récord). */
-    private var solvedRounds = 0
-    private var pendingRoundJob: Job? = null
 
-    private val currentConfig: EnergyFlowGenerator.Config
-        get() = roundConfigs[currentRoundIndex]
-
-    override fun onStart() {
-        pendingRoundJob?.cancel()
-        currentRoundIndex = 0
-        completedRotations = 0
-        completedOptimalRotations = 0
-        solvedRounds = 0
-        startRound()
+    /**
+     * Curva de dificultad: nivel N → tamaño de rejilla cuadrada. El **nivel 1
+     * conserva la config base** (4×4); a mayor nivel, rejilla más grande (más piezas
+     * que orientar). Se acota (≤ 8×8) para que la generación siga siendo viable.
+     */
+    private fun configForLevel(level: Int): EnergyFlowGenerator.Config {
+        val n = (4 + (level.coerceAtLeast(1) - 1) / 2).coerceIn(4, 8) // l1=4, l3=5, l5=6, l7=7, l9=8
+        return EnergyFlowGenerator.Config(n, n)
     }
 
-    private fun startRound() {
-        val level = EnergyFlowGenerator.generate(currentConfig, random)
+    /**
+     * Arranca el nivel [level] elegido en el selector: fija [currentLevel], regenera
+     * su rejilla y empieza la partida. La usa el ViewModel al pulsar un nivel
+     * desbloqueado o "Siguiente nivel".
+     */
+    fun startAtLevel(level: Int) {
+        currentLevel = level.coerceAtLeast(1)
+        start() // BaseGameEngine.start() → onStart()
+    }
+
+    override fun onStart() {
+        startCurrentLevel()
+    }
+
+    private fun startCurrentLevel() {
+        val level = EnergyFlowGenerator.generate(configForLevel(currentLevel), random)
         initialGrid = level.grid
         currentRoundOptimalRotations = level.optimalRotations
         rotationSeq = 0
         _state.value = EnergyFlowState(
             grid = level.grid,
             powered = level.grid.poweredIndices(),
-            round = currentRoundIndex + 1,
-            totalRounds = roundConfigs.size,
+            round = currentLevel,
+            totalRounds = currentLevel, // el HUD lo lee como "Nivel N"
         )
     }
 
@@ -130,24 +133,11 @@ class EnergyFlowEngine(
         )
 
         if (solved) {
-            // Clímax de cada ronda: refuerzo marcado antes de avanzar o cerrar la partida.
+            // Nivel resuelto: refuerzo marcado y cierre. El avance al siguiente nivel
+            // lo decide el jugador desde el game-over (o el selector).
             audio.playSound(SoundEffect.SUCCESS)
             audio.hapticFeedback(HapticFeedback.HEAVY)
-
-            completedRotations += _state.value.rotations
-            completedOptimalRotations += currentRoundOptimalRotations
-            solvedRounds = currentRoundIndex + 1 // 1-based: nivel alcanzado
-
-            if (currentRoundIndex < roundConfigs.lastIndex) {
-                currentRoundIndex++
-                pendingRoundJob?.cancel()
-                pendingRoundJob = scope.launch {
-                    delay(ROUND_TRANSITION_DELAY_MS)
-                    startRound()
-                }
-            } else {
-                finish()
-            }
+            finish()
         } else {
             audio.playSound(SoundEffect.TAP)
             audio.hapticFeedback(HapticFeedback.LIGHT)
@@ -156,42 +146,37 @@ class EnergyFlowEngine(
 
     /** Reinicia el MISMO nivel a su barajado inicial (no genera uno nuevo). */
     fun restart() {
-        pendingRoundJob?.cancel()
         rotationSeq = 0
         _state.value = EnergyFlowState(
             grid = initialGrid,
             powered = initialGrid.poweredIndices(),
-            round = currentRoundIndex + 1,
-            totalRounds = roundConfigs.size,
+            round = currentLevel,
+            totalRounds = currentLevel,
         )
     }
 
     /**
-     * Puntaje: base por dificultad menos una penalización por cada giro de más
-     * respecto al óptimo ([optimalRotations]). Premia resolver con pocos giros;
-     * nunca baja de 0.
+     * Puntaje: base proporcional al nivel menos una penalización por cada giro de
+     * más respecto al óptimo ([optimalRotations]). Premia resolver niveles altos con
+     * pocos giros; nunca baja de 0.
      */
     override fun calculateScore(): Int {
-        val base = difficulty * 1_000 * roundConfigs.size
-        val totalRotations = completedRotations + _state.value.rotations
-        val totalOptimalRotations = completedOptimalRotations + currentRoundOptimalRotations
-        val extra = (totalRotations - totalOptimalRotations).coerceAtLeast(0)
+        val base = currentLevel * 1_000
+        val extra = (_state.value.rotations - currentRoundOptimalRotations).coerceAtLeast(0)
         return (base - extra * PENALTY_PER_EXTRA_ROTATION).coerceAtLeast(0)
     }
 
     /** Precisión = eficiencia: giros óptimos / giros reales (tope 100 %). */
     override fun currentAccuracy(): Double {
-        val totalRotations = completedRotations + _state.value.rotations
-        val totalOptimalRotations = completedOptimalRotations + currentRoundOptimalRotations
-        if (totalRotations == 0 || totalOptimalRotations == 0) return 100.0
-        return (totalOptimalRotations.toDouble() / totalRotations * 100).coerceAtMost(100.0)
+        val rotations = _state.value.rotations
+        if (rotations == 0 || currentRoundOptimalRotations == 0) return 100.0
+        return (currentRoundOptimalRotations.toDouble() / rotations * 100).coerceAtMost(100.0)
     }
 
-    /** Récord = nivel alcanzado (rondas resueltas); null si no resolvió ninguna. */
-    override fun reachedMetric(): Int? = solvedRounds.takeIf { it > 0 }
+    /** Récord = nivel completado (solo se llega aquí al resolver el nivel). */
+    override fun reachedMetric(): Int = currentLevel
 
     private companion object {
         const val PENALTY_PER_EXTRA_ROTATION = 25
-        const val ROUND_TRANSITION_DELAY_MS = 3_000L
     }
 }

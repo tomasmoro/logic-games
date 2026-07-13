@@ -109,8 +109,8 @@ class SequenceMemoryEngine(
             delay(gapMs)
             for (tile in sequence) {
                 _state.update { it.copy(litTile = tile) }
-                // Cada tile suena su propia nota (timbre arcade): la secuencia es una melodía.
-                audio.playTone(MemoryNotes.frequencyFor(tile), durationMs = 260)
+                // Cada tile suena su propia nota grabada: la secuencia es una melodía.
+                audio.playSound(MemoryNotes.soundFor(tile))
                 delay(showMs)
                 _state.update { it.copy(litTile = null) }
                 delay(gapMs)
@@ -136,9 +136,9 @@ class SequenceMemoryEngine(
             return
         }
 
-        // Acierto: el botón responde con su nota (mismo timbre que la reproducción).
+        // Acierto: el botón responde con su nota (la misma que en la reproducción).
         correctTaps++
-        audio.playTone(MemoryNotes.frequencyFor(index))
+        audio.playSound(MemoryNotes.soundFor(index))
         audio.hapticFeedback(HapticFeedback.LIGHT)
         val progress = _state.value.inputProgress + 1
 

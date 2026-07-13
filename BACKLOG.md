@@ -5,14 +5,6 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
 
 ## Cuenta / sincronización
 
-- [x] **Sync bidireccional (descarga nube → local).** Hecho: `syncPending()` ahora
-  hace push (local→nube) y luego pull (`RemoteProgressDataSource.fetchAll()` →
-  `LocalProgressDataSource.mergeRemote()`), deduplicando por `remoteId`. Al iniciar
-  sesión en otro dispositivo o tras reinstalar, el historial de la nube se descarga
-  a SQLDelight. Ref: `data/repository/ProgressRepositoryImpl.kt`.
-- [ ] **Leer el plan real (premium).** `AuthRepositoryImpl` fija `PlanType.FREE`
-  siempre; no consulta `public.users.plan_type`. Un usuario premium seguiría
-  viendo anuncios. Ref: `data/repository/AuthRepositoryImpl.kt`.
 - [ ] **Login con Google en iOS.** Android ya usa Credential Manager (real). iOS
   sigue con fallback documentado; falta el SDK GoogleSignIn (o el flujo OAuth por
   navegador) + config en Xcode. Ref: `data/remote/auth/GoogleAuthClient.ios.kt`.
@@ -22,74 +14,79 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
 
 ## Juegos / progresión
 
-- [~] **Sistema de niveles/progresión por juego.** Núcleo IMPLEMENTADO (alcance
-  elegido: tabla sincronizada en Supabase). Hecho:
-  - Backend: tabla `player_game_progress` (best_metric, last_level) + RLS
-    (`0010_player_game_progress.sql`). El servidor no interpreta la métrica; el
-    cliente resuelve la mejor marca (local-first) y sube ya resuelta.
-  - Dominio: `ProgressionKind`/`MetricDirection`/`GameProgression` + registro
-    `GameProgressions` (`game/GameProgression.kt`); `GameResult.reachedMetric` y
-    modelo `PlayerGameProgress`.
-  - Motores: cada uno reporta el valor ALCANZADO (`BaseGameEngine.reachedMetric()`).
-  - Datos: SQLDelight `PlayerProgress.sq` + local/remote datasources +
-    `PlayerProgressRepositoryImpl` (local-first con fusión bidireccional: mejor
-    marca gana; `lastLevel` más reciente gana). Sync al autenticarse (AppGraph).
-  - UI: la tarjeta del catálogo muestra el récord ("Nivel máx 7" / "Mejor 320 ms").
+- [x] **Antesala (intro) de cada juego.** HECHO. Nuevo componente neón reutilizable
+  `ui/components/GameIntroScreen.kt`: pantalla previa común a todos los juegos con
+  icono (placeholder vacío por ahora), título, descripción, botón de **ayuda**
+  (no-op de momento), CTA **Comenzar** (único bucle de atención: latido + halo) y,
+  si el juego tiene niveles, un **carril horizontal de niveles** (`LevelStripState`:
+  superados con check, frontera resaltada, bloqueados con candado; el elegido lanza
+  "Comenzar"). Los juegos LEVELED (Water Sort, Energy Flow) usan la intro en su fase
+  `LEVEL_SELECT`; los ENDLESS (Memoria, Reflejos, Burbujas, Atracción) ya **no
+  arrancan en `init`**: quedan en `GameStatus.IDLE` mostrando la intro y empiezan al
+  pulsar "Comenzar" (nuevo/reusado intent `Start`) — esto además arregla que la
+  secuencia de Memoria sonara antes de empezar. El componente `LevelSelector.kt`
+  (rejilla) queda **sustituido** por este carril y se eliminó.
 
-  **Pendiente (polish, siguiente pase):**
-  - Badge "¡Nuevo récord!" en el overlay de fin de partida. Requiere que cada
-    ViewModel capture el récord PREVIO al empezar (snapshot de
-    `playerProgressRepository.observe(gameId)`) y lo compare con `reachedMetric`.
-  - "Continuar nivel N / Empezar de nuevo" en juegos LEVELED. El `lastLevel` ya se
-    persiste y sincroniza, pero los motores aún no arrancan en un nivel dado; Water
-    Sort/Energy Flow juegan una lista fija de rondas. Falta la **curva de dificultad
-    paramétrica** (nivel N → config generada) para reanudar de verdad.
-  - SQLDelight: `PlayerGameProgressEntity` se añadió con migración versionada
-    (`1.sqm`, v1→v2), así que las instalaciones existentes la reciben vía onUpgrade
-    (no hace falta reinstalar). Es la PRIMERA migración `.sqm` del proyecto: las
-    próximas altas de tabla/columna deben seguir el mismo patrón (nuevo `.sqm`).
+  **Pendiente (polish):**
+  - **Iconos por juego.** Hoy el "héroe" de la intro es un placeholder vacío (por
+    petición). Falta diseñar/asignar un icono por juego; hueco ya previsto en
+    `GameIntroScreen(icon = ...)` (basta pasar un `ImageVector`). Punto natural para
+    guardarlo: un campo `icon` en `GameInfo`/`GameCatalog` o junto a `GameProgressions`.
+  - **Contenido del botón de ayuda.** El botón "?" existe pero es un no-op; falta la
+    hoja/diálogo de "cómo se juega" (reglas, ejemplos) por juego.
 
-  **Problema actual:** `GameEngine.finish()` guarda `difficultyLevel = difficulty`
-  (la dificultad de INICIO, siempre 1), no el nivel alcanzado. No existe estado de
-  progresión por juego: solo hay log de partidas (`user_progress`).
+- [x] **Neon Block Grid (Block Puzzle 8×8, Visión Espacial).** HECHO (primer pase).
+  Juego ENDLESS completo en `game/blockgrid/`: dominio puro (`BlockGridModel`),
+  motor con líneas simultáneas y puntuación cuadrática (`BlockGridEngine` + tests),
+  MVI (`BlockGridContract`/`ViewModel`) y pantalla con drag & drop, fantasma gris
+  y limpieza fade+shrink (`BlockGridScreen`). Registrado en catálogo, rutas,
+  AdManager y seed Supabase (`0013_seed_neon_block_grid.sql`).
 
-  **Modelo — separar 3 conceptos:**
-  1. *Log de partidas* → ya existe (`user_progress`).
-  2. *Récord por juego* → tu mejor marca (nivel máx / botones máx). FALTA.
-  3. *Punto de reanudación* → dónde retomas la próxima vez. FALTA.
+  **Pendiente (polish):**
+  - **Animación de retorno de pieza rechazada.** Hoy, si el drop falla, la pieza
+    reaparece en su slot sin transición; falta animar el "vuelo de vuelta" a la mano.
+  - **Limpieza escalonada por línea.** El fade+shrink es simultáneo para todas las
+    celdas; una onda por línea (stagger desde la pieza colocada) daría más "juice".
+  - **Ponderar el generador de mano.** Hoy las 23 formas salen uniformes; ponderar
+    por tamaño (menos 3×3/líneas de 5) suavizaría la dificultad inicial.
+  - **SFX propios.** Reutiliza TAP/SUCCESS/ERROR; valorar un SFX de "romper línea"
+    dedicado y otro de anclaje más "seco".
 
-  **Dos tipos de juego** (declarar en `GameInfo` un `progression: ProgressionKind`
-  + etiqueta de métrica):
-  - `LEVELED`: niveles discretos que suben → reanudar/desbloquear (Water Sort,
-    Energy Flow, Bubble Math, Polarity). Métrica: "Nivel N".
-  - `ENDLESS`: una corrida hasta fallar → récord (Memoria = máx. botones/secuencia,
-    Reflejos = mejor tiempo). Métrica: "Mejor: X".
+- [ ] **Desafíos (challenges) por juego.** Feature de retención inspirada en el
+  mockup: bajo la intro, una tarjeta **DESAFÍO** con un objetivo acotado en el
+  tiempo y barra de progreso, p. ej. *"Llega al nivel 20 en los próximos 13.5
+  minutos — 18/20"*. Al cumplirlo, recompensa (monedas/estrella/tema desbloqueable).
 
-  **Requisito:** el motor debe reportar el valor ALCANZADO, no el de inicio (Water
-  Sort: ronda/nivel alcanzado; Memoria: longitud máx de secuencia). `saveResult`
-  actualiza el récord con `max(...)`.
+  **Alcance propuesto (primer pase):**
+  - **Modelo de dominio** `Challenge` (en `domain/model`): `gameId`, tipo de objetivo
+    (`enum ChallengeGoal { REACH_LEVEL, REACH_SCORE, WIN_ROUNDS, BEAT_TIME }`),
+    `target: Int`, `deadline` (instant absoluto), `progress: Int`, `reward`. Cerrar
+    dominios con `enum`/`sealed`, no strings (CLAUDE.md §4).
+  - **Generación:** un desafío activo por juego, derivado del récord actual
+    (`playerProgressRepository`), p. ej. `target = maxUnlocked + 2`, `deadline = now +
+    N min`. Determinista por día para que reabrir la app no lo re-tire.
+  - **Persistencia:** local-first (SQLDelight, patrón de `PlayerProgress.sq`); a
+    futuro, sincronizar y alimentar el **leaderboard de Desafíos Diarios** (§1 de
+    CLAUDE.md) vía Supabase.
+  - **UI:** tarjeta neón bajo el título/carril en `GameIntroScreen` (slot ya cómodo
+    de añadir): etiqueta "DESAFÍO", texto del objetivo, `CircularProgressRing`/barra
+    con `progress/target`, y cuenta atrás del `deadline`. Reutilizar `LogicColors`/
+    `LogicGradients`.
+  - **Progreso:** al terminar una partida, el ViewModel actualiza el `progress` del
+    desafío activo (comparando `reachedMetric`) y dispara la recompensa al cumplirse.
 
-  **Dónde guardar (mínimo viable, recomendado):**
-  - *Récord* → derivarlo del historial (`max` sobre `user_progress`). Sin infra
-    nueva; se sincroniza gratis cuando exista la descarga nube→local.
-  - *Reanudación* (`lastLevel`) → DataStore local por juego (patrón `DailyGoalStore`).
-    Comodidad por-dispositivo; promocionable a fila sincronizada si se quiere que
-    siga a la cuenta.
-
-  **Alternativa (más ambiciosa):** tabla `player_game_progress` en Supabase
-  (best/max/lastLevel por juego) sincronizada entre dispositivos → implica
-  migración SQL + RLS + sync; depende de resolver antes la descarga nube→local.
-
-  **Nota Water Sort:** hoy juega una lista fija de 3 rondas (`roundConfigs`) por
-  sesión. Para progresión infinita hay que pasar a una curva de dificultad
-  paramétrica (nivel N → config generada), persistir `lastLevel` y arrancar ahí.
-
-  **UX:** tarjeta del catálogo muestra la métrica ("Nivel máx 7" / "Mejor: 12");
-  juegos LEVELED ofrecen "Continuar nivel N / Empezar de nuevo"; game-over marca
-  "Nuevo récord" al superar el `bestMetric`.
+  Ref: `ui/components/GameIntroScreen.kt` (slot de tarjeta), `game/GameProgression.kt`,
+  `domain/model`, `data/local` (nueva tabla vía migración `.sqm`).
 
 - [ ] **Energy Flow: medir la stat por TIEMPO, no por nivel.** El récord debería ser
   cuánto tarda en resolver los niveles (menor = mejor), no el nivel alcanzado.
+
+  ⚠️ **Tensión con lo ya hecho:** Energy Flow ahora es LEVELED con selector de
+  niveles (récord = nivel máx). Medir por tiempo lo volvería ENDLESS y quitaría la
+  progresión por niveles. Alternativa que concilia ambos: mantener los niveles y
+  mostrar el **mejor tiempo POR nivel** (récord de tiempo por cada nivel superado),
+  lo que sí requeriría guardar tiempo-por-nivel (no cabe en `best_metric` único;
+  implicaría ampliar el esquema o una tabla de tiempos por nivel).
 
   **Factibilidad (analizada): SÍ, sin tocar la estructura de `user_progress`.**
   - La columna `completion_time_ms` YA existe en `user_progress` y `BaseGameEngine`
@@ -108,39 +105,63 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
     normalizar por nivel (tiempo/nivel) o medir por nivel individual.
   Ref: `game/energyflow/EnergyFlowEngine.kt`, `game/GameProgression.kt`.
 
-## Bugs conocidos
+- [ ] **Hallazgos del security advisor (preexistentes, revisados 2026-07-10).**
+  Ninguno introducido por los seeds de juegos; los "reales" pendientes:
+  - Particiones `user_progress_2026_*` y `_default` con RLS activo pero **sin
+    políticas propias** (INFO). El acceso pasa por la tabla madre (que sí tiene
+    políticas), pero conviene confirmar que PostgREST no expone las particiones
+    directamente. Relacionado con el ítem de automatizar particiones.
+  - Extensión `citext` instalada en `public` (WARN): moverla a un schema propio
+    en una migración nueva.
+  - **Leaked password protection desactivada** en Auth (WARN): activarla en el
+    dashboard (chequeo contra HaveIBeenPwned), sin impacto en código.
+  - `get_score_percentile` SECURITY DEFINER ejecutable por `authenticated`: es
+    **por diseño** (RPC de percentiles que solo devuelve agregados, CLAUDE.md §5);
+    no requiere acción.
 
-- [ ] **Polarity Collision: colisiones de color a veces se cuentan como fallo.**
-  Cuando un asteroide violeta impacta el sector violeta del centro (y análogamente
-  con todos los colores), a veces se registra como mismatch (`ERROR` + penalización)
-  aunque visualmente el color coincide.
-
-  **Causa probable:** el sector de impacto se calcula con la posición **post-step**
-  de la partícula (`atan2(py - centerY, px - centerX)` en `step()`), que ya está
-  DENTRO del disco y ha sido desviada tangencialmente por la curva magnética justo
-  antes del impacto. Cerca de los límites entre sectores, ese ángulo cae en el
-  sector contiguo al que el jugador ve, y `targetSector != particle.colorIndex`
-  marca fallo. Con pasos de tiempo discretos (dt) el punto muestreado puede estar
-  bastante pasado el borde, agravándolo.
-
-  **Arreglo sugerido:** calcular el ángulo de impacto en el **punto de cruce del
-  borde** (interpolar entre la posición previa y la nueva hasta `catchRadius`), no en
-  la posición final; muestrear `rotationRad` de forma coherente con ese instante; y/o
-  añadir una pequeña tolerancia angular (snap) cerca de los límites de sector.
-  Ref: `game/polarity/PolarityCollisionEngine.kt` (`step()`, `sectorFromAngle()`).
+- [ ] **Starport Escape: pulido.**
+  - Más niveles diseñados (hoy 10, verificados por BFS; el catálogo cicla a
+    partir del 11). El solver está en el scratchpad de la sesión — considerar
+    versionarlo en `tools/` para diseñar tandas nuevas.
+  - Tutorial visual en el nivel 1 (mano/flecha que sugiere el primer gesto).
+  - Sonido propio de "deslizamiento" (hoy reutiliza TAP del catálogo de SFX).
+  - Valorar variar el borde de la esclusa entre niveles (el motor ya es
+    genérico; solo es diseño de niveles).
 
 ## Logros
 
-- [ ] **Logros (achievements).** Las tablas `achievements` / `user_achievements`
-  existen en el backend, pero no hay lógica en la app (desbloqueo, UI, sync).
+- [~] **Logros (achievements).** Conexión al backend HECHA; faltan evaluador de
+  desbloqueo y UI. Hecho en este pase:
+  - **Seed del catálogo** (`0012_seed_achievements.sql`, idempotente): 16 logros
+    base que cubren los 6 tipos de `achievement_condition` (games_played,
+    total_score, streak_days, daily_goal_completed, perfect_accuracy y
+    category_mastery para Memoria/Cálculo/Lenguaje). UUIDs fijos.
+  - **Catálogo en código** (`game/achievements/AchievementCatalog.kt` +
+    `AchievementIds`), espejo del seed con los mismos UUID. En código (no leído de
+    Supabase) porque `achievements` solo es legible por `authenticated` y el
+    invitado debe verlo offline — mismo criterio que `GameCatalog`.
+  - **Dominio** (`domain/model/Achievement.kt`): `AchievementCondition`,
+    `Achievement`, `UserAchievement`, `AchievementStatus` (con `isUnlocked`/`fraction`).
+  - **Datos local-first**: tabla SQLDelight `UserAchievementEntity` (`Achievements.sq`
+    + migración `2.sqm`, v2→v3), `LocalAchievementsDataSource` (+impl),
+    `RemoteAchievementsDataSource` (`user_achievements`), y
+    `AchievementsRepository`(+Impl) con fusión bidireccional (mayor progreso gana;
+    `unlockedAt` más temprano gana). **Solo se suben desbloqueos** a la nube (el
+    `unlocked_at NOT NULL` de la tabla no distingue "en progreso"); el progreso
+    parcial se queda local y es recalculable. Cableado en `AppGraph` + `sync()` al
+    autenticarse.
+
+  **Pendiente:**
+  - **Evaluador de desbloqueo.** Nada llama aún a `recordProgress`: falta el motor
+    que, tras cada partida / cambio de racha / meta diaria, calcule el avance de cada
+    condición desde las estadísticas (`ProgressRepository`, `DailyGoalManager`,
+    streak) y llame a `AchievementsRepository.recordProgress`. Devuelve si desbloqueó
+    (para celebración tipo `FireworksOverlay`).
+  - **UI de Logros.** Pantalla/entrada que consuma `observeAll()` (grid de tarjetas
+    con estado desbloqueado/bloqueado + barra de progreso). Falta también mapear el
+    `icon_key`/slug a un `ImageVector` (Material Rounded, nunca emoji, CLAUDE.md §9.5).
 
 ## Técnico / limpieza
-
-- [ ] **Unificar assets de audio.** Los `.wav` están duplicados en
-  `androidApp/src/main/res/raw/` (Android) y `shared/.../composeResources/files/`
-  (iOS, añadido para arreglar el sonido en iOS). Unificar en una sola fuente
-  (p. ej. mover Android a composeResources también) para no mantener dos copias.
-
 - [ ] **Automatizar particiones de `user_progress`.** La tabla está particionada
   por mes sobre `created_at`, pero solo existen las particiones jul/ago/sep 2026
   (`0001_initial_schema.sql`). A partir de **octubre 2026** todos los inserts caen
@@ -149,3 +170,24 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
   particionado. Automatizar la creación mensual anticipada (job/cron con `SECURITY
   DEFINER` que haga `create table … partition of …`, o la extensión `pg_partman`).
   Nueva migración; no editar la `0001` ya aplicada. Ref: `supabase/migrations/`.
+
+## Extras
+
+- [ ] **Mejorar niveles de crucigrama y Word Connect** (HACERLO MANUAL) Menos letras igual cantidad de 
+      palabras.
+- [ ] **Mejorar flujo de energia** Mejorar efecto neon, conectores sobresalen, 
+      agregar chispas al conectar. Progresion mas lenta de niveles, separar mas conector de entrada y salida
+- [ ] **Crear torneos de juegos y rankings**
+
+- [ ] **Neon Circuit Flow — catálogo de niveles + solver.** Hoy solo hay
+      `test5x5` (hardcoded) y "Siguiente nivel" cicla sobre él. Falta diseñar
+      niveles 5×5→8×8 de dificultad creciente y verificarlos con un solver
+      (resolubilidad + unicidad/teselado), como se hizo con Starport. Ref:
+      `game/neoncircuit/NeonCircuitLevels.kt`.
+- [ ] **Neon Circuit Flow — SFX de "estática" por celda.** El avance de cable
+      (`CellAdvanced`) solo da háptica; el catálogo `SoundEffect` no tiene aún un
+      sonido de estática suave. Añadir el asset y cablearlo en
+      `NeonCircuitViewModel.onEngineEvent`.
+- [ ] **Neon Circuit Flow — seed en Supabase.** Falta la migración que inserta el
+      juego (`GameIds.NEON_CIRCUIT`) en la tabla `games` para que persista score y
+      percentiles, como las `0013/0014/0015` de los últimos juegos.

@@ -6,12 +6,9 @@ import com.example.kortexgames.core.audio.SoundEffect
 import com.example.kortexgames.game.BaseGameEngine
 import com.example.kortexgames.game.GameIds
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 /**
@@ -85,46 +82,55 @@ class WaterSortEngine(
     override val state: StateFlow<WaterSortState> = _state.asStateFlow()
 
     /**
-     * Secuencia fija pedida para el juego:
-     *  1) 6 tubos, capacidad 4, 1 libre  => 5 colores
-     *  2) 8 tubos, capacidad 4, 2 libres => 6 colores
-     *  3) 8 tubos, capacidad 5, 2 libres => 6 colores
+     * Nivel en juego (1-based). Lo fija [startAtLevel] al elegir un nivel en el
+     * selector; su configuración sale de la curva paramétrica [configForLevel].
+     * Es la base del récord (nivel máximo) y del punto de reanudación.
      */
-    private val roundConfigs = listOf(
-        LevelConfig(colorCount = 5, emptyTubes = 2, capacity = 4),
-    )
+    private var currentLevel = 1
 
     // Tablero inicial (para reiniciar) e historial de vertidos (para deshacer).
     private var initialTubes: List<Tube> = emptyList()
     private val history = ArrayDeque<List<Tube>>()
     private var currentRoundMinMoves = 0
     private var pourSeq = 0L
-    private var currentRoundIndex = 0
-    private var totalMoves = 0
-    private var totalReferenceMoves = 0
-    /** Rondas resueltas = nivel alcanzado (base del récord y del lastLevel). */
-    private var solvedRounds = 0
-    private var pendingRoundJob: Job? = null
 
-    override fun onStart() {
-        pendingRoundJob?.cancel()
-        currentRoundIndex = 0
-        totalMoves = 0
-        totalReferenceMoves = 0
-        solvedRounds = 0
-        startRound(currentRoundIndex)
+    /**
+     * Curva de dificultad: nivel N → configuración. El **nivel 1 conserva la config
+     * base** del juego (5 colores, capacidad 4, 2 tubos libres); a mayor nivel suben
+     * los colores y la capacidad. Se acota (colores ≤ 7, capacidad ≤ 5) para que el
+     * generador —con solver DFS— siga produciendo niveles resolubles en tiempo razonable.
+     */
+    private fun configForLevel(level: Int): LevelConfig {
+        val l = level.coerceAtLeast(1)
+        val colorCount = (5 + (l - 1) / 2).coerceIn(5, 7)
+        val capacity = (4 + (l - 1) / 6).coerceIn(4, 5)
+        return LevelConfig(colorCount = colorCount, emptyTubes = 2, capacity = capacity)
     }
 
-    private fun startRound(index: Int) {
-        val level = WaterSortGenerator.generate(roundConfigs[index], random)
+    /**
+     * Arranca el nivel [level] elegido en el selector: fija [currentLevel], regenera
+     * su tablero paramétrico y empieza la partida. La usa el ViewModel al pulsar un
+     * nivel desbloqueado o "Siguiente nivel".
+     */
+    fun startAtLevel(level: Int) {
+        currentLevel = level.coerceAtLeast(1)
+        start() // BaseGameEngine.start() → onStart()
+    }
+
+    override fun onStart() {
+        startCurrentLevel()
+    }
+
+    private fun startCurrentLevel() {
+        val level = WaterSortGenerator.generate(configForLevel(currentLevel), random)
         initialTubes = level.tubes
         currentRoundMinMoves = level.minMoves
         history.clear()
         _state.value = WaterSortState(
             tubes = level.tubes,
             capacity = level.capacity,
-            round = index + 1,
-            totalRounds = roundConfigs.size,
+            round = currentLevel,
+            totalRounds = currentLevel, // el HUD lo lee como "Nivel N"
         )
     }
 
@@ -186,24 +192,11 @@ class WaterSortEngine(
         )
 
         if (solved) {
-            // Cierre de ronda: feedback explícito antes de pasar de nivel o terminar.
+            // Nivel resuelto: refuerzo explícito y cierre de la partida. El avance al
+            // siguiente nivel lo decide el jugador desde el game-over (o el selector).
             audio.playSound(SoundEffect.SUCCESS)
             audio.hapticFeedback(HapticFeedback.HEAVY)
-
-            totalMoves += roundMoves
-            totalReferenceMoves += currentRoundMinMoves
-            solvedRounds = currentRoundIndex + 1 // 1-based: nivel alcanzado
-
-            if (currentRoundIndex < roundConfigs.lastIndex) {
-                currentRoundIndex++
-                pendingRoundJob?.cancel()
-                pendingRoundJob = scope.launch {
-                    delay(ROUND_TRANSITION_DELAY_MS)
-                    startRound(currentRoundIndex)
-                }
-            } else {
-                finish()
-            }
+            finish()
         }
     }
 
@@ -223,40 +216,37 @@ class WaterSortEngine(
 
     /** Reinicia el MISMO nivel a su estado inicial (no genera uno nuevo). */
     fun restart() {
-        pendingRoundJob?.cancel()
         history.clear()
         _state.value = WaterSortState(
             tubes = initialTubes,
-            capacity = roundConfigs[currentRoundIndex].capacity,
-            round = currentRoundIndex + 1,
-            totalRounds = roundConfigs.size,
+            capacity = configForLevel(currentLevel).capacity,
+            round = currentLevel,
+            totalRounds = currentLevel,
         )
     }
 
     /**
-     * Puntaje: base por dificultad menos una penalización por cada vertido de más
-     * respecto a la solución de referencia ([minMoves]). Premia resolver con pocos
-     * movimientos; nunca baja de 0.
+     * Puntaje: base proporcional al nivel menos una penalización por cada vertido de
+     * más respecto a la solución de referencia ([minMoves]). Premia resolver niveles
+     * altos con pocos movimientos; nunca baja de 0.
      */
     override fun calculateScore(): Int {
-        val base = difficulty * 1_000 * roundConfigs.size
-        val extraMoves = (totalMoves - totalReferenceMoves).coerceAtLeast(0)
+        val base = currentLevel * 1_000
+        val extraMoves = (_state.value.moves - currentRoundMinMoves).coerceAtLeast(0)
         return (base - extraMoves * PENALTY_PER_EXTRA_MOVE).coerceAtLeast(0)
     }
 
     /** Precisión = eficiencia: movimientos de referencia / movimientos reales. */
     override fun currentAccuracy(): Double {
-        val moves = totalMoves + _state.value.moves
-        val reference = totalReferenceMoves + currentRoundMinMoves
-        if (moves == 0 || reference == 0) return 100.0
-        return (reference.toDouble() / moves * 100).coerceAtMost(100.0)
+        val moves = _state.value.moves
+        if (moves == 0 || currentRoundMinMoves == 0) return 100.0
+        return (currentRoundMinMoves.toDouble() / moves * 100).coerceAtMost(100.0)
     }
 
-    /** Récord = nivel alcanzado (rondas resueltas); null si no resolvió ninguna. */
-    override fun reachedMetric(): Int? = solvedRounds.takeIf { it > 0 }
+    /** Récord = nivel completado (solo se llega aquí al resolver el nivel). */
+    override fun reachedMetric(): Int = currentLevel
 
     private companion object {
         const val PENALTY_PER_EXTRA_MOVE = 40
-        const val ROUND_TRANSITION_DELAY_MS = 1_000L
     }
 }

@@ -37,11 +37,14 @@ class PlayerProgressRepositoryImpl(
 
     override fun observeAll(): Flow<List<PlayerGameProgress>> = local.observeAll()
 
-    override suspend fun recordResult(result: GameResult) {
-        val progression = GameProgressions.forId(result.gameId) ?: return
-        val reached = result.reachedMetric ?: return // sin métrica medible → nada que registrar
+    override suspend fun recordResult(result: GameResult): Boolean {
+        val progression = GameProgressions.forId(result.gameId) ?: return false
+        val reached = result.reachedMetric ?: return false // sin métrica medible → nada que registrar
 
         val current = local.getByGame(result.gameId)
+        // Récord solo si HABÍA marca previa y esta la supera; la primera marca no cuenta
+        // como "nuevo récord" (no hay nada que batir) para no celebrar la primera partida.
+        val isNewRecord = current != null && progression.isBetter(reached, current.bestMetric)
         val newBest = when {
             current == null -> reached
             progression.isBetter(reached, current.bestMetric) -> reached
@@ -60,6 +63,7 @@ class PlayerProgressRepositoryImpl(
         )
         local.upsert(merged)
         pushIfPossible(merged)
+        return isNewRecord
     }
 
     override suspend fun sync() {

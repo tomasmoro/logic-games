@@ -23,6 +23,9 @@ data class BubbleMathUiState(
 ) : UiState
 
 sealed interface BubbleMathIntent : UiIntent {
+    /** Arranca la partida desde la antesala (intro), "Comenzar". */
+    data object Start : BubbleMathIntent
+
     /** El jugador tocó una burbuja concreta. */
     data class TapBubble(val id: Int) : BubbleMathIntent
     data object Pause : BubbleMathIntent
@@ -50,7 +53,8 @@ class BubbleMathViewModel(
         engine.state.onEach { s -> setState { copy(game = s) } }.launchIn(viewModelScope)
         engine.status.onEach { st -> setState { copy(status = st) } }.launchIn(viewModelScope)
         engine.outcome.onEach { result -> result?.let(::onFinished) }.launchIn(viewModelScope)
-        engine.start()
+        // No arrancamos aquí: el juego queda en IDLE y muestra la antesala (intro). La
+        // partida empieza al pulsar "Comenzar" (intent [BubbleMathIntent.Start]).
     }
 
     override fun onIntent(intent: BubbleMathIntent) {
@@ -58,6 +62,7 @@ class BubbleMathViewModel(
             is BubbleMathIntent.TapBubble -> engine.onBubbleTap(intent.id)
             BubbleMathIntent.Pause -> engine.pause()
             BubbleMathIntent.Resume -> engine.resume()
+            BubbleMathIntent.Start,
             BubbleMathIntent.PlayAgain -> {
                 setState { copy(gameOver = null) }
                 engine.start()
@@ -67,9 +72,9 @@ class BubbleMathViewModel(
 
     private fun onFinished(result: GameResult) {
         viewModelScope.launch {
-            val percentile = progress.saveResult(result)
+            val outcome = progress.saveResult(result)
             audio.playSound(SoundEffect.LEVEL_UP)
-            setState { copy(gameOver = GameOverInfo(result, percentile)) }
+            setState { copy(gameOver = GameOverInfo(result, outcome.percentile, outcome.isNewRecord)) }
         }
     }
 }

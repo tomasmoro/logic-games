@@ -30,14 +30,17 @@ import platform.UIKit.UINotificationFeedbackType
  *   - Háptica: [UIImpactFeedbackGenerator] (light/medium/heavy) y
  *     [UINotificationFeedbackGenerator] (success/error).
  *
+ * Los assets de audio viven en la única fuente compartida con Android
+ * (`commonMain/composeResources/files/`); el plugin de Compose los empaqueta en el
+ * bundle iOS y aquí se leen vía `Res.readBytes`.
+ *
  * Respeta las preferencias del usuario vía [settings].
  */
 // Opt-in requerido: AVAudioPlayer/AVAudioSession y los generadores hápticos de
 // UIKit se consumen vía cinterop de Foundation, cuya API sigue marcada como
 // experimental (ExperimentalForeignApi). Se anota la clase entera porque los usos
-// se reparten entre las propiedades (AVAudioPlayer) y varios métodos
-// (preload/startMusic), evitando salpicar la anotación por cada llamada.
-// BetaInteropApi: NSData.create(bytes=,length=) (síntesis de tonos) aún es beta.
+// se reparten entre las propiedades (AVAudioPlayer) y varios métodos.
+// BetaInteropApi: NSData.create(bytes=,length=) aún es beta.
 @OptIn(
     kotlinx.cinterop.ExperimentalForeignApi::class,
     kotlinx.cinterop.BetaInteropApi::class,
@@ -57,13 +60,6 @@ class IosAudioAndHapticManager(
      */
     private val loadScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
-    /**
-     * Reproductores de tonos vivos. AVAudioPlayer deja de sonar si se libera, así
-     * que hay que retenerlos mientras suenan; se purgan los ya terminados en cada
-     * disparo para no acumularlos.
-     */
-    private val tonePlayers = mutableListOf<AVAudioPlayer>()
-
     private val impactLight = UIImpactFeedbackGenerator(UIImpactFeedbackStyle.UIImpactFeedbackStyleLight)
     private val impactMedium = UIImpactFeedbackGenerator(UIImpactFeedbackStyle.UIImpactFeedbackStyleMedium)
     private val impactHeavy = UIImpactFeedbackGenerator(UIImpactFeedbackStyle.UIImpactFeedbackStyleHeavy)
@@ -72,14 +68,13 @@ class IosAudioAndHapticManager(
     override fun preload() {
         AVAudioSession.sharedInstance().setCategory(AVAudioSessionCategoryAmbient, null)
         AVAudioSession.sharedInstance().setActive(true, null)
-        // Los SFX viven en composeResources/files y el plugin de Compose los
+        // Los assets viven en composeResources/files y el plugin de Compose los
         // empaqueta en el bundle iOS. Se leen como bytes (suspend) y se envuelven
-        // en un AVAudioPlayer precargado por efecto. Antes se buscaban en
-        // NSBundle, pero esos .wav nunca se añadían al target iOS → no sonaban.
+        // en un AVAudioPlayer precargado por efecto. El nombre ya incluye extensión.
         loadScope.launch {
             SoundEffect.entries.forEach { effect ->
                 runCatching {
-                    val bytes = Res.readBytes("files/${effect.fileName}.wav")
+                    val bytes = Res.readBytes("files/${effect.fileName}")
                     AVAudioPlayer(data = bytes.toNSData(), error = null).also {
                         it.prepareToPlay()
                         players[effect] = it
@@ -98,18 +93,6 @@ class IosAudioAndHapticManager(
             currentTime = 0.0
             play()
         }
-    }
-
-    override fun playTone(frequencyHz: Float, durationMs: Int) {
-        if (!settings.current.isSfxEnabled) return
-        // AVAudioPlayer no reproduce PCM crudo: se envuelve en WAV en memoria.
-        val wav = ToneSynth.wav(ToneSynth.squarePcm16(frequencyHz, durationMs))
-        val player = AVAudioPlayer(data = wav.toNSData(), error = null)
-        player.prepareToPlay()
-        player.play()
-        // Retén el reproductor mientras suena y descarta los ya finalizados.
-        tonePlayers.removeAll { !it.playing }
-        tonePlayers.add(player)
     }
 
     /** Copia el ByteArray a un NSData (sin exponer punteros fuera del pin). */
@@ -150,8 +133,6 @@ class IosAudioAndHapticManager(
         loadScope.cancel()
         players.values.forEach { it.stop() }
         players.clear()
-        tonePlayers.forEach { it.stop() }
-        tonePlayers.clear()
         stopMusic()
     }
 

@@ -39,6 +39,30 @@ object GameIds {
 
     /** Atracción Geométrica / Polarity Collision (categoría "spatial"). */
     const val POLARITY_COLLISION = "66666666-6666-4666-8666-666666666666"
+
+    /** Crucigrama Neón (categoría "language" / Lenguaje y Vocabulario). */
+    const val CRUCIGRAMA_NEON = "77777777-7777-4777-8777-777777777777"
+
+    /** Palabras Conectadas / Word Connect (categoría "language" / Lenguaje y Vocabulario). */
+    const val WORD_CONNECT = "88888888-8888-4888-8888-888888888888"
+
+    /** Tornillos Neón / Neon Screws & Bolts (categoría "spatial" / Visión Espacial). */
+    const val NEON_SCREWS = "99999999-9999-4999-8999-999999999999"
+
+    /** Neon Block Grid / Block Puzzle 8×8 (categoría "spatial" / Visión Espacial). */
+    const val NEON_BLOCK_GRID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+
+    /** Neon Lexicon / Sopa de Letras Neón (categoría "language" / Lenguaje y Vocabulario). */
+    const val NEON_LEXICON = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+
+    /** Neon Starport Escape / Rush Hour espacial (categoría "logic" / Pensamiento Lógico). */
+    const val STARPORT_ESCAPE = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+
+    /** Neon Circuit Flow / Flow Free de circuitos (categoría "problem_solving" / Resolución de Problemas). */
+    const val NEON_CIRCUIT = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+
+    /** Hypergate / escudo de polaridad (categorías "reflexes" + "flexibility"). */
+    const val HYPERGATE = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
 }
 
 /**
@@ -86,11 +110,11 @@ data class GameInfo(
 )
 
 /**
- * Catálogo de juegos que alimenta la pantalla de lista. Hoy son jugables seis
- * juegos (Memoria, Reflejos, Pociones, Burbujas de Cálculo, Flujo de Energía y
- * Atracción Geométrica); el
- * resto son placeholders del roadmap para dar volumen y comunicar la visión sin
- * engañar (aparecen como "Próximamente").
+ * Catálogo de juegos que alimenta la pantalla de lista. Hoy son jugables nueve
+ * juegos (Memoria, Reflejos, Pociones, Burbujas de Cálculo, Flujo de Energía,
+ * Atracción Geométrica, Crucigrama Neón, Palabras Conectadas y Tornillos Neón);
+ * el resto son placeholders del roadmap para dar volumen y comunicar la visión
+ * sin engañar (aparecen como "Próximamente").
  */
 object GameCatalog {
     val games: List<GameInfo> = listOf(
@@ -100,6 +124,14 @@ object GameCatalog {
         GameInfo(GameIds.BUBBLE_MATH, "Burbujas de Cálculo", GameCategory.MENTAL_MATH, playable = true),
         GameInfo(GameIds.ENERGY_FLOW, "Flujo de Energía", GameCategory.SPATIAL, playable = true),
         GameInfo(GameIds.POLARITY_COLLISION, "Atracción Geométrica", GameCategory.SPATIAL, playable = true),
+        GameInfo(GameIds.CRUCIGRAMA_NEON, "Crucigrama Neón", GameCategory.LANGUAGE, playable = true),
+        GameInfo(GameIds.WORD_CONNECT, "Palabras Conectadas", GameCategory.LANGUAGE, playable = true),
+        GameInfo(GameIds.NEON_SCREWS, "Tornillos Neón", GameCategory.SPATIAL, playable = true),
+        GameInfo(GameIds.NEON_BLOCK_GRID, "Neon Block Grid", GameCategory.SPATIAL, playable = true),
+        GameInfo(GameIds.NEON_LEXICON, "Sopa de Letras Neón", GameCategory.LANGUAGE, playable = true),
+        GameInfo(GameIds.STARPORT_ESCAPE, "Neon Starport Escape", GameCategory.LOGIC, playable = true),
+        GameInfo(GameIds.NEON_CIRCUIT, "Neon Circuit Flow", GameCategory.PROBLEM_SOLVING, playable = true),
+        GameInfo(GameIds.HYPERGATE, "Hypergate", GameCategory.REFLEXES, playable = true),
         GameInfo(null, "Parejas Relámpago", GameCategory.MEMORY, playable = false),
         GameInfo(null, "Cadena Lógica", GameCategory.LOGIC, playable = false),
         GameInfo(null, "Encuentra el Intruso", GameCategory.ATTENTION, playable = false),

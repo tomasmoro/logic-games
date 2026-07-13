@@ -34,6 +34,9 @@ sealed interface PolarityCollisionIntent : UiIntent {
     /** Tick de frame recibido desde `withFrameNanos`. */
     data class Frame(val frameNanos: Long) : PolarityCollisionIntent
 
+    /** Arranca la partida desde la antesala (intro), "Comenzar". */
+    data object Start : PolarityCollisionIntent
+
     data object PlayAgain : PolarityCollisionIntent
 }
 
@@ -59,7 +62,8 @@ class PolarityCollisionViewModel(
         engine.state.onEach { s -> setState { copy(game = s) } }.launchIn(viewModelScope)
         engine.status.onEach { st -> setState { copy(status = st) } }.launchIn(viewModelScope)
         engine.outcome.onEach { result -> result?.let(::onFinished) }.launchIn(viewModelScope)
-        engine.start()
+        // No arrancamos aquí: el juego queda en IDLE y muestra la antesala (intro). La
+        // partida empieza al pulsar "Comenzar" (intent [PolarityCollisionIntent.Start]).
     }
 
     override fun onIntent(intent: PolarityCollisionIntent) {
@@ -67,6 +71,7 @@ class PolarityCollisionViewModel(
             is PolarityCollisionIntent.UpdateViewport -> engine.updateViewport(intent.widthPx, intent.heightPx)
             is PolarityCollisionIntent.RotateBy -> engine.rotateBy(intent.deltaRad)
             is PolarityCollisionIntent.Frame -> engine.onFrame(intent.frameNanos)
+            PolarityCollisionIntent.Start,
             PolarityCollisionIntent.PlayAgain -> {
                 setState { copy(gameOver = null) }
                 engine.start()
@@ -76,10 +81,10 @@ class PolarityCollisionViewModel(
 
     private fun onFinished(result: GameResult) {
         viewModelScope.launch {
-            val percentile = progress.saveResult(result)
+            val outcome = progress.saveResult(result)
             audio.playSound(SoundEffect.LEVEL_UP)
             audio.hapticFeedback(HapticFeedback.SUCCESS)
-            setState { copy(gameOver = GameOverInfo(result, percentile)) }
+            setState { copy(gameOver = GameOverInfo(result, outcome.percentile, outcome.isNewRecord)) }
         }
     }
 }

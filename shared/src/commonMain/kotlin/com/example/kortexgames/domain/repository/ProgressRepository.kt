@@ -2,7 +2,7 @@ package com.example.kortexgames.domain.repository
 
 import com.example.kortexgames.domain.model.GameProgress
 import com.example.kortexgames.domain.model.GameResult
-import com.example.kortexgames.domain.model.PercentileResult
+import com.example.kortexgames.domain.model.SaveOutcome
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -18,10 +18,10 @@ import kotlinx.coroutines.flow.Flow
 interface ProgressRepository {
 
     /**
-     * Guarda una partida. Devuelve el percentil si se pudo consultar al backend
-     * (usuario autenticado + online); null en modo invitado/offline.
+     * Guarda una partida y devuelve su [SaveOutcome]: el percentil global (si hay
+     * sesión + red; null en invitado/offline) y si batió el récord previo del jugador.
      */
-    suspend fun saveResult(result: GameResult): PercentileResult?
+    suspend fun saveResult(result: GameResult): SaveOutcome
 
     /** Historial observable desde local. gameId null = todos los juegos. */
     fun observeHistory(gameId: String? = null): Flow<List<GameProgress>>

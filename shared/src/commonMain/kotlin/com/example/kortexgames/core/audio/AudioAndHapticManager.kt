@@ -13,19 +13,12 @@ interface AudioAndHapticManager {
     /** Precarga los SFX en memoria (SoundPool en Android). Llamar al inicio. */
     fun preload()
 
-    /** Reproduce un efecto de sonido de baja latencia. */
-    fun playSound(effect: SoundEffect)
-
     /**
-     * Reproduce un tono musical sintetizado al vuelo (onda cuadrada = timbre
-     * arcade; ver [ToneSynth]). Se usa para el teclado del juego de Memoria, donde
-     * **cada botón tiene su propia nota** sin necesidad de 9 assets de audio.
-     * No-op silencioso si el usuario tiene el SFX desactivado.
-     *
-     * @param frequencyHz frecuencia de la nota (p. ej. 440 Hz = La).
-     * @param durationMs duración del "blip" en milisegundos.
+     * Reproduce un efecto de sonido de baja latencia (incluidas las notas del
+     * teclado de Memoria; ver [SoundEffect]). No-op silencioso si el usuario tiene
+     * el SFX desactivado.
      */
-    fun playTone(frequencyHz: Float, durationMs: Int = 180)
+    fun playSound(effect: SoundEffect)
 
     /** Dispara feedback háptico. */
     fun hapticFeedback(type: HapticFeedback)

@@ -64,9 +64,12 @@ import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.core.theme.LogicGamesTheme
 import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameStatus
+import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.ArcadeBrickBackground
+import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.KortexIcons
+import com.example.kortexgames.ui.components.LevelStripState
 import com.example.kortexgames.ui.components.NeonIcon
 import com.example.kortexgames.ui.components.bounceClick
 import kotlin.math.PI
@@ -153,9 +156,33 @@ private data class LiquidBand(val colorIndex: Int, val heightSlots: Float)
 @Composable
 fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
     val vm: WaterSortViewModel = viewModel {
-        WaterSortViewModel(graph.progressRepository, graph.audio)
+        WaterSortViewModel(graph.progressRepository, graph.playerProgressRepository, graph.audio)
     }
     val state by vm.state.collectAsStateWithLifecycle()
+
+    // Fase de intro: antesala del juego (icono, descripción y carril de niveles). El
+    // nivel elegido arranca por defecto en la frontera (récord + 1) y se reinicia si el
+    // récord sube; "Comenzar" arranca el motor y pasamos a la vista de juego.
+    if (state.phase == LeveledGamePhase.LEVEL_SELECT) {
+        var selectedLevel by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
+        GameIntroScreen(
+            title = "Ordena las Pociones",
+            description = "Vierte colores iguales hasta dejar cada tubo de un solo color.",
+            accent = CategoryPalette.Logic,
+            levels = LevelStripState(
+                maxUnlocked = state.maxUnlocked,
+                selected = selectedLevel,
+                onSelect = { selectedLevel = it },
+            ),
+            onStart = { vm.onIntent(WaterSortIntent.PlayLevel(selectedLevel)) },
+            onExit = onExit,
+            background = {
+                ArcadeBrickBackground(modifier = Modifier.fillMaxSize(), accent = CategoryPalette.Logic)
+            },
+        )
+        return
+    }
+
     val game = state.game
 
     // Coordenadas de cada tubo y del contenedor, para posicionar el tubo viajero
@@ -212,7 +239,7 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
                 color = LogicColors.Electric,
             )
             Text(
-                "Ronda ${game.round}/${game.totalRounds}",
+                "Nivel ${game.round}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = LogicColors.NeonGreen,
             )
@@ -371,8 +398,12 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
         if (state.status == GameStatus.FINISHED && state.gameOver != null && !animating) {
             GameOverOverlay(
                 info = state.gameOver!!,
+                audio = graph.audio,
+                headline = "¡Nivel ${state.currentLevel} completado!",
                 onPlayAgain = { vm.onIntent(WaterSortIntent.PlayAgain) },
                 onExit = onExit,
+                onNextLevel = { vm.onIntent(WaterSortIntent.NextLevel) },
+                onChooseLevel = { vm.onIntent(WaterSortIntent.ChooseLevel) },
             )
         }
     }

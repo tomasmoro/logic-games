@@ -26,8 +26,11 @@ interface PlayerProgressRepository {
      * supera el récord (según la dirección del juego) lo actualiza, y guarda el
      * nivel de reanudación en juegos LEVELED. No-op si el juego no tiene progresión
      * registrada o la partida no arrojó métrica medible.
+     *
+     * @return true si esta partida **batió un récord previo existente** (para celebrarlo
+     *   en la UI); false en la primera marca del juego o si no mejoró el récord.
      */
-    suspend fun recordResult(result: GameResult)
+    suspend fun recordResult(result: GameResult): Boolean
 
     /**
      * Sincroniza la progresión en ambas direcciones: fusiona la nube con lo local

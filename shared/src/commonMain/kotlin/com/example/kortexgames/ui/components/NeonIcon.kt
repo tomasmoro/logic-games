@@ -4,14 +4,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Backspace
 import androidx.compose.material.icons.rounded.Casino
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.EmojiEvents
+import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -65,6 +68,15 @@ object KortexIcons {
 
     /** Corazón vacío: una vida ya perdida. */
     val HeartOutline: ImageVector = Icons.Rounded.FavoriteBorder
+
+    /** Candado: nivel aún bloqueado (selector de niveles). */
+    val Lock: ImageVector = Icons.Rounded.Lock
+
+    /** Interrogación: botón de ayuda / cómo se juega (antesala de cada juego). */
+    val Help: ImageVector = Icons.AutoMirrored.Rounded.HelpOutline
+
+    /** Borrar la última letra escrita (tecla de borrado del teclado de juego). */
+    val Backspace: ImageVector = Icons.AutoMirrored.Rounded.Backspace
 }
 
 /**
