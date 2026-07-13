@@ -77,12 +77,18 @@ class EnergyFlowEngine(
     private var rotationSeq = 0L
 
     /**
-     * Curva de dificultad: nivel N → tamaño de rejilla cuadrada. El **nivel 1
-     * conserva la config base** (4×4); a mayor nivel, rejilla más grande (más piezas
-     * que orientar). Se acota (≤ 8×8) para que la generación siga siendo viable.
+     * Curva de dificultad: nivel N → tamaño de rejilla cuadrada. Progresión lenta
+     * (pedido del usuario): niveles 1-2 en 4×4, luego bloques de **3 niveles** por
+     * cada tamaño creciente (5×5, 6×6, 7×7...), acotado a un máximo de 7×7 para que
+     * la generación y la lectura del tablero sigan siendo cómodas.
      */
     private fun configForLevel(level: Int): EnergyFlowGenerator.Config {
-        val n = (4 + (level.coerceAtLeast(1) - 1) / 2).coerceIn(4, 8) // l1=4, l3=5, l5=6, l7=7, l9=8
+        val n = if (level <= 2) {
+            4
+        } else {
+            val block = (level - 3) / 3 // niveles 3-5 -> bloque 0, 6-8 -> bloque 1, ...
+            (5 + block).coerceAtMost(7)
+        }
         return EnergyFlowGenerator.Config(n, n)
     }
 

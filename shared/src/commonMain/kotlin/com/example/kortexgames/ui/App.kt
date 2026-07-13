@@ -46,6 +46,7 @@ import com.example.kortexgames.game.blockgrid.BlockGridScreen
 import com.example.kortexgames.game.wordsearch.NeonLexiconScreen
 import com.example.kortexgames.game.screws.ScrewGameScreen
 import com.example.kortexgames.game.neoncircuit.NeonCircuitScreen
+import com.example.kortexgames.game.neonpulse.NeonPulseScreen
 import com.example.kortexgames.game.starport.StarportScreen
 import com.example.kortexgames.game.watersort.WaterSortScreen
 import com.example.kortexgames.game.wordconnect.WordConnectScreen
@@ -119,7 +120,8 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean) {
                 currentRoute == Routes.CRUCIGRAMA_NEON || currentRoute == Routes.WORD_CONNECT ||
                 currentRoute == Routes.NEON_SCREWS || currentRoute == Routes.NEON_BLOCK_GRID ||
                 currentRoute == Routes.NEON_LEXICON || currentRoute == Routes.STARPORT_ESCAPE ||
-                currentRoute == Routes.NEON_CIRCUIT || currentRoute == Routes.HYPERGATE
+                currentRoute == Routes.NEON_CIRCUIT || currentRoute == Routes.HYPERGATE ||
+                currentRoute == Routes.NEON_PULSE
             ) {
                 graph.adManager.onEnterGameplay()
             } else {
@@ -259,6 +261,9 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean) {
                 }
                 composable(Routes.HYPERGATE) {
                     HypergateScreen(graph) { navController.popBackStack() }
+                }
+                composable(Routes.NEON_PULSE) {
+                    NeonPulseScreen(graph) { navController.popBackStack() }
                 }
             }
         }

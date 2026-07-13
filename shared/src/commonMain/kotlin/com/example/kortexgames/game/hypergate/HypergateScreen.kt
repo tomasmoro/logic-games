@@ -52,6 +52,7 @@ import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
+import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.SpaceBackdrop
 import com.example.kortexgames.ui.components.softGlow
 import kotlin.math.cos
@@ -235,6 +236,19 @@ fun HypergateScreen(graph: AppGraph, onExit: () -> Unit) {
                 onExit = onExit,
             )
         }
+
+        // Botón de pausa + menú (Reanudar / audio / ayuda / Salir), común a todos los juegos.
+        GamePauseControls(
+            status = state.status,
+            settings = graph.settingsRepository,
+            audio = graph.audio,
+            onPause = { vm.onIntent(HypergateIntent.Pause) },
+            onResume = { vm.onIntent(HypergateIntent.Resume) },
+            onExit = onExit,
+            gameTitle = "Hypergate",
+            helpText = "Toca en cualquier parte para alternar la polaridad del escudo. Haz que su color coincida con cada proyectil justo antes del impacto: iguala para absorber, falla y chocarás.",
+            accent = CategoryPalette.Reflexes,
+        )
     }
 }
 

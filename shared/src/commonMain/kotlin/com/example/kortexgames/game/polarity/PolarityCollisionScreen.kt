@@ -44,6 +44,7 @@ import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
+import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.SpaceBackdrop
 import kotlin.math.PI
 import kotlin.math.atan2
@@ -198,6 +199,19 @@ fun PolarityCollisionScreen(graph: AppGraph, onExit: () -> Unit) {
                 onExit = onExit,
             )
         }
+
+        // Botón de pausa + menú (Reanudar / audio / ayuda / Salir), común a todos los juegos.
+        GamePauseControls(
+            status = state.status,
+            settings = graph.settingsRepository,
+            audio = graph.audio,
+            onPause = { vm.onIntent(PolarityCollisionIntent.Pause) },
+            onResume = { vm.onIntent(PolarityCollisionIntent.Resume) },
+            onExit = onExit,
+            gameTitle = "Atracción Geométrica",
+            helpText = "Rota el círculo para capturar las piezas de tu color y evita las contrarias antes de que se acabe el tiempo.",
+            accent = CategoryPalette.SpatialVision,
+        )
     }
 }
 

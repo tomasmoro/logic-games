@@ -5,9 +5,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Backspace
+import androidx.compose.material.icons.automirrored.rounded.ExitToApp
 import androidx.compose.material.icons.rounded.Casino
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.Favorite
@@ -15,6 +17,9 @@ import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.MusicOff
+import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -22,6 +27,9 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.Vibration
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -77,6 +85,30 @@ object KortexIcons {
 
     /** Borrar la última letra escrita (tecla de borrado del teclado de juego). */
     val Backspace: ImageVector = Icons.AutoMirrored.Rounded.Backspace
+
+    /** Papelera: borrar toda la palabra en curso de una vez (limpia el buffer). */
+    val Trash: ImageVector = Icons.Rounded.DeleteOutline
+
+    /** Pausa: detiene la partida y abre el menú de pausa (común a todos los juegos). */
+    val Pause: ImageVector = Icons.Rounded.Pause
+
+    /** Salir de la partida: abandona el juego y vuelve a la lista (menú de pausa). */
+    val Exit: ImageVector = Icons.AutoMirrored.Rounded.ExitToApp
+
+    /** Efectos de sonido activados (toggle de audio del menú de pausa/ajustes). */
+    val SfxOn: ImageVector = Icons.AutoMirrored.Rounded.VolumeUp
+
+    /** Efectos de sonido silenciados. */
+    val SfxOff: ImageVector = Icons.AutoMirrored.Rounded.VolumeOff
+
+    /** Música de fondo activada. */
+    val MusicOn: ImageVector = Icons.Rounded.MusicNote
+
+    /** Música de fondo silenciada. */
+    val MusicOff: ImageVector = Icons.Rounded.MusicOff
+
+    /** Háptica (vibración) activada. */
+    val Haptics: ImageVector = Icons.Rounded.Vibration
 }
 
 /**
@@ -88,6 +120,7 @@ object KortexIcons {
  * @param tint color del icono y del resplandor.
  * @param size tamaño del glifo (el halo ocupa ~1.9x).
  * @param glow si false, dibuja el icono sin resplandor (p. ej. estado inactivo).
+ * @param contentDescription etiqueta de accesibilidad; null para iconos decorativos.
  */
 @Composable
 fun NeonIcon(
@@ -96,6 +129,7 @@ fun NeonIcon(
     modifier: Modifier = Modifier,
     size: Dp = 26.dp,
     glow: Boolean = true,
+    contentDescription: String? = null,
 ) {
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         if (glow) {
@@ -111,7 +145,7 @@ fun NeonIcon(
         }
         Icon(
             imageVector = icon,
-            contentDescription = null,
+            contentDescription = contentDescription,
             tint = tint,
             modifier = Modifier.size(size),
         )

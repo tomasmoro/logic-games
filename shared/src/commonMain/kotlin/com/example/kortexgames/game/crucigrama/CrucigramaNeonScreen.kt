@@ -1,5 +1,10 @@
 package com.example.kortexgames.game.crucigrama
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -15,7 +20,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -56,6 +60,7 @@ import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
+import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.LevelStripState
 import com.example.kortexgames.ui.components.NeonIcon
@@ -142,7 +147,14 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
                 solved = game.correctWords,
                 total = game.slots.size,
                 combo = game.combo,
-                onHint = { showHintAd = true },
+            )
+
+            // Cartel de extras: bajo el indicador de nivel/puntos, anclado a la izquierda.
+            ExtrasPanel(
+                words = game.extraWords,
+                found = game.extraFound,
+                foundTick = game.extraTick,
+                modifier = Modifier.padding(top = 8.dp),
             )
 
             // La rejilla ocupa el espacio libre y queda centrada; así el elemento de
@@ -159,7 +171,14 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
                 )
             }
 
-            CurrentWord(input = game.inputBuffer, hint = state.revealedHint)
+            // Palabra en curso con sus dos acciones al lado: papelera (borrar todo) y
+            // retroceso (borrar la última letra).
+            CurrentWord(
+                input = game.inputBuffer,
+                hint = state.revealedHint,
+                onBackspace = { vm.onIntent(CrucigramaNeonIntent.Backspace) },
+                onClearAll = { vm.onIntent(CrucigramaNeonIntent.ClearWord) },
+            )
 
             Spacer(Modifier.height(14.dp))
 
@@ -167,12 +186,16 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
                 letters = game.letters,
                 accent = CategoryPalette.Language,
                 onTapLetter = { vm.onIntent(CrucigramaNeonIntent.TapLetter(it)) },
-                onDelete = { vm.onIntent(CrucigramaNeonIntent.Backspace) },
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            // Pista debajo del teclado (pedido del usuario), centrada.
+            HintButton(
+                onClick = { showHintAd = true },
+                modifier = Modifier.align(Alignment.CenterHorizontally),
             )
         }
-
-        // Panel lateral semioculto con las palabras extra (bonus) del nivel.
-        ExtrasPanel(words = game.extraWords, found = game.extraFound, foundTick = game.extraTick)
 
         FeedbackFlash(eventId = game.feedbackTick, result = game.lastOutcome)
 
@@ -196,6 +219,19 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
                 onChooseLevel = { vm.onIntent(CrucigramaNeonIntent.ChooseLevel) },
             )
         }
+
+        // Botón de pausa + menú (Reanudar / audio / ayuda / Salir), común a todos los juegos.
+        GamePauseControls(
+            status = state.status,
+            settings = graph.settingsRepository,
+            audio = graph.audio,
+            onPause = { vm.onIntent(CrucigramaNeonIntent.Pause) },
+            onResume = { vm.onIntent(CrucigramaNeonIntent.Resume) },
+            onExit = onExit,
+            gameTitle = "Crucigrama Neón",
+            helpText = "Escribe palabras con el teclado inferior. Si una palabra es correcta, se coloca sola en su lugar dentro del crucigrama.",
+            accent = CategoryPalette.Language,
+        )
     }
 }
 
@@ -206,7 +242,6 @@ private fun CrosswordHud(
     solved: Int,
     total: Int,
     combo: Int,
-    onHint: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -219,10 +254,8 @@ private fun CrosswordHud(
         }
         Column(
             horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            // Pista anclada arriba a la derecha (pedido del usuario).
-            HintButton(onClick = onHint)
             val comboScale by animateFloatAsState(
                 targetValue = if (combo >= 2) 1f else 0.8f,
                 animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
@@ -240,12 +273,12 @@ private fun CrosswordHud(
     }
 }
 
-/** Píldora neón de "Pista" para la esquina superior derecha. */
+/** Píldora neón de "Pista". Ahora vive bajo el teclado (pedido del usuario). */
 @Composable
-private fun HintButton(onClick: () -> Unit) {
+private fun HintButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(14.dp)
     Row(
-        modifier = Modifier
+        modifier = modifier
             .clip(shape)
             .background(LogicColors.SurfaceDark.copy(alpha = 0.9f))
             .border(BorderStroke(1.dp, CategoryPalette.Language.copy(alpha = 0.6f)), shape)
@@ -260,35 +293,94 @@ private fun HintButton(onClick: () -> Unit) {
 }
 
 /**
- * Palabra que se está escribiendo. Sin recuadro (pedido del usuario): solo el texto,
- * grande y centrado, con las letras ~25% más grandes que antes para dar protagonismo.
+ * Palabra que se está escribiendo, **flanqueada por sus dos acciones**: a la izquierda
+ * la papelera (borrar todo, [onClearAll]) y a la derecha el retroceso (borrar la última
+ * letra, [onBackspace]). El texto va al centro (peso 1) para quedar ópticamente centrado
+ * entre botones simétricos. Ambos botones se atenúan cuando no hay nada que borrar.
  */
 @Composable
 private fun CurrentWord(
     input: String,
     hint: String?,
+    onBackspace: () -> Unit,
+    onClearAll: () -> Unit,
 ) {
+    val hasInput = input.isNotEmpty()
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(
-            text = if (input.isBlank()) "_" else input.toCharArray().joinToString(" "),
-            // displaySmall (~36sp) escalado ~25% -> 45sp para agrandar las letras.
-            fontSize = 45.sp,
-            style = MaterialTheme.typography.displaySmall,
-            color = if (input.isBlank()) LogicColors.OnDarkMuted else LogicColors.OnDark,
-            fontWeight = FontWeight.Black,
-            letterSpacing = 2.sp,
-            textAlign = TextAlign.Center,
+        Row(
             modifier = Modifier.fillMaxWidth(),
-        )
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            // Papelera: borra toda la palabra en curso de una vez.
+            WordActionButton(
+                icon = KortexIcons.Trash,
+                tint = LogicColors.Coral,
+                enabled = hasInput,
+                onClick = onClearAll,
+                contentDescription = "Borrar todo",
+            )
+            Text(
+                text = if (input.isBlank()) "_" else input.toCharArray().joinToString(" "),
+                // displaySmall (~36sp) escalado ~25% -> 45sp para agrandar las letras.
+                fontSize = 45.sp,
+                style = MaterialTheme.typography.displaySmall,
+                color = if (input.isBlank()) LogicColors.OnDarkMuted else LogicColors.OnDark,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 2.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f),
+            )
+            // Retroceso: borra solo la última letra.
+            WordActionButton(
+                icon = KortexIcons.Backspace,
+                tint = LogicColors.NeonCyan,
+                enabled = hasInput,
+                onClick = onBackspace,
+                contentDescription = "Borrar",
+            )
+        }
         Text(
             text = hint ?: "Palabra actual",
             style = MaterialTheme.typography.labelLarge,
             color = CategoryPalette.Language,
         )
+    }
+}
+
+/**
+ * Botón circular de acción de escritura (retroceso / papelera) con la estética de tubo
+ * neón de la app. Se atenúa y se vuelve inerte cuando [enabled] es false, para señalar
+ * que no hay nada que borrar sin sacarlo del layout (evita saltos).
+ */
+@Composable
+private fun WordActionButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    tint: Color,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    contentDescription: String,
+) {
+    val shape = RoundedCornerShape(14.dp)
+    val alpha by animateFloatAsState(
+        targetValue = if (enabled) 1f else 0.35f,
+        animationSpec = tween(180),
+        label = "actionAlpha",
+    )
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .alpha(alpha)
+            .drawBehind { drawNeonTile(tint, activeAmt = 0.7f, cornerRadius = 14.dp, sparks = false, baseMargin = 5.dp) }
+            .clip(shape)
+            .bounceClick(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        NeonIcon(icon = icon, tint = tint, size = 22.dp, glow = false, contentDescription = contentDescription)
     }
 }
 
@@ -412,7 +504,9 @@ private fun GridCell(
             .drawBehind {
                 // Borde neón tipo tubo (misma estética que Memoria vía [drawNeonTile]).
                 // baseMargin reducido ~20% (7 -> 5.6dp) para que el tubo llene más la celda.
-                drawNeonTile(tileColor, activeAmt, cornerRadius = 12.dp, sparks = false, baseMargin = 5.6.dp)
+                // strokeScale 0.6 = tubo un 40% más fino: en niveles con muchas palabras las
+                // celdas se encogen y un borde grueso tapaba la letra (pedido del usuario).
+                drawNeonTile(tileColor, activeAmt, cornerRadius = 12.dp, sparks = false, baseMargin = 5.6.dp, strokeScale = 0.6f)
 
                 // Chispas propias del crucigrama: partículas radiales que salen del
                 // centro y se apagan al encender la palabra.
@@ -442,7 +536,8 @@ private fun GridCell(
             color = LogicColors.OnDark,
             fontWeight = FontWeight.Black,
             textAlign = TextAlign.Center,
-            fontSize = 16.sp
+            // Letra un 10% más pequeña (16 -> 14.4sp) para respirar dentro del tubo fino.
+            fontSize = 14.4.sp
         )
     }
 }
@@ -481,16 +576,15 @@ private fun HintAdOverlay(onFinished: () -> Unit) {
 }
 
 /**
- * Teclado inferior de letras, **centrado**, con estética de tecla de juego, más la
- * tecla de **Borrar** integrada (única acción disponible; ya no hay Reiniciar ni
- * Deshacer). La escritura es libre: el jugador teclea y corrige con Borrar.
+ * Teclado inferior de letras, **centrado**, con estética de tecla de juego. Las acciones
+ * de borrado ya no viven aquí: se movieron junto a la palabra en curso (retroceso y
+ * papelera). La escritura es libre: el jugador teclea y corrige con esos botones.
  */
 @Composable
 private fun LetterBank(
     letters: List<Char>,
     accent: Color,
     onTapLetter: (Char) -> Unit,
-    onDelete: () -> Unit,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -507,12 +601,6 @@ private fun LetterBank(
                     LetterKey(letter = letter, accent = accent, onClick = { onTapLetter(letter) })
                 }
             }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            DeleteKey(onClick = onDelete)
         }
     }
 }
@@ -541,41 +629,31 @@ private fun LetterKey(letter: Char, accent: Color, onClick: () -> Unit) {
     }
 }
 
-/** Tecla de **Borrar** (backspace): mismo tubo neón (en cian) que las letras. */
-@Composable
-private fun DeleteKey(onClick: () -> Unit) {
-    val shape = RoundedCornerShape(16.dp)
-    val tint = LogicColors.NeonCyan
-    Row(
-        modifier = Modifier
-            .height(BankLetterSize)
-            .drawBehind { drawNeonTile(tint, activeAmt = 0.7f, cornerRadius = 16.dp, sparks = false, baseMargin = 5.dp) }
-            .clip(shape)
-            .bounceClick(onClick = onClick)
-            .padding(horizontal = 24.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        NeonIcon(icon = KortexIcons.Backspace, tint = tint, size = 24.dp, glow = false)
-    }
-}
-
 /**
- * Panel lateral **semioculto** con las palabras extra (bonus). Colapsado por defecto:
- * solo una pestaña con el contador en el borde derecho; al tocarla se despliega la
- * lista. Las encontradas se revelan en ámbar; las pendientes se enmascaran con puntos.
+ * Cartel de palabras **extra** (bonus), anclado arriba a la izquierda bajo el marcador.
+ * Es una píldora-contador siempre visible; al tocarla (o al encontrar una extra) se
+ * despliega debajo la lista de palabras. Las encontradas se revelan en ámbar; las
+ * pendientes se enmascaran con puntos. Ámbar = recompensa (§9.2).
  *
- * Al descubrir una extra ([foundTick] cambia), el panel se **abre solo 3 s** y luego se
- * oculta, y salta una **ráfaga de chispas** ámbar sobre la pestaña para que el jugador
- * entienda que encontró una palabra extra. Ámbar = recompensa (§9.2).
+ * **Animación de entrada y salida** ([AnimatedVisibility]): la lista aparece con un
+ * fundido + expansión vertical con resorte (orgánico, §9.4) y se retira con fundido +
+ * colapso. Al descubrir una extra ([foundTick] cambia) el cartel se **abre solo 3 s**,
+ * luego se cierra con su animación, y salta una **ráfaga de chispas** ámbar sobre la
+ * píldora para reforzar el hallazgo.
  */
 @Composable
-private fun BoxScope.ExtrasPanel(words: List<String>, found: Set<String>, foundTick: Long) {
+private fun ExtrasPanel(
+    words: List<String>,
+    found: Set<String>,
+    foundTick: Long,
+    modifier: Modifier = Modifier,
+) {
     if (words.isEmpty()) return
     var open by remember { mutableStateOf(false) }
     var pinned by remember { mutableStateOf(false) } // abierto manualmente por el usuario
     val accent = LogicColors.Amber
-    val edgeShape = RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp)
+    val pillShape = RoundedCornerShape(14.dp)
+    val cardShape = RoundedCornerShape(16.dp)
     val spark = remember { Animatable(0f) }
 
     // Al encontrar una extra: chispas + auto-abrir 3 s (salvo que el usuario lo haya fijado).
@@ -590,35 +668,13 @@ private fun BoxScope.ExtrasPanel(words: List<String>, found: Set<String>, foundT
         if (!pinned) open = false
     }
 
-    Row(
-        modifier = Modifier.align(Alignment.CenterEnd),
-        verticalAlignment = Alignment.CenterVertically,
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.Start,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        if (open) {
-            Column(
-                modifier = Modifier
-                    .widthIn(max = 150.dp)
-                    .clip(edgeShape)
-                    .background(LogicColors.SurfaceDark.copy(alpha = 0.96f))
-                    .border(BorderStroke(1.dp, accent.copy(alpha = 0.55f)), edgeShape)
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text("EXTRAS", style = MaterialTheme.typography.labelLarge, color = accent, fontWeight = FontWeight.Bold)
-                words.forEach { w ->
-                    val f = w in found
-                    Text(
-                        text = if (f) w else "•".repeat(w.length),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (f) accent else LogicColors.OnDarkMuted,
-                        fontWeight = if (f) FontWeight.Black else FontWeight.Normal,
-                        letterSpacing = if (f) 1.sp else 3.sp,
-                    )
-                }
-            }
-        }
-        // Pestaña siempre visible (semioculta, pegada al borde), con las chispas detrás.
-        Column(
+        // Píldora-contador siempre visible, con las chispas del hallazgo detrás.
+        Row(
             modifier = Modifier
                 .drawBehind {
                     val sp = spark.value
@@ -637,19 +693,48 @@ private fun BoxScope.ExtrasPanel(words: List<String>, found: Set<String>, foundT
                         }
                     }
                 }
-                .clip(edgeShape)
-                .background(accent.copy(alpha = 0.16f))
-                .border(BorderStroke(1.dp, accent.copy(alpha = 0.5f)), edgeShape)
+                .clip(pillShape)
+                .background(accent.copy(alpha = 0.14f))
+                .border(BorderStroke(1.dp, accent.copy(alpha = 0.5f)), pillShape)
                 .bounceClick {
                     open = !open
                     pinned = open
                 }
-                .padding(horizontal = 8.dp, vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            NeonIcon(icon = KortexIcons.Star, tint = accent, size = 18.dp, glow = true)
+            NeonIcon(icon = KortexIcons.Star, tint = accent, size = 16.dp, glow = true)
+            Text("EXTRAS", style = MaterialTheme.typography.labelLarge, color = accent, fontWeight = FontWeight.Bold)
             Text("${found.size}/${words.size}", style = MaterialTheme.typography.labelLarge, color = accent, fontWeight = FontWeight.Bold)
+        }
+        AnimatedVisibility(
+            visible = open,
+            enter = fadeIn(tween(200)) + expandVertically(
+                animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow),
+            ),
+            exit = fadeOut(tween(160)) + shrinkVertically(tween(200)),
+        ) {
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 180.dp)
+                    .clip(cardShape)
+                    .background(LogicColors.SurfaceDark.copy(alpha = 0.96f))
+                    .border(BorderStroke(1.dp, accent.copy(alpha = 0.5f)), cardShape)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                words.forEach { w ->
+                    val f = w in found
+                    Text(
+                        text = if (f) w else "•".repeat(w.length),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (f) accent else LogicColors.OnDarkMuted,
+                        fontWeight = if (f) FontWeight.Black else FontWeight.Normal,
+                        letterSpacing = if (f) 1.sp else 3.sp,
+                    )
+                }
+            }
         }
     }
 }

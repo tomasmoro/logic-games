@@ -50,6 +50,8 @@ class HypergateViewModel(
             is HypergateIntent.UpdateViewport -> engine.updateViewport(intent.widthPx, intent.heightPx)
             HypergateIntent.ToggleShield -> engine.toggleShield()
             is HypergateIntent.Tick -> engine.onFrame(intent.frameNanos)
+            HypergateIntent.Pause -> engine.pause()
+            HypergateIntent.Resume -> engine.resume()
             HypergateIntent.Start,
             HypergateIntent.PlayAgain -> {
                 setState { copy(gameOver = null) }

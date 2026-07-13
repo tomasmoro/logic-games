@@ -26,6 +26,7 @@ import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
+import com.example.kortexgames.ui.components.GamePauseControls
 
 /**
  * Pantalla de Reflejos. Toda la superficie es táctil; su color y texto dependen
@@ -110,5 +111,18 @@ fun ReflexTapScreen(graph: AppGraph, onExit: () -> Unit) {
                 onExit = onExit,
             )
         }
+
+        // Botón de pausa + menú (Reanudar / audio / ayuda / Salir), común a todos los juegos.
+        GamePauseControls(
+            status = state.status,
+            settings = graph.settingsRepository,
+            audio = graph.audio,
+            onPause = { vm.onIntent(ReflexTapIntent.Pause) },
+            onResume = { vm.onIntent(ReflexTapIntent.Resume) },
+            onExit = onExit,
+            gameTitle = "Reflejos de Toque Rápido",
+            helpText = "Toca en cuanto la pantalla se ponga verde. Cuanto más rápido reacciones, mejor tu marca.",
+            accent = CategoryPalette.Reflexes,
+        )
     }
 }

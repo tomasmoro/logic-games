@@ -50,6 +50,7 @@ import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
+import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.LevelStripState
 import kotlin.math.floor
 
@@ -155,6 +156,19 @@ fun NeonLexiconScreen(graph: AppGraph, onExit: () -> Unit) {
                 onChooseLevel = { vm.onIntent(NeonLexiconIntent.ChooseLevel) },
             )
         }
+
+        // Botón de pausa + menú (Reanudar / audio / ayuda / Salir), común a todos los juegos.
+        GamePauseControls(
+            status = state.status,
+            settings = graph.settingsRepository,
+            audio = graph.audio,
+            onPause = { vm.onIntent(NeonLexiconIntent.Pause) },
+            onResume = { vm.onIntent(NeonLexiconIntent.Resume) },
+            onExit = onExit,
+            gameTitle = "Sopa de Letras Neón",
+            helpText = "Desliza el dedo sobre las letras para trazar cada palabra escondida: horizontal, vertical o en diagonal. Encuéntralas todas para superar el nivel.",
+            accent = accent,
+        )
     }
 }
 

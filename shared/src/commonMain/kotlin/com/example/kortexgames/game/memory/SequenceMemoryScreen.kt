@@ -39,6 +39,7 @@ import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.ui.components.ArcadeBrickBackground
 import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
+import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.clickableNoRipple
 import com.example.kortexgames.ui.components.drawNeonTile
 import kortexgames.shared.generated.resources.Res
@@ -173,6 +174,19 @@ fun SequenceMemoryScreen(graph: AppGraph, onExit: () -> Unit) {
                 onExit = onExit,
             )
         }
+
+        // Botón de pausa + menú (Reanudar / audio / ayuda / Salir), común a todos los juegos.
+        GamePauseControls(
+            status = state.status,
+            settings = graph.settingsRepository,
+            audio = graph.audio,
+            onPause = { vm.onIntent(SequenceMemoryIntent.Pause) },
+            onResume = { vm.onIntent(SequenceMemoryIntent.Resume) },
+            onExit = onExit,
+            gameTitle = "Memoria de Secuencias",
+            helpText = "Observa la secuencia de notas y repítela en orden. Cada acierto la hace más larga.",
+            accent = CategoryPalette.Memory,
+        )
     }
 }
 

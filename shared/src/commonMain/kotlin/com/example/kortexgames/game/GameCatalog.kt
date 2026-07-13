@@ -63,6 +63,9 @@ object GameIds {
 
     /** Hypergate / escudo de polaridad (categorías "reflexes" + "flexibility"). */
     const val HYPERGATE = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+
+    /** Neon Pulse / entrenador visomotor de nodos que se contraen (categoría "reflexes"). */
+    const val NEON_PULSE = "ffffffff-ffff-4fff-8fff-ffffffffffff"
 }
 
 /**
@@ -132,6 +135,7 @@ object GameCatalog {
         GameInfo(GameIds.STARPORT_ESCAPE, "Neon Starport Escape", GameCategory.LOGIC, playable = true),
         GameInfo(GameIds.NEON_CIRCUIT, "Neon Circuit Flow", GameCategory.PROBLEM_SOLVING, playable = true),
         GameInfo(GameIds.HYPERGATE, "Hypergate", GameCategory.REFLEXES, playable = true),
+        GameInfo(GameIds.NEON_PULSE, "Neon Pulse", GameCategory.REFLEXES, playable = true),
         GameInfo(null, "Parejas Relámpago", GameCategory.MEMORY, playable = false),
         GameInfo(null, "Cadena Lógica", GameCategory.LOGIC, playable = false),
         GameInfo(null, "Encuentra el Intruso", GameCategory.ATTENTION, playable = false),

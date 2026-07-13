@@ -54,8 +54,10 @@ import com.example.kortexgames.core.theme.CategoryPalette
 import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameStatus
+import com.example.kortexgames.ui.components.CitySkylineBackground
 import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
+import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.bounceClick
 import com.example.kortexgames.ui.components.drawNeonBubble
@@ -112,6 +114,13 @@ fun BubbleMathScreen(graph: AppGraph, onExit: () -> Unit) {
             accent = CategoryPalette.MentalMath,
             onStart = { vm.onIntent(BubbleMathIntent.Start) },
             onExit = onExit,
+            background = {
+                CitySkylineBackground(
+                    modifier = Modifier.fillMaxSize(),
+                    accent = LogicColors.Violet,
+                    intensity = 0.6f,
+                )
+            },
         )
         return
     }
@@ -123,56 +132,74 @@ fun BubbleMathScreen(graph: AppGraph, onExit: () -> Unit) {
         onPauseOrDispose { vm.onIntent(BubbleMathIntent.Pause) }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(LogicColors.BackgroundDark),
-    ) {
-        GameHud(round = game.round, score = game.score, lives = game.lives, combo = game.combo)
+    Box(modifier = Modifier.fillMaxSize().background(LogicColors.BackgroundDark)) {
+        // Skyline de ciudad nocturna, muy sutil, detrás de todo el juego.
+        CitySkylineBackground(
+            modifier = Modifier.fillMaxSize(),
+            accent = LogicColors.Violet,
+            intensity = 0.6f,
+        )
 
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .clipToBounds(),
-        ) {
-            val fieldW = maxWidth
-            val fieldH = maxHeight
-            // Línea de suelo: por encima de la banda del objetivo. y=1 (fracción del
-            // motor) se mapea a esta altura.
-            val floorLine = fieldH - FloorBand
+        Column(modifier = Modifier.fillMaxSize()) {
+            GameHud(round = game.round, score = game.score, combo = game.combo)
 
-            // Cada burbuja: se posiciona por su centro y se hace pulsable. `key`
-            // ata el estado de composición (animación de entrada) a la identidad de
-            // la burbuja, para que al explotar un distractor las demás no "hereden"
-            // el estado por su posición en la lista.
-            game.bubbles.forEach { bubble ->
-                key(bubble.id) {
-                    FallingBubble(
-                        bubble = bubble,
-                        fieldWidth = fieldW,
-                        floorLine = floorLine,
-                        onTap = { vm.onIntent(BubbleMathIntent.TapBubble(bubble.id)) },
-                    )
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .clipToBounds(),
+            ) {
+                val fieldW = maxWidth
+                val fieldH = maxHeight
+                // Línea de suelo: por encima de la banda del objetivo. y=1 (fracción del
+                // motor) se mapea a esta altura.
+                val floorLine = fieldH - FloorBand
+
+                // Cada burbuja: se posiciona por su centro y se hace pulsable. `key`
+                // ata el estado de composición (animación de entrada) a la identidad de
+                // la burbuja, para que al explotar un distractor las demás no "hereden"
+                // el estado por su posición en la lista.
+                game.bubbles.forEach { bubble ->
+                    key(bubble.id) {
+                        FallingBubble(
+                            bubble = bubble,
+                            fieldWidth = fieldW,
+                            floorLine = floorLine,
+                            onTap = { vm.onIntent(BubbleMathIntent.TapBubble(bubble.id)) },
+                        )
+                    }
                 }
+
+                // Objetivo en la base + línea de suelo.
+                TargetBase(
+                    target = game.target,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
+
+                // Chispas del estallido de la última burbuja tocada (encima de las burbujas):
+                // muchas al acertar, pocas y rojas al fallar.
+                BubbleBurstLayer(
+                    burst = game.lastBurst,
+                    eventId = game.eventId,
+                    floorLine = floorLine,
+                )
+
+                // Destello de feedback a pantalla completa (verde acierto / rojo fallo).
+                FeedbackFlash(eventId = game.eventId, result = game.lastResult)
             }
+        }
 
-            // Objetivo en la base + línea de suelo.
-            TargetBase(
-                target = game.target,
-                modifier = Modifier.align(Alignment.BottomCenter),
-            )
-
-            // Chispas del estallido de la última burbuja tocada (encima de las burbujas):
-            // muchas al acertar, pocas y rojas al fallar.
-            BubbleBurstLayer(
-                burst = game.lastBurst,
-                eventId = game.eventId,
-                floorLine = floorLine,
-            )
-
-            // Destello de feedback a pantalla completa (verde acierto / rojo fallo).
-            FeedbackFlash(eventId = game.eventId, result = game.lastResult)
+        // Vidas como corazones, ancladas arriba y centradas: el estado más crítico
+        // del jugador (cuánto le queda) va en el punto de mayor foco de la pantalla.
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            repeat(BubbleMathState.MAX_LIVES) { i ->
+                LifeHeart(alive = i < game.lives)
+            }
         }
     }
 
@@ -184,14 +211,29 @@ fun BubbleMathScreen(graph: AppGraph, onExit: () -> Unit) {
             onExit = onExit,
         )
     }
+
+    // Botón de pausa + menú (Reanudar / audio / ayuda / Salir), común a todos los juegos.
+    GamePauseControls(
+        status = state.status,
+        settings = graph.settingsRepository,
+        audio = graph.audio,
+        onPause = { vm.onIntent(BubbleMathIntent.Pause) },
+        onResume = { vm.onIntent(BubbleMathIntent.Resume) },
+        onExit = onExit,
+        gameTitle = "Burbujas de Cálculo",
+        helpText = "Revienta las burbujas con el resultado correcto antes de que toquen el suelo; encadena aciertos para subir el combo.",
+        accent = CategoryPalette.MentalMath,
+    )
 }
 
 /**
- * Barra superior con la ronda, el marcador, el combo (cuando ≥2, con latido) y las
- * vidas restantes como corazones (llenos = disponibles, vacíos = perdidos).
+ * Barra superior con la ronda, el marcador y el combo (cuando ≥2, con latido). Las
+ * vidas se muestran aparte, centradas arriba de toda la pantalla (ver
+ * [BubbleMathScreen]), así que esta barra deja hueco a la derecha para no chocar
+ * con ellas.
  */
 @Composable
-private fun GameHud(round: Int, score: Int, lives: Int, combo: Int) {
+private fun GameHud(round: Int, score: Int, combo: Int) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -227,12 +269,6 @@ private fun GameHud(round: Int, score: Int, lives: Int, combo: Int) {
                 fontWeight = FontWeight.Black,
                 modifier = Modifier.scale(comboScale),
             )
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            repeat(BubbleMathState.MAX_LIVES) { i ->
-                LifeHeart(alive = i < lives)
-            }
         }
     }
 }

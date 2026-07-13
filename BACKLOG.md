@@ -175,8 +175,6 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
 
 - [ ] **Mejorar niveles de crucigrama y Word Connect** (HACERLO MANUAL) Menos letras igual cantidad de 
       palabras.
-- [ ] **Mejorar flujo de energia** Mejorar efecto neon, conectores sobresalen, 
-      agregar chispas al conectar. Progresion mas lenta de niveles, separar mas conector de entrada y salida
 - [ ] **Crear torneos de juegos y rankings**
 
 - [ ] **Neon Circuit Flow — catálogo de niveles + solver.** Hoy solo hay

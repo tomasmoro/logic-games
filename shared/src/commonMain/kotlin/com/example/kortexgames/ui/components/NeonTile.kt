@@ -30,6 +30,9 @@ import com.example.kortexgames.core.theme.LogicColors
  * @param sparks si true, dibuja tres chispas sobre el borde superior mientras enciende.
  * @param baseMargin margen base entre el borde del tile y el tubo (más pequeño = tubo
  *   más grande dentro del recuadro). Crece un poco al encender para dejar sitio al halo.
+ * @param strokeScale factor sobre el grosor del tubo (y sus halos). <1 adelgaza el
+ *   neón: útil cuando la celda es pequeña (rejillas densas) y un tubo grueso tapaba la
+ *   letra. 1 = grosor estándar.
  */
 fun DrawScope.drawNeonTile(
     baseColor: Color,
@@ -37,6 +40,7 @@ fun DrawScope.drawNeonTile(
     cornerRadius: Dp = 22.dp,
     sparks: Boolean = true,
     baseMargin: Dp = 7.dp,
+    strokeScale: Float = 1f,
 ) {
     val corner = CornerRadius(cornerRadius.toPx(), cornerRadius.toPx())
 
@@ -44,7 +48,7 @@ fun DrawScope.drawNeonTile(
     val idle = lerp(baseColor, LogicColors.SurfaceVariantDark, 0.38f)
     val edge = lerp(idle, baseColor, activeAmt)
 
-    val stroke = (2.4.dp + 1.8.dp * activeAmt).toPx()
+    val stroke = (2.4.dp + 1.8.dp * activeAmt).toPx() * strokeScale
     // Margen para que los halos quepan dentro de los límites del tile (crece al encender).
     val margin = (baseMargin + 2.dp * activeAmt).toPx()
     val topLeft = Offset(margin, margin)

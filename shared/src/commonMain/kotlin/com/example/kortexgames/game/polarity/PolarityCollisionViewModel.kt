@@ -37,6 +37,12 @@ sealed interface PolarityCollisionIntent : UiIntent {
     /** Arranca la partida desde la antesala (intro), "Comenzar". */
     data object Start : PolarityCollisionIntent
 
+    /** Pausa la partida (menú de pausa): congela la física y el cronómetro. */
+    data object Pause : PolarityCollisionIntent
+
+    /** Reanuda la partida tras la pausa. */
+    data object Resume : PolarityCollisionIntent
+
     data object PlayAgain : PolarityCollisionIntent
 }
 
@@ -71,6 +77,8 @@ class PolarityCollisionViewModel(
             is PolarityCollisionIntent.UpdateViewport -> engine.updateViewport(intent.widthPx, intent.heightPx)
             is PolarityCollisionIntent.RotateBy -> engine.rotateBy(intent.deltaRad)
             is PolarityCollisionIntent.Frame -> engine.onFrame(intent.frameNanos)
+            PolarityCollisionIntent.Pause -> engine.pause()
+            PolarityCollisionIntent.Resume -> engine.resume()
             PolarityCollisionIntent.Start,
             PolarityCollisionIntent.PlayAgain -> {
                 setState { copy(gameOver = null) }

@@ -1,5 +1,6 @@
 package com.example.kortexgames.game.energyflow
 
+import kotlin.math.abs
 import kotlin.random.Random
 
 /**
@@ -232,7 +233,11 @@ data class EnergyLevel(
  *     (algoritmo de "backtracker recursivo", iterativo aquí para no desbordar pila).
  *     Cada arista del árbol añade conectores recíprocos a las dos celdas que une.
  *  2. Marca la celda inicial como fuente y la **hoja más lejana** como destino, para
- *     que el recorrido del circuito sea largo e interesante.
+ *     que el recorrido del circuito sea largo e interesante, exigiendo además una
+ *     separación física mínima ([minSourceTargetDistance]) para que sus conectores
+ *     no queden pegados; si ninguna hoja la cumple, se relaja a la hoja más lejana
+ *     sin más (el destino siempre es una hoja real del árbol, nunca una celda forzada,
+ *     para no arriesgar niveles sin solución).
  *  3. **Baraja las rotaciones** de todas las piezas (sin tocar sus conectores), de
  *     modo que el jugador deba reorientarlas. Se reintenta si el barajado quedara ya
  *     resuelto de casualidad.
@@ -255,6 +260,24 @@ object EnergyFlowGenerator {
 
     /** Tope defensivo de rebarajados para no quedar ya resuelto (nunca debería agotarse). */
     private const val MAX_SCRAMBLE_ATTEMPTS = 50
+
+    /**
+     * Separación mínima (distancia Manhattan en celdas) exigida entre la fuente y el
+     * destino, para que sus conectores no queden pegados. Escala con el tablero: **lado
+     * de la rejilla − 2** (4×4 → 2 celdas, 6×6 → 4 celdas), así una rejilla más grande
+     * exige una separación proporcionalmente mayor en vez de un mínimo fijo.
+     */
+    private fun minSourceTargetDistance(rows: Int, cols: Int): Int =
+        (minOf(rows, cols) - 2).coerceAtLeast(1)
+
+    /** Distancia Manhattan (en celdas) entre dos índices de la rejilla. */
+    private fun gridDistance(a: Int, b: Int, cols: Int): Int {
+        val ar = a / cols
+        val ac = a % cols
+        val br = b / cols
+        val bc = b % cols
+        return abs(ar - br) + abs(ac - bc)
+    }
 
     /**
      * Genera un nivel resoluble para la [config] dada usando [random] como fuente
@@ -296,12 +319,21 @@ object EnergyFlowGenerator {
             }
         }
 
-        // 2) Fuente = celda inicial; destino = hoja (grado 1) más lejana de la fuente.
+        // 2) Fuente = celda inicial; destino = hoja (grado 1) más lejana de la fuente,
+        // exigiendo además una separación física mínima ([minSourceTargetDistance],
+        // que crece con el tamaño de la rejilla) para que los conectores de entrada y
+        // salida no queden pegados. Si ninguna hoja la cumple, se relaja a la hoja más
+        // lejana sin más (nunca se fuerza una celda ajena al árbol: forzar una esquina
+        // podía dejar el nivel sin solución si esa celda no era parte de un camino válido).
         val distance = bfsDistances(start, connectors, rows, cols)
-        val target = (0 until n)
-            .filter { it != start && connectors[it].size == 1 }
-            .maxByOrNull { distance[it] }
-            ?: (0 until n).filter { it != start }.maxByOrNull { distance[it] }!!
+        val leaves = (0 until n).filter { it != start && connectors[it].size == 1 }
+        val minDistance = minSourceTargetDistance(rows, cols)
+        val farLeaves = leaves.filter { gridDistance(start, it, cols) >= minDistance }
+        val target = when {
+            farLeaves.isNotEmpty() -> farLeaves.maxByOrNull { distance[it] }!!
+            leaves.isNotEmpty() -> leaves.maxByOrNull { distance[it] }!!
+            else -> (0 until n).filter { it != start }.maxByOrNull { distance[it] }!!
+        }
 
         val solvedTiles = (0 until n).map { i ->
             val kind = when (i) {

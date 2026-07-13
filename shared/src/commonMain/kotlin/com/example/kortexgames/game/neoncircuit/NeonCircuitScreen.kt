@@ -50,6 +50,7 @@ import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
+import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.LevelStripState
 import com.example.kortexgames.ui.components.SpaceBackdrop
@@ -191,6 +192,19 @@ fun NeonCircuitScreen(graph: AppGraph, onExit: () -> Unit) {
                 onChooseLevel = { vm.onIntent(NeonCircuitIntent.ChooseLevel) },
             )
         }
+
+        // Botón de pausa + menú (Reanudar / audio / ayuda / Salir), común a todos los juegos.
+        GamePauseControls(
+            status = state.status,
+            settings = graph.settingsRepository,
+            audio = graph.audio,
+            onPause = { vm.onIntent(NeonCircuitIntent.Pause) },
+            onResume = { vm.onIntent(NeonCircuitIntent.Resume) },
+            onExit = onExit,
+            gameTitle = "Neon Circuit Flow",
+            helpText = "Arrastra desde cada nodo y tiende un cable hasta su gemelo del mismo color, sin que dos cables se crucen. Conéctalos todos para energizar el circuito.",
+            accent = CategoryPalette.ProblemSolving,
+        )
     }
 }
 

@@ -60,6 +60,7 @@ import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
+import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.LevelStripState
 import kotlin.math.PI
 import kotlin.math.cos
@@ -174,6 +175,19 @@ fun WordConnectScreen(graph: AppGraph, onExit: () -> Unit) {
                 onChooseLevel = { vm.onIntent(WordConnectIntent.ChooseLevel) },
             )
         }
+
+        // Botón de pausa + menú (Reanudar / audio / ayuda / Salir), común a todos los juegos.
+        GamePauseControls(
+            status = state.status,
+            settings = graph.settingsRepository,
+            audio = graph.audio,
+            onPause = { vm.onIntent(WordConnectIntent.Pause) },
+            onResume = { vm.onIntent(WordConnectIntent.Resume) },
+            onExit = onExit,
+            gameTitle = "Palabras Conectadas",
+            helpText = "Une las letras de la rueda arrastrando el dedo para formar palabras y descubre todas las del panel.",
+            accent = accent,
+        )
     }
 }
 

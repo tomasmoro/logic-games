@@ -47,6 +47,7 @@ object Routes {
     const val STARPORT_ESCAPE = "game/starport-escape"
     const val NEON_CIRCUIT = "game/neon-circuit"
     const val HYPERGATE = "game/hypergate"
+    const val NEON_PULSE = "game/neon-pulse"
 
     /**
      * Ruta de juego para un [GameIds] concreto, o null si el juego aún no es
@@ -68,6 +69,7 @@ object Routes {
         GameIds.STARPORT_ESCAPE -> STARPORT_ESCAPE
         GameIds.NEON_CIRCUIT -> NEON_CIRCUIT
         GameIds.HYPERGATE -> HYPERGATE
+        GameIds.NEON_PULSE -> NEON_PULSE
         else -> null
     }
 

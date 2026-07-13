@@ -68,6 +68,7 @@ import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.ArcadeBrickBackground
 import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
+import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.LevelStripState
 import com.example.kortexgames.ui.components.NeonIcon
@@ -406,6 +407,19 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
                 onChooseLevel = { vm.onIntent(WaterSortIntent.ChooseLevel) },
             )
         }
+
+        // Botón de pausa + menú (Reanudar / audio / ayuda / Salir), común a todos los juegos.
+        GamePauseControls(
+            status = state.status,
+            settings = graph.settingsRepository,
+            audio = graph.audio,
+            onPause = { vm.onIntent(WaterSortIntent.Pause) },
+            onResume = { vm.onIntent(WaterSortIntent.Resume) },
+            onExit = onExit,
+            gameTitle = "Ordena las Pociones",
+            helpText = "Vierte colores iguales hasta dejar cada tubo de un solo color.",
+            accent = CategoryPalette.Logic,
+        )
     }
 }
 

@@ -58,6 +58,7 @@ import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
+import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.LevelStripState
 import com.example.kortexgames.ui.components.SpaceBackdrop
@@ -174,6 +175,19 @@ fun StarportScreen(graph: AppGraph, onExit: () -> Unit) {
                 onChooseLevel = { vm.onIntent(StarportIntent.ChooseLevel) },
             )
         }
+
+        // Botón de pausa + menú (Reanudar / audio / ayuda / Salir), común a todos los juegos.
+        GamePauseControls(
+            status = state.status,
+            settings = graph.settingsRepository,
+            audio = graph.audio,
+            onPause = { vm.onIntent(StarportIntent.Pause) },
+            onResume = { vm.onIntent(StarportIntent.Resume) },
+            onExit = onExit,
+            gameTitle = "Neon Starport Escape",
+            helpText = "Desliza cada nave a lo largo de su eje y despeja el camino para que la nave insignia escape por la esclusa.",
+            accent = CategoryPalette.Logic,
+        )
     }
 }
 

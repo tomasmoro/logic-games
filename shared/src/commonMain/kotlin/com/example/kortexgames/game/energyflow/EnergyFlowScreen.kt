@@ -2,6 +2,7 @@ package com.example.kortexgames.game.energyflow
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
@@ -28,19 +29,17 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -56,10 +55,15 @@ import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.CitySkylineBackground
 import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
+import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.LevelStripState
 import com.example.kortexgames.ui.components.NeonIcon
 import com.example.kortexgames.ui.components.bounceClick
+import com.example.kortexgames.ui.components.drawNeonTile
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 /** Color de las tuberías **energizadas** (energía cian que fluye desde la batería). */
 private val PipePowered = LogicColors.NeonCyan
@@ -120,6 +124,18 @@ fun EnergyFlowScreen(graph: AppGraph, onExit: () -> Unit) {
 
     // Generación del tablero: sube al reiniciar/reempezar para recomponer desde cero.
     var boardGen by remember { mutableStateOf(0) }
+
+    // Rastrea qué celdas acaban de energizarse para lanzarles una ráfaga de chispas
+    // (mismo lenguaje que el crucigrama): compara el set de energizadas de este giro
+    // contra el del giro anterior y guarda, por celda, el giro en el que "prendió".
+    // Se reinicia con `boardGen` para no arrastrar chispas de una partida anterior.
+    var previousPowered by remember(boardGen) { mutableStateOf<Set<Int>>(emptySet()) }
+    val sparkTicks = remember(boardGen) { mutableStateMapOf<Int, Long>() }
+    LaunchedEffect(boardGen, game.powered) {
+        val newlyPowered = game.powered - previousPowered
+        for (i in newlyPowered) sparkTicks[i] = game.rotationSeq
+        previousPowered = game.powered
+    }
 
     // Latido lento y de baja amplitud del halo de energía (ambiente, §9.4).
     val pulse by rememberInfiniteTransition(label = "energyPulse").animateFloat(
@@ -188,6 +204,7 @@ fun EnergyFlowScreen(graph: AppGraph, onExit: () -> Unit) {
                                             tile = grid.tiles[index],
                                             powered = index in game.powered,
                                             pulse = pulse,
+                                            sparkTick = sparkTicks[index] ?: 0L,
                                             onRotate = { vm.onIntent(EnergyFlowIntent.RotateTile(index)) },
                                             modifier = Modifier.size(cell),
                                         )
@@ -228,6 +245,19 @@ fun EnergyFlowScreen(graph: AppGraph, onExit: () -> Unit) {
                 onChooseLevel = { vm.onIntent(EnergyFlowIntent.ChooseLevel) },
             )
         }
+
+        // Botón de pausa + menú (Reanudar / audio / ayuda / Salir), común a todos los juegos.
+        GamePauseControls(
+            status = state.status,
+            settings = graph.settingsRepository,
+            audio = graph.audio,
+            onPause = { vm.onIntent(EnergyFlowIntent.Pause) },
+            onResume = { vm.onIntent(EnergyFlowIntent.Resume) },
+            onExit = onExit,
+            gameTitle = "Flujo de Energía",
+            helpText = "Gira las piezas para llevar la energía de la batería a la bombilla.",
+            accent = CategoryPalette.SpatialVision,
+        )
     }
 }
 
@@ -236,12 +266,18 @@ fun EnergyFlowScreen(graph: AppGraph, onExit: () -> Unit) {
  * el giro a `graphicsLayer { rotationZ }`, animado con resorte para que el giro se
  * sienta táctil (§9.4). Las tuberías se pintan con el color de energía si la pieza
  * está [powered], o apagadas en caso contrario; la fuente/destino añaden su nodo.
+ *
+ * @param sparkTick giro (`rotationSeq`) en el que esta celda **acaba de energizarse**,
+ *        o `0` si no aplica. Dispara una ráfaga de chispas (mismo lenguaje visual que
+ *        el crucigrama, vía [drawTileConnectSparks]) para reforzar el "engancha" del
+ *        circuito al cerrarse un tramo nuevo.
  */
 @Composable
 private fun EnergyTileView(
     tile: Tile,
     powered: Boolean,
     pulse: Float,
+    sparkTick: Long,
     onRotate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -256,19 +292,39 @@ private fun EnergyTileView(
         label = "tileRotation",
     )
 
+    val spark = remember { Animatable(0f) }
+    LaunchedEffect(sparkTick) {
+        if (sparkTick <= 0L) return@LaunchedEffect
+        spark.snapTo(0f)
+        spark.animateTo(1f, tween(560, easing = LinearEasing))
+    }
+
+    val tileColor = when (tile.kind) {
+        TileKind.SOURCE -> SourceColor
+        TileKind.TARGET -> TargetLit
+        TileKind.PIPE -> PipePowered
+    }
+
     Box(modifier = modifier.bounceClick(onClick = onRotate), contentAlignment = Alignment.Center) {
         // Capa 1 — fondo de la celda ESTÁTICO: no rota, así sus esquinas cuadradas
-        // nunca barren sobre las celdas vecinas al girar la pieza.
+        // nunca barren sobre las celdas vecinas al girar la pieza. Reutiliza el tubo de
+        // neón de [drawNeonTile] (mismo lenguaje visual que Memoria y Crucigrama, §9.2)
+        // en vez de un panel plano, y encima las chispas de conexión.
         Canvas(modifier = Modifier.fillMaxSize()) {
-            drawCell()
+            val activeAmt = if (powered) (0.55f + 0.45f * pulse) else 0f
+            drawNeonTile(tileColor, activeAmt, cornerRadius = 10.dp, sparks = false, baseMargin = 4.dp)
+            val sp = spark.value
+            if (sp > 0f && sp < 1f) drawTileConnectSparks(tileColor, sp)
         }
-        // Capa 2 — tuberías + nodo, que SÍ rotan. Sus extremos viven en el círculo
-        // inscrito de la celda (radio = medio lado), luego se mantienen dentro de sus
-        // propios límites durante el giro y no se solapan con las celdas contiguas.
+        // Capa 2 — tuberías + nodo, que SÍ rotan. `clip = true` en el graphicsLayer
+        // recorta el dibujo a los límites propios de la celda en TODO ángulo de giro:
+        // sin esto, el grosor del trazo (con extremos redondeados) sobresalía de la
+        // celda hacia las vecinas justo en las orientaciones cardinales (pedido del
+        // usuario: "los conectores no deberían sobresalir de los contenedores").
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer { rotationZ = angle },
+                .graphicsLayer { rotationZ = angle; clip = true },
         ) {
             drawPipes(tile.connectors, powered, pulse)
             when (tile.kind) {
@@ -280,23 +336,24 @@ private fun EnergyTileView(
     }
 }
 
-/** Fondo de la celda: superficie redondeada con borde tenue para leer la rejilla. */
-private fun DrawScope.drawCell() {
-    val inset = 1.5.dp.toPx()
-    val corner = CornerRadius(10.dp.toPx(), 10.dp.toPx())
-    drawRoundRect(
-        color = LogicColors.SurfaceDark,
-        topLeft = Offset(inset, inset),
-        size = Size(size.width - inset * 2, size.height - inset * 2),
-        cornerRadius = corner,
-    )
-    drawRoundRect(
-        color = LogicColors.SurfaceVariantDark,
-        topLeft = Offset(inset, inset),
-        size = Size(size.width - inset * 2, size.height - inset * 2),
-        cornerRadius = corner,
-        style = Stroke(1.dp.toPx()),
-    )
+/**
+ * Ráfaga de chispas radiales que salen del centro de la celda al energizarse, con
+ * alfa decreciente conforme avanza [amt] (0→1). Mismo patrón que las chispas de
+ * celda del crucigrama, adaptado al color de energía de la pieza.
+ */
+private fun DrawScope.drawTileConnectSparks(color: Color, amt: Float) {
+    val count = 7
+    val dist = size.minDimension * (0.3f + 0.8f * amt)
+    val fade = 1f - amt
+    val dot = 2.6.dp.toPx() * (1f - amt * 0.4f)
+    for (i in 0 until count) {
+        val ang = i * (2f * PI.toFloat() / count)
+        drawCircle(
+            color = color.copy(alpha = fade),
+            radius = dot,
+            center = Offset(center.x + cos(ang) * dist, center.y + sin(ang) * dist),
+        )
+    }
 }
 
 /**

@@ -55,6 +55,7 @@ import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
+import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.SpaceBackdrop
 import com.example.kortexgames.ui.components.alphaIf
@@ -281,6 +282,19 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
                 onExit = onExit,
             )
         }
+
+        // Botón de pausa + menú (Reanudar / audio / ayuda / Salir), común a todos los juegos.
+        GamePauseControls(
+            status = state.status,
+            settings = graph.settingsRepository,
+            audio = graph.audio,
+            onPause = { vm.onIntent(BlockGridIntent.Pause) },
+            onResume = { vm.onIntent(BlockGridIntent.Resume) },
+            onExit = onExit,
+            gameTitle = "Neon Block Grid",
+            helpText = "Arrastra las piezas al tablero y completa filas o columnas para romperlas. La partida termina cuando ninguna pieza cabe.",
+            accent = CategoryPalette.SpatialVision,
+        )
     }
 }
 

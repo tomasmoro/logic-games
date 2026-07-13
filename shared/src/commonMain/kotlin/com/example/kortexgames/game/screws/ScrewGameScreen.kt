@@ -58,6 +58,7 @@ import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
+import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.LevelStripState
 import com.example.kortexgames.ui.components.SpaceBackdrop
@@ -195,6 +196,19 @@ fun ScrewGameScreen(graph: AppGraph, onExit: () -> Unit) {
                 onChooseLevel = { vm.onIntent(ScrewGameIntent.ChooseLevel) },
             )
         }
+
+        // Botón de pausa + menú (Reanudar / audio / ayuda / Salir), común a todos los juegos.
+        GamePauseControls(
+            status = state.status,
+            settings = graph.settingsRepository,
+            audio = graph.audio,
+            onPause = { vm.onIntent(ScrewGameIntent.Pause) },
+            onResume = { vm.onIntent(ScrewGameIntent.Resume) },
+            onExit = onExit,
+            gameTitle = "Tornillos Neón",
+            helpText = "Desatornilla y recoloca los pernos para soltar todas las placas. Las placas tapan agujeros… y cuelgan si les queda un solo tornillo.",
+            accent = CategoryPalette.SpatialVision,
+        )
     }
 }
 

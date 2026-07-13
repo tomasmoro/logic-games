@@ -76,6 +76,12 @@ sealed interface HypergateIntent : UiIntent {
     /** Arranca la partida desde la antesala (intro): botón "Comenzar". */
     data object Start : HypergateIntent
 
+    /** Pausa la partida (menú de pausa): congela la física y el cronómetro. */
+    data object Pause : HypergateIntent
+
+    /** Reanuda la partida tras la pausa. */
+    data object Resume : HypergateIntent
+
     /** Reinicia tras el overlay de fin: botón "Jugar de nuevo". */
     data object PlayAgain : HypergateIntent
 }

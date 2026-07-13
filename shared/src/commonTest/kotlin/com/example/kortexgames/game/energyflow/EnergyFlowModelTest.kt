@@ -137,6 +137,31 @@ class EnergyFlowModelTest {
     }
 
     @Test
+    fun elDestinoSiempreEsUnaHojaRealDelArbolEnMuchasSemillas() {
+        // Regresión: forzar el destino a "la esquina más lejana" (probado antes) podía
+        // asignarle una celda que no era hoja del árbol de expansión, generando niveles
+        // sin solución real. El destino debe ser SIEMPRE una hoja auténtica (grado 1 en
+        // los conectores resueltos), sea cual sea la semilla o el tamaño.
+        for (n in 4..7) {
+            val config = EnergyFlowGenerator.Config(n, n)
+            for (seed in 0L until 30L) {
+                val level = EnergyFlowGenerator.generate(config, Random(seed = seed))
+                val grid = level.grid
+                val target = grid.tiles[grid.targetIndex]
+                assertEquals(
+                    1, target.connectors.size,
+                    "n=$n seed=$seed: el destino debe tener un único conector (hoja del árbol)",
+                )
+
+                // Y el nivel completo debe seguir siendo resoluble aplicando los giros mínimos.
+                val solvedTiles = grid.tiles.map { it.copy(rotation = it.rotation + it.minRotationsToSolve()) }
+                val solvedGrid = grid.copy(tiles = solvedTiles)
+                assertTrue(solvedGrid.isSolved(), "n=$n seed=$seed: el nivel debe ser resoluble")
+            }
+        }
+    }
+
+    @Test
     fun lasTresDificultadesUsanLasCuadriculasPedidas() {
         assertEquals(EnergyFlowGenerator.Config(4, 4), EnergyFlowGenerator.configForDifficulty(1))
         assertEquals(EnergyFlowGenerator.Config(5, 5), EnergyFlowGenerator.configForDifficulty(2))
@@ -177,4 +202,5 @@ class EnergyFlowModelTest {
         val b = EnergyFlowGenerator.generate(config, Random(seed = 7L))
         assertEquals(a.grid.tiles, b.grid.tiles)
     }
+
 }

@@ -41,6 +41,12 @@ sealed interface EnergyFlowIntent : UiIntent {
     data class RotateTile(val index: Int) : EnergyFlowIntent
     data object Restart : EnergyFlowIntent
 
+    /** Pausa la partida (menú de pausa): congela el cronómetro de la partida. */
+    data object Pause : EnergyFlowIntent
+
+    /** Reanuda la partida tras la pausa. */
+    data object Resume : EnergyFlowIntent
+
     /** Elige un nivel desbloqueado en el selector y empieza a jugarlo. */
     data class PlayLevel(val level: Int) : EnergyFlowIntent
 
@@ -85,6 +91,8 @@ class EnergyFlowViewModel(
         when (intent) {
             is EnergyFlowIntent.RotateTile -> engine.onTileRotate(intent.index)
             EnergyFlowIntent.Restart -> engine.restart()
+            EnergyFlowIntent.Pause -> engine.pause()
+            EnergyFlowIntent.Resume -> engine.resume()
             is EnergyFlowIntent.PlayLevel -> playLevel(intent.level)
             EnergyFlowIntent.PlayAgain -> playLevel(currentState.currentLevel)
             EnergyFlowIntent.NextLevel -> playLevel(currentState.currentLevel + 1)
