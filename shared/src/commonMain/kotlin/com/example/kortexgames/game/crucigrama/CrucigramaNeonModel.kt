@@ -380,11 +380,11 @@ object CrucigramaNeonGenerator {
                 "SOLA" to "Que no tiene compañía o carece de ayuda en una situación",
                 "SANO" to "Que goza de buena salud o es beneficioso para el organismo",
                 "LONA" to "Tela fuerte, gruesa e impermeable que sirve para cubrir o proteger objetos",
-                "ASNO" to "Animal de carga, parecido al caballo pero de menor tamaño y orejas largas",
-                "SOLANA" to "Lugar orientado de forma que recibe sol de manera directa la mayor parte del día", // La palabra rara
-                "SOL" to "Estrella que ilumina el cielo" // La palabra rara
+                "ASNO" to "Similar al burro",
+                "SOL" to "Estrella que ilumina el cielo",
+                "SAL" to "Cloruro de sodio"
             ),
-            extras = listOf("SAL", "SON", "LOSA", "SOLO", "LANA", "ASOLAN"),
+            extras = listOf( "SON", "LOSA", "SOLO", "LANA", "ASOLAN", "SALA"),
         ),
         LevelDef(
             listOf(
