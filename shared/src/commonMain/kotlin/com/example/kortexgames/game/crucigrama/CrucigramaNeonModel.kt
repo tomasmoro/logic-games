@@ -61,8 +61,10 @@ data class CrucigramaNeonLevelSpec(
             }
             var prev: Pair<Int, Int>? = null
             slot.answer.forEachIndexed { index, letter ->
-                val r = if (slot.direction == CrucigramaDirection.VERTICAL) slot.row + index else slot.row
-                val c = if (slot.direction == CrucigramaDirection.HORIZONTAL) slot.col + index else slot.col
+                val r =
+                    if (slot.direction == CrucigramaDirection.VERTICAL) slot.row + index else slot.row
+                val c =
+                    if (slot.direction == CrucigramaDirection.HORIZONTAL) slot.col + index else slot.col
                 require(r in 0 until rows && c in 0 until cols) {
                     "La palabra '${slot.answer}' sale de la rejilla en ($r,$c)."
                 }
@@ -163,7 +165,12 @@ data class CrucigramaNeonPuzzle(
 object CrucigramaNeonGenerator {
 
     /** Palabra ya colocada en la rejilla durante el entrelazado. */
-    private data class Placed(val word: String, val row: Int, val col: Int, val dir: CrucigramaDirection) {
+    private data class Placed(
+        val word: String,
+        val row: Int,
+        val col: Int,
+        val dir: CrucigramaDirection
+    ) {
         fun cell(i: Int): Pair<Int, Int> {
             val r = if (dir == CrucigramaDirection.VERTICAL) row + i else row
             val c = if (dir == CrucigramaDirection.HORIZONTAL) col + i else col
@@ -204,18 +211,26 @@ object CrucigramaNeonGenerator {
         for (r in minR..maxR) {
             var c = minC
             while (c <= maxC) {
-                if (grid[r to c] == null) { c++; continue }
+                if (grid[r to c] == null) {
+                    c++; continue
+                }
                 val sb = StringBuilder()
-                while (c <= maxC && grid[r to c] != null) { sb.append(grid[r to c]); c++ }
+                while (c <= maxC && grid[r to c] != null) {
+                    sb.append(grid[r to c]); c++
+                }
                 if (sb.length >= 2) runs.add(sb.toString())
             }
         }
         for (c in minC..maxC) {
             var r = minR
             while (r <= maxR) {
-                if (grid[r to c] == null) { r++; continue }
+                if (grid[r to c] == null) {
+                    r++; continue
+                }
                 val sb = StringBuilder()
-                while (r <= maxR && grid[r to c] != null) { sb.append(grid[r to c]); r++ }
+                while (r <= maxR && grid[r to c] != null) {
+                    sb.append(grid[r to c]); r++
+                }
                 if (sb.length >= 2) runs.add(sb.toString())
             }
         }
@@ -238,8 +253,10 @@ object CrucigramaNeonGenerator {
             for (k in word.indices) {
                 if (word[k] != ch) continue
                 for (dir in DIRECTIONS) {
-                    val row = if (dir == CrucigramaDirection.VERTICAL) cell.first - k else cell.first
-                    val col = if (dir == CrucigramaDirection.HORIZONTAL) cell.second - k else cell.second
+                    val row =
+                        if (dir == CrucigramaDirection.VERTICAL) cell.first - k else cell.first
+                    val col =
+                        if (dir == CrucigramaDirection.HORIZONTAL) cell.second - k else cell.second
                     val next = placed + Placed(word, row, col, dir)
                     if (layoutValid(next)) {
                         backtrack(next, words, idx + 1)?.let { return it }
@@ -263,7 +280,8 @@ object CrucigramaNeonGenerator {
         val slots = norm.mapIndexed { i, p ->
             CrucigramaNeonSlotSpec(i + 1, p.word, clue.getValue(p.word), p.row, p.col, p.dir)
         }
-        val letters = (order.flatMap { it.toList() } + def.extras.flatMap { it.toList() }).distinct()
+        val letters =
+            (order.flatMap { it.toList() } + def.extras.flatMap { it.toList() }).distinct()
         return CrucigramaNeonLevelSpec(rows, cols, letters, slots, def.extras)
     }
 
@@ -271,14 +289,36 @@ object CrucigramaNeonGenerator {
     // (5 palabras 5-8, 6 palabras 9-12, 7 palabras 13-20). Longitudes variadas (3-6).
     private val levelDefs: List<LevelDef> = listOf(
         // --- 4 palabras -----------------------------------------------------
+
+        LevelDef(
+            listOf(
+                "RATA" to "Roedor",
+                "ARAR" to "Labrar la tierra",
+                "TARTA" to "Pastel",
+                "TRATAR" to "Intentar",
+                "ATAR" to "Amarrar",
+            ),
+            extras = listOf("RARA", "TARAR"),
+        ),
         LevelDef(
             listOf(
                 "AMOR" to "Sentimiento de afecto",
                 "RAMO" to "Conjunto de flores",
                 "MORA" to "Fruta del moral",
                 "MAR" to "Gran masa de agua salada",
+                "ORO" to "Metal precioso",
             ),
-            extras = listOf("ROMA", "ORO", "ARO", "RAMA"),
+            extras = listOf("ROMA", "ARO", "RAMA", "MARA", "ARMA"),
+        ),
+        LevelDef(
+            listOf(
+                "ACTA" to "Documento escrito donde se registra lo sucedido en una reunión",
+                "CATA" to "Acción de probar o degustar un alimento o bebida para examinar su calidad",
+                "ATACA" to "Acomete, embiste o inicia una acción ofensiva contra alguien o algo",
+                "ACATA" to "Respeta, obedece o acepta una orden, norma o autoridad",
+                "ATA" to "Amarra",
+            ),
+            extras = emptyList(),
         ),
         LevelDef(
             listOf(
@@ -286,79 +326,65 @@ object CrucigramaNeonGenerator {
                 "COSA" to "Objeto o asunto",
                 "SACO" to "Bolsa grande",
                 "OCA" to "Ave parecida al ganso",
+                "CAOS" to "Desorden",
             ),
-            extras = listOf("ASCO", "CASO", "CAOS", "SACA", "OSA"),
-        ),
-        LevelDef(
-            listOf(
-                "PLATO" to "Vajilla donde comes",
-                "PATO" to "Ave de agua",
-                "PALO" to "Trozo de madera",
-                "ALTO" to "De gran estatura",
-            ),
-            extras = listOf("LATA", "PALA", "LOSA", "PASO", "TOPA", "OLA"),
-        ),
-        LevelDef(
-            listOf(
-                "RATON" to "Roedor pequeño",
-                "ROTA" to "Quebrada, dañada",
-                "TORO" to "Macho de la vaca",
-                "NORA" to "Rueda para sacar agua",
-            ),
-            extras = listOf("TORA", "NATO", "ORA", "ATO", "TARO"),
+            extras = listOf("ASCO", "CASO", "SACA", "OSO"),
         ),
         // --- 5 palabras -----------------------------------------------------
         LevelDef(
             listOf(
-                "RESTA" to "Operación de quitar",
-                "REMO" to "Pala para impulsar un bote",
-                "META" to "Objetivo o línea de llegada",
-                "MESA" to "Mueble para comer",
-                "MAR" to "Gran masa de agua salada",
+                "ROMERO" to "Planta aromática",
+                "ERROR" to "Fallo",
+                "REMO" to "Pala para impulsar una embarcación en el agua",
+                "MERO" to "Pez marino comestible, o algo que es simple y puro",
+                "REO" to "Prisionero"
             ),
-            extras = listOf("MATE", "RETO", "TOMA", "SETA", "ROMA", "MAREO", "ESTO"),
+            extras = listOf("REMERO", "MORRO", "ROER", "MEMO", "OREO", "ORO"),
         ),
         LevelDef(
             listOf(
-                "PLATO" to "Vajilla donde comes",
-                "SALTO" to "Brinco",
-                "PALO" to "Trozo de madera",
-                "SOPA" to "Plato con caldo",
-                "ALTO" to "De gran estatura",
+                "CAPO" to "Jefe de una organización o persona con mucho poder",
+                "COPA" to "Vaso con pie para beber, o trofeo deportivo",
+                "CAPA" to "Prenda de vestir larga y suelta, o estrato de algo",
+                "POCO" to "Que es escaso o existe en pequeña cantidad",
+                "OPACO" to "Que no deja pasar la luz",
+                "CACAO" to "Ladrón que roba con destreza y astucia"
             ),
-            extras = listOf("LATA", "PALA", "LOSA", "PASO", "TOPA", "OLA"),
+            extras = listOf("COCO", "COPO", "POPA", "ACA", "PACO", "COCA", "OCA", "PAPA"),
         ),
         LevelDef(
             listOf(
-                "CARTA" to "Escrito que se envía",
-                "COSTA" to "Orilla del mar",
-                "CARO" to "De precio elevado",
-                "RATO" to "Momento breve",
-                "ROSA" to "Flor con espinas",
+                "MOLINO" to "Máquina para moler grano o producir energía con el viento",
+                "LIMON" to "Fruto cítrico de color amarillo y sabor muy ácido",
+                "MIO" to "Que pertenece a mí",
+                "MONO" to "Animal primate, o prenda de vestir de una sola pieza",
+                "LINO" to "Planta textil de la que se obtienen hilos y telas frescas",
+                "MILLON" to "100 x 100 x 100" // La palabra rara
             ),
-            extras = listOf("SACO", "ARCO", "ORCA", "COSA", "CASO", "ROCA", "ACTOR"),
-        ),
-        LevelDef(
-            listOf(
-                "LIMON" to "Fruta cítrica amarilla",
-                "LIMA" to "Fruta cítrica verde",
-                "MANO" to "Parte final del brazo",
-                "MONA" to "Hembra del mono",
-                "ALMA" to "Espíritu de una persona",
-            ),
-            extras = listOf("LOMA", "MOLA", "MINA", "LINO", "MIL", "MAL", "OLA"),
+            extras = listOf("MIMO", "LILO", "ION", "LIO", "OLMO"),
         ),
         // --- 6 palabras -----------------------------------------------------
         LevelDef(
             listOf(
-                "COSTA" to "Orilla del mar",
-                "CARTA" to "Escrito que se envía",
-                "CASA" to "Vivienda",
-                "SACO" to "Bolsa grande",
-                "RATO" to "Momento breve",
-                "OSO" to "Animal grande y peludo",
+                "PUEDE" to "Tiene la capacidad, facultad o medios para realizar una acción",
+                "DUQUE" to "Título nobiliario de la más alta categoría, inmediatamente superior al de marqués",
+                "QUEDE" to "Permanezca en un lugar, o se mantenga en una situación o estado",
+                "DUDE" to "Tenga dudas, vacile o no esté completamente seguro de algo",
+                "QUE" to "Pronombre o conjunción que introduce una idea o una oración subordinada",
             ),
-            extras = listOf("CASO", "ROSA", "ROCA", "ARCO", "COSA", "ACTOR"),
+            extras = listOf("PUDU", "DE"),
+        ),
+        LevelDef(
+            listOf(
+                "SALON" to "Habitación principal de una casa destinada a recibir visitas o descansar",
+                "SOLA" to "Que no tiene compañía o carece de ayuda en una situación",
+                "SANO" to "Que goza de buena salud o es beneficioso para el organismo",
+                "LONA" to "Tela fuerte, gruesa e impermeable que sirve para cubrir o proteger objetos",
+                "ASNO" to "Animal de carga, parecido al caballo pero de menor tamaño y orejas largas",
+                "SOLANA" to "Lugar orientado de forma que recibe sol de manera directa la mayor parte del día", // La palabra rara
+                "SOL" to "Estrella que ilumina el cielo" // La palabra rara
+            ),
+            extras = listOf("SAL", "SON", "LOSA", "SOLO", "LANA", "ASOLAN"),
         ),
         LevelDef(
             listOf(
@@ -417,6 +443,17 @@ object CrucigramaNeonGenerator {
                 "ROCA" to "Masa de piedra sólida",
             ),
             extras = listOf("ACTOR", "TRONCO", "CORTA", "RONCA"),
+        ),
+        LevelDef(
+            listOf(
+                "PLATO" to "Vajilla donde comes",
+                "PATO" to "Ave de agua",
+                "PALO" to "Trozo de madera",
+                "ALA" to "Extremidad de un ave",
+                "ALTO" to "De gran estatura",
+                "PALTA" to "Verdura verde por dentro con una semilla grande",
+            ),
+            extras = listOf("LATA", "PALA", "TOPA", "OLA", "APTO", "TAL", "PAPA"),
         ),
         LevelDef(
             listOf(
@@ -500,8 +537,10 @@ object CrucigramaNeonGenerator {
         val cellMap = linkedMapOf<Pair<Int, Int>, CrucigramaNeonCellState>()
         val slots = spec.slots.map { slot ->
             val cellIndices = slot.answer.mapIndexed { i, letter ->
-                val r = if (slot.direction == CrucigramaDirection.VERTICAL) slot.row + i else slot.row
-                val c = if (slot.direction == CrucigramaDirection.HORIZONTAL) slot.col + i else slot.col
+                val r =
+                    if (slot.direction == CrucigramaDirection.VERTICAL) slot.row + i else slot.row
+                val c =
+                    if (slot.direction == CrucigramaDirection.HORIZONTAL) slot.col + i else slot.col
                 val key = r to c
                 val existing = cellMap[key]
                 if (existing == null) {

@@ -274,7 +274,7 @@ private fun CurrentWord(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(
-            text = if (input.isBlank()) "_ _ _ _" else input.toCharArray().joinToString(" "),
+            text = if (input.isBlank()) "_" else input.toCharArray().joinToString(" "),
             // displaySmall (~36sp) escalado ~25% -> 45sp para agrandar las letras.
             fontSize = 45.sp,
             style = MaterialTheme.typography.displaySmall,
@@ -401,7 +401,7 @@ private fun GridCell(
         label = "cellBreathValue",
     )
     // "Encendido" del tubo neón: 0 = apagado (celda vacía en espera), 1 = pleno.
-    val activeAmt = if (solved) (ignition.value * (0.7f + 0.3f * breath)).coerceIn(0f, 1f) else 0f
+    val activeAmt = if (solved) (ignition.value * (0.1f + 0.3f * breath)).coerceIn(0f, 1f) else 0f
     // Base neutra para las celdas vacías (tubo tenue "en espera"); color de la palabra
     // al resolverse.
     val tileColor = if (solved) wordColor else LogicColors.SurfaceVariantDark
@@ -442,6 +442,7 @@ private fun GridCell(
             color = LogicColors.OnDark,
             fontWeight = FontWeight.Black,
             textAlign = TextAlign.Center,
+            fontSize = 16.sp
         )
     }
 }
@@ -556,7 +557,6 @@ private fun DeleteKey(onClick: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         NeonIcon(icon = KortexIcons.Backspace, tint = tint, size = 24.dp, glow = false)
-        Text("Borrar", style = MaterialTheme.typography.labelLarge, color = tint, fontWeight = FontWeight.SemiBold)
     }
 }
 
