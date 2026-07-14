@@ -401,7 +401,7 @@ object ScrewLevelGenerator {
      */
     fun generate(level: Int, random: Random): ScrewLevel {
         val l = level.coerceAtLeast(1)
-        val plateCount = (2 + (l + 1) / 2).coerceAtMost(6)   // 3,3,4,4,5,5,6...
+        val plateCount = (6 + (l + 1) / 2).coerceAtMost(30)   // 3,3,4,4,5,5,6...
         val maxLength = (2 + l / 3).coerceAtMost(4)          // 2 → 3 → 4
         val parkingCount = (4 - (l - 1) / 4).coerceAtLeast(2) // 4 → 3 → 2
 

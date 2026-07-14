@@ -222,12 +222,23 @@ class NeonPulseViewModel(
      */
     private fun spawnNode(elapsedMs: Long, existing: List<Node>): Node? {
         val r = NeonPulseConfig.NODE_RADIUS
-        // Margen para que el nodo no quede cortado por el borde del lienzo.
-        val min = r
-        val max = 1f - r
+        // Margen horizontal/inferior para que el nodo no quede cortado por el borde
+        // del lienzo; el margen superior es mayor para no aparecer bajo el HUD/botón
+        // de pausa (CLAUDE.md: nunca tapar controles fijos con contenido jugable).
+        val minX = r
+        val maxX = 1f - r
+        val minY = maxOf(r, NeonPulseConfig.TOP_SPAWN_MARGIN)
+        val maxY = 1f - r
+        // Pasado FAST_LIFE_UNLOCK_MS los nodos viven menos tiempo encendidos: último
+        // escalón de dificultad, exige reacciones más rápidas.
+        val lifeMs = if (elapsedMs >= NeonPulseConfig.FAST_LIFE_UNLOCK_MS) {
+            NeonPulseConfig.NODE_LIFE_FAST_MS
+        } else {
+            NeonPulseConfig.NODE_LIFE_MS
+        }
         repeat(MAX_SPAWN_TRIES) {
-            val x = min + random.nextFloat() * (max - min)
-            val y = min + random.nextFloat() * (max - min)
+            val x = minX + random.nextFloat() * (maxX - minX)
+            val y = minY + random.nextFloat() * (maxY - minY)
             if (existing.none { overlaps(it, x, y, r) }) {
                 val isTrap = elapsedMs >= NeonPulseConfig.TRAP_UNLOCK_MS &&
                     random.nextFloat() < NeonPulseConfig.TRAP_SPAWN_CHANCE
@@ -237,8 +248,8 @@ class NeonPulseViewModel(
                     x = x,
                     y = y,
                     radius = r,
-                    totalLifeMs = NeonPulseConfig.NODE_LIFE_MS,
-                    remainingMs = NeonPulseConfig.NODE_LIFE_MS,
+                    totalLifeMs = lifeMs,
+                    remainingMs = lifeMs,
                 )
             }
         }

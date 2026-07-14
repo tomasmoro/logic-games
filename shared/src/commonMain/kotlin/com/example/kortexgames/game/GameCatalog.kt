@@ -25,8 +25,6 @@ object GameIds {
     /** Memoria de secuencias (categoría "memory"). */
     const val SEQUENCE_MEMORY = "11111111-1111-4111-8111-111111111111"
 
-    /** Reflejos de toque rápido (categoría "reflexes"). */
-    const val REFLEX_TAP = "22222222-2222-4222-8222-222222222222"
 
     /** Ordena las Pociones / Water Sort (categoría "logic"). */
     const val WATER_SORT = "33333333-3333-4333-8333-333333333333"
@@ -49,7 +47,7 @@ object GameIds {
     /** Tornillos Neón / Neon Screws & Bolts (categoría "spatial" / Visión Espacial). */
     const val NEON_SCREWS = "99999999-9999-4999-8999-999999999999"
 
-    /** Neon Block Grid / Block Puzzle 8×8 (categoría "spatial" / Visión Espacial). */
+    /** Tetris Neón / Block Puzzle 8×8 (categoría "spatial" / Visión Espacial). */
     const val NEON_BLOCK_GRID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
     /** Neon Lexicon / Sopa de Letras Neón (categoría "language" / Lenguaje y Vocabulario). */
@@ -122,7 +120,6 @@ data class GameInfo(
 object GameCatalog {
     val games: List<GameInfo> = listOf(
         GameInfo(GameIds.SEQUENCE_MEMORY, "Memoria de Secuencias", GameCategory.MEMORY, playable = true),
-        GameInfo(GameIds.REFLEX_TAP, "Reflejos de Toque Rápido", GameCategory.REFLEXES, playable = true),
         GameInfo(GameIds.WATER_SORT, "Ordena las Pociones", GameCategory.LOGIC, playable = true),
         GameInfo(GameIds.BUBBLE_MATH, "Burbujas de Cálculo", GameCategory.MENTAL_MATH, playable = true),
         GameInfo(GameIds.ENERGY_FLOW, "Flujo de Energía", GameCategory.SPATIAL, playable = true),
@@ -130,7 +127,7 @@ object GameCatalog {
         GameInfo(GameIds.CRUCIGRAMA_NEON, "Crucigrama Neón", GameCategory.LANGUAGE, playable = true),
         GameInfo(GameIds.WORD_CONNECT, "Palabras Conectadas", GameCategory.LANGUAGE, playable = true),
         GameInfo(GameIds.NEON_SCREWS, "Tornillos Neón", GameCategory.SPATIAL, playable = true),
-        GameInfo(GameIds.NEON_BLOCK_GRID, "Neon Block Grid", GameCategory.SPATIAL, playable = true),
+        GameInfo(GameIds.NEON_BLOCK_GRID, "Tetris Neón", GameCategory.SPATIAL, playable = true),
         GameInfo(GameIds.NEON_LEXICON, "Sopa de Letras Neón", GameCategory.LANGUAGE, playable = true),
         GameInfo(GameIds.STARPORT_ESCAPE, "Neon Starport Escape", GameCategory.LOGIC, playable = true),
         GameInfo(GameIds.NEON_CIRCUIT, "Neon Circuit Flow", GameCategory.PROBLEM_SOLVING, playable = true),

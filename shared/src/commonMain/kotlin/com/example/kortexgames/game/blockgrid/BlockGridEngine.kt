@@ -69,6 +69,13 @@ class BlockGridEngine(
      * o null si la pieza no está en la mano o el origen cae fuera de todo rango
      * dibujable. Consulta pura: no muta nada; el ViewModel la usa en cada
      * `DragMoved` para pintar la vista previa.
+     *
+     * Además de las celdas de la propia pieza, **simula la jugada** (escribe
+     * las celdas visibles como `Filled` sobre una copia del tablero) para
+     * saber qué filas/columnas quedarían completas — es la misma detección de
+     * [BoardGrid.findFullLines] que usa [onDrop] al confirmar, aplicada aquí
+     * solo como consulta. Así la UI puede iluminar la línea entera ANTES de
+     * soltar, no solo la huella de la pieza.
      */
     fun previewFor(pieceId: Int, row: Int, col: Int): PlacementPreview? {
         val piece = _state.value.hand.firstOrNull { it.id == pieceId } ?: return null
@@ -78,10 +85,15 @@ class BlockGridEngine(
         // fuera del tablero el fantasma se pinta parcial y en tono inválido.
         val visible = cells.filterTo(mutableSetOf()) { it.isInsideBoard }
         if (visible.isEmpty()) return null
-        return PlacementPreview(
-            cells = visible,
-            isValid = _state.value.board.canPlace(piece.shape, origin),
-        )
+        val isValid = _state.value.board.canPlace(piece.shape, origin)
+        // Una jugada inválida no completa nada: no tiene sentido simular sobre
+        // un tablero que nunca se escribiría así.
+        val clearingLines = if (isValid) {
+            _state.value.board.write(visible) { BoardCell.Filled(piece.accent) }.findFullLines()
+        } else {
+            FullLines(emptySet(), emptySet())
+        }
+        return PlacementPreview(cells = visible, isValid = isValid, clearingLines = clearingLines)
     }
 
     /**

@@ -11,7 +11,7 @@ import com.example.kortexgames.ui.components.KortexIcons
  *
  * Dos familias:
  *  - **Pestañas** (Home/Games/Profile): raíz con [AnimatedBottomBar] visible.
- *  - **Juegos** (Memory/Reflex): pantalla completa, SIN barra inferior, para
+ *  - **Juegos** (Memory/Water Sort): pantalla completa, SIN barra inferior, para
  *    máxima inmersión durante la partida.
  */
 object Routes {
@@ -34,7 +34,6 @@ object Routes {
     const val AUTH_ONBOARDING = "auth/onboarding"
 
     const val MEMORY = "game/memory"
-    const val REFLEX = "game/reflex"
     const val WATER_SORT = "game/watersort"
     const val BUBBLE_MATH = "game/bubblemath"
     const val ENERGY_FLOW = "game/energyflow"
@@ -56,7 +55,6 @@ object Routes {
      */
     fun gameRoute(gameId: String?): String? = when (gameId) {
         GameIds.SEQUENCE_MEMORY -> MEMORY
-        GameIds.REFLEX_TAP -> REFLEX
         GameIds.WATER_SORT -> WATER_SORT
         GameIds.BUBBLE_MATH -> BUBBLE_MATH
         GameIds.ENERGY_FLOW -> ENERGY_FLOW

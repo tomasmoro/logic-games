@@ -40,13 +40,12 @@ import com.example.kortexgames.game.crucigrama.CrucigramaNeonScreen
 import com.example.kortexgames.game.energyflow.EnergyFlowScreen
 import com.example.kortexgames.game.memory.SequenceMemoryScreen
 import com.example.kortexgames.game.hypergate.HypergateScreen
-import com.example.kortexgames.game.polarity.PolarityCollisionScreen
-import com.example.kortexgames.game.reflex.ReflexTapScreen
 import com.example.kortexgames.game.blockgrid.BlockGridScreen
 import com.example.kortexgames.game.wordsearch.NeonLexiconScreen
 import com.example.kortexgames.game.screws.ScrewGameScreen
 import com.example.kortexgames.game.neoncircuit.NeonCircuitScreen
 import com.example.kortexgames.game.neonpulse.NeonPulseScreen
+import com.example.kortexgames.game.polarity.PolarityCollisionScreen
 import com.example.kortexgames.game.starport.StarportScreen
 import com.example.kortexgames.game.watersort.WaterSortScreen
 import com.example.kortexgames.game.wordconnect.WordConnectScreen
@@ -113,8 +112,8 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean) {
         val currentRoute = backStackEntry?.destination?.route
 
         // El AdManager solo cuenta tiempo dentro de un juego.
-        LaunchedEffect(currentRoute) {
-            if (currentRoute == Routes.MEMORY || currentRoute == Routes.REFLEX ||
+         LaunchedEffect(currentRoute) {
+            if (currentRoute == Routes.MEMORY ||
                 currentRoute == Routes.WATER_SORT || currentRoute == Routes.BUBBLE_MATH ||
                 currentRoute == Routes.ENERGY_FLOW || currentRoute == Routes.POLARITY_COLLISION ||
                 currentRoute == Routes.CRUCIGRAMA_NEON || currentRoute == Routes.WORD_CONNECT ||
@@ -202,7 +201,7 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean) {
                 composable(Routes.HOME) {
                     HomeScreen(
                         graph = graph,
-                        onQuickPlay = { navController.navigate(Routes.REFLEX) },
+                        onQuickPlay = { navController.navigate(Routes.MEMORY) },
                         onSeeGames = { navController.navigateToTab(Routes.GAMES) },
                         onOpenGame = { route -> navController.navigate(route) },
                         onOpenAuth = { navController.navigate(Routes.AUTH) },
@@ -222,9 +221,6 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean) {
                 }
                 composable(Routes.MEMORY) {
                     SequenceMemoryScreen(graph) { navController.popBackStack() }
-                }
-                composable(Routes.REFLEX) {
-                    ReflexTapScreen(graph) { navController.popBackStack() }
                 }
                 composable(Routes.WATER_SORT) {
                     WaterSortScreen(graph) { navController.popBackStack() }

@@ -29,10 +29,16 @@ import com.example.kortexgames.game.GameStatus
  *           el dedo. Se pintan atenuadas para anticipar el resultado.
  * @property isValid true si soltar aquí ancla la pieza. Con false la UI pinta
  *           el fantasma en tono de error para comunicar "aquí no cabe".
+ * @property clearingLines filas/columnas que quedarían completas si la pieza
+ *           se soltara aquí (vacío si [isValid] es false: una jugada inválida
+ *           no puede completar nada). La UI las resalta con un glow ANTES de
+ *           soltar, para que el jugador anticipe el combo (mismo espíritu que
+ *           la vista previa de celdas, pero a nivel de línea entera).
  */
 data class PlacementPreview(
     val cells: Set<GridPos>,
     val isValid: Boolean,
+    val clearingLines: FullLines = FullLines(emptySet(), emptySet()),
 )
 
 /**

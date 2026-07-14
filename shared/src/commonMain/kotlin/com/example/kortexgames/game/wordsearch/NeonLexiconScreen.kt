@@ -3,6 +3,7 @@ package com.example.kortexgames.game.wordsearch
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -21,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -48,11 +50,15 @@ import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.game.LeveledGamePhase
+import com.example.kortexgames.ui.components.ArcadeBrickBackground
 import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.LevelStripState
+import kotlin.math.cos
 import kotlin.math.floor
+import kotlin.math.sin
+import kotlin.random.Random
 
 /** Lado máximo de una celda; en rejillas anchas manda el ancho disponible. */
 private val MaxCell = 44.dp
@@ -103,6 +109,9 @@ fun NeonLexiconScreen(graph: AppGraph, onExit: () -> Unit) {
             startLabel = "Empezar",
             onStart = { vm.onIntent(NeonLexiconIntent.PlayLevel(selectedLevel)) },
             onExit = onExit,
+            background = {
+                ArcadeBrickBackground(modifier = Modifier.fillMaxSize(), accent = accent)
+            },
         )
         return
     }
@@ -114,6 +123,12 @@ fun NeonLexiconScreen(graph: AppGraph, onExit: () -> Unit) {
     }
 
     Box(modifier = Modifier.fillMaxSize().background(LogicColors.BackgroundDark)) {
+        // Textura ambiental de muro arcade "neo-retro" (magenta Lenguaje), muy sutil.
+        ArcadeBrickBackground(
+            modifier = Modifier.fillMaxSize(),
+            accent = accent,
+        )
+
         Column(
             modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -133,7 +148,7 @@ fun NeonLexiconScreen(graph: AppGraph, onExit: () -> Unit) {
                 WordGridBoard(
                     grid = state.grid,
                     selection = state.selection,
-                    foundWords = state.words.filter { it.found }.map { it.word },
+                    words = state.words,
                     accent = accent,
                     onStartDrag = { r, c -> vm.onIntent(NeonLexiconIntent.StartDrag(r, c)) },
                     onUpdateDrag = { r, c -> vm.onIntent(NeonLexiconIntent.UpdateDrag(r, c)) },
@@ -220,7 +235,7 @@ private fun LexiconHud(level: Int, found: Int, total: Int, accent: Color) {
 private fun WordGridBoard(
     grid: WordSearchGrid,
     selection: Selection?,
-    foundWords: List<TargetWord>,
+    words: List<WordEntry>,
     accent: Color,
     onStartDrag: (Int, Int) -> Unit,
     onUpdateDrag: (Int, Int) -> Unit,
@@ -238,6 +253,7 @@ private fun WordGridBoard(
         val cell = minOf(MaxCell, byWidth, byHeight)
         val cellPx = with(density) { cell.toPx() }
 
+        val foundWords = remember(words) { words.filter { it.found }.map { it.word } }
         val selectedCells = remember(selection) { selection?.cells?.toSet().orEmpty() }
         val solvedCells = remember(foundWords) { foundWords.flatMap { it.cells }.toSet() }
 
@@ -274,25 +290,10 @@ private fun WordGridBoard(
                     )
                 },
         ) {
-            // Capa 1: letras.
-            Column {
-                for (r in 0 until grid.rows) {
-                    Row {
-                        for (c in 0 until grid.cols) {
-                            val coord = Coordinate(r, c)
-                            LetterCellView(
-                                letter = grid.letters[r][c],
-                                size = cell,
-                                solved = coord in solvedCells,
-                                selected = coord in selectedCells,
-                                accent = accent,
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Capa 2: láser + cápsulas resueltas, por encima de las letras.
+            // Capa 0: láser + cápsulas resueltas, por DEBAJO de las letras. Así el
+            // tubo de neón sigue brillando (asoma por las juntas y por la
+            // translucidez del fondo de cada celda) sin tapar nunca el glifo: la
+            // letra manda siempre en legibilidad, el neón es el "ambiente" detrás.
             Canvas(modifier = Modifier.matchParentSize()) {
                 // Cápsulas de palabras ya encontradas: tenues y permanentes.
                 foundWords.forEach { word ->
@@ -313,6 +314,33 @@ private fun WordGridBoard(
                         accent = accent,
                         intensity = 1f,
                     )
+                }
+            }
+
+            // Capa 1: letras, siempre encima del tubo de neón para que se lean bien.
+            Column {
+                for (r in 0 until grid.rows) {
+                    Row {
+                        for (c in 0 until grid.cols) {
+                            val coord = Coordinate(r, c)
+                            LetterCellView(
+                                letter = grid.letters[r][c],
+                                size = cell,
+                                solved = coord in solvedCells,
+                                selected = coord in selectedCells,
+                                accent = accent,
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Capa 2: chispas de acierto. Breves y por encima de todo (mismo
+            // lenguaje de "reward" que Burbujas de Cálculo), una ráfaga por
+            // palabra recién encontrada a lo largo de su trazo.
+            words.forEach { entry ->
+                key(entry.text) {
+                    WordSparkBurst(word = entry.word, found = entry.found, cellPx = cellPx, accent = accent)
                 }
             }
         }
@@ -352,10 +380,12 @@ private fun LetterCellView(
         Text(
             text = letter.toString(),
             style = MaterialTheme.typography.titleMedium,
-            // Letras no seleccionadas atenuadas (OnDarkMuted, §9.2); encendidas en acierto/selección.
+            // Letras no seleccionadas atenuadas (OnDarkMuted, §9.2). Seleccionadas
+            // Y ya resueltas en blanco puro (no OnDark ni el acento): sobre el tubo
+            // de neón brillante que asoma debajo, el blanco puro es el único tono
+            // con contraste fiable; el acento sigue vivo en el fondo de la celda.
             color = when {
-                solved -> accent
-                selected -> LogicColors.OnDark
+                solved || selected -> Color.White
                 else -> LogicColors.OnDarkMuted
             },
             fontWeight = if (solved || selected) FontWeight.Black else FontWeight.SemiBold,
@@ -395,6 +425,89 @@ private fun WordList(words: List<WordEntry>, accent: Color) {
 /** Centro en píxeles de la celda [coord] (para anclar los extremos del láser). */
 private fun cellCenter(coord: Coordinate, cellPx: Float): Offset =
     Offset((coord.col + 0.5f) * cellPx, (coord.row + 0.5f) * cellPx)
+
+/** 2π: círculo completo en radianes, para repartir las chispas en todas direcciones. */
+private const val TAU = 6.2831855f
+
+/** Nº de chispas que libera una palabra al completarse. */
+private const val WordBurstSparkCount = 18
+
+/**
+ * Semilla de una chispa de la ráfaga de acierto: punto de origen a lo largo del
+ * trazo de la palabra ([originT], 0=inicio..1=fin) y dirección/alcance de salida,
+ * fijos durante toda la animación (se generan una vez por palabra, deterministas
+ * por su texto, para que no "salten" entre recomposiciones).
+ */
+private data class WordSparkSeed(val originT: Float, val angle: Float, val reach: Float, val length: Float)
+
+/**
+ * Ráfaga de **chispas** que se dispara una sola vez al completar una palabra
+ * (mismo lenguaje visual que el estallido de burbuja de Burbujas de Cálculo):
+ * pequeñas esquirlas nacen en puntos aleatorios a lo largo del trazo acertado y
+ * salen disparadas hacia afuera mientras se desvanecen. Es el "premio" de acertar,
+ * sin invadir la legibilidad de las letras (dura ~500ms y las chispas son finas).
+ *
+ * Se dispara con `LaunchedEffect(found)`: como cada instancia vive bajo `key(word)`
+ * en el llamador, solo corre cuando esa palabra concreta pasa a encontrada.
+ */
+@Composable
+private fun WordSparkBurst(word: TargetWord, found: Boolean, cellPx: Float, accent: Color) {
+    val progress = remember(word.text) { Animatable(0f) }
+    LaunchedEffect(found) {
+        if (!found) return@LaunchedEffect
+        progress.snapTo(0f)
+        progress.animateTo(1f, tween(durationMillis = 520))
+    }
+    val p = progress.value
+    if (!found || p <= 0f || p >= 1f) return
+
+    val sparks = remember(word.text) {
+        val rnd = Random(word.text.hashCode())
+        List(WordBurstSparkCount) {
+            WordSparkSeed(
+                originT = rnd.nextFloat(),
+                angle = rnd.nextFloat() * TAU,
+                reach = 0.6f + rnd.nextFloat() * 0.6f,
+                length = 0.6f + rnd.nextFloat() * 0.5f,
+            )
+        }
+    }
+
+    val start = cellCenter(word.start, cellPx)
+    val end = cellCenter(word.end, cellPx)
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        // Desaceleración: salen rápido y frenan (ease-out), como esquirlas reales.
+        val ease = 1f - (1f - p) * (1f - p)
+        val alpha = 1f - p
+        val maxDist = cellPx * 0.85f
+        val unit = cellPx * 0.16f
+        val hot = lerp(accent, Color.White, 0.35f)
+
+        sparks.forEach { s ->
+            val origin = Offset(
+                x = start.x + (end.x - start.x) * s.originT,
+                y = start.y + (end.y - start.y) * s.originT,
+            )
+            val dist = ease * maxDist * s.reach
+            val dx = cos(s.angle)
+            val dy = sin(s.angle)
+            val head = Offset(origin.x + dx * dist, origin.y + dy * dist)
+            val tail = Offset(
+                origin.x + dx * (dist - unit * s.length),
+                origin.y + dy * (dist - unit * s.length),
+            )
+            drawLine(
+                color = hot.copy(alpha = alpha),
+                start = tail,
+                end = head,
+                strokeWidth = 2.5.dp.toPx(),
+                cap = StrokeCap.Round,
+            )
+            drawCircle(Color.White.copy(alpha = 0.9f * alpha), radius = 1.6.dp.toPx(), center = head)
+        }
+    }
+}
 
 /**
  * Convierte el punto [offset] (px, relativo al tablero) a celda de la rejilla, o

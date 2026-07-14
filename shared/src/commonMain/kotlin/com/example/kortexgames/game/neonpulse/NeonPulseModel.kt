@@ -98,9 +98,24 @@ object NeonPulseConfig {
      *  contraerse por completo. */
     const val NODE_LIFE_MS = 1_000L
 
+    /** Momento (ms desde el inicio) a partir del cual los nodos viven menos tiempo
+     *  encendidos ([NODE_LIFE_FAST_MS]): último tramo de dificultad. */
+    const val FAST_LIFE_UNLOCK_MS = 20_000L
+
+    /** Tiempo de vida de un nodo pasado [FAST_LIFE_UNLOCK_MS] (700 ms): obliga a
+     *  reaccionar más rápido en el tramo final de la partida. */
+    const val NODE_LIFE_FAST_MS = 700L
+
     /** Radio del núcleo de un nodo en espacio normalizado (relativo a la menor
-     *  dimensión del lienzo). También es el radio del área de acierto. */
-    const val NODE_RADIUS = 0.06f
+     *  dimensión del lienzo). También es el radio del área de acierto.
+     *  Reducido un 30% (antes 0.06f) para aligerar el lienzo y dejar sitio al halo
+     *  del tubo neón sin que los nodos se sientan sobredimensionados. */
+    const val NODE_RADIUS = 0.042f
+
+    /** Margen superior (espacio normalizado, fracción de la altura del lienzo)
+     *  reservado para el HUD y el botón de pausa: ningún nodo se genera con el
+     *  centro por encima de esta línea, así nunca aparece tapado por esos controles. */
+    const val TOP_SPAWN_MARGIN = 0.16f
 
     /** Momento (ms desde el inicio) a partir del cual pueden aparecer trampas. */
     const val TRAP_UNLOCK_MS = 15_000L

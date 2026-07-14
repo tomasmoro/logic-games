@@ -80,9 +80,6 @@ object GameProgressions {
         GameIds.SEQUENCE_MEMORY to GameProgression(
             ProgressionKind.ENDLESS, MetricDirection.HIGHER_IS_BETTER, "Mejor", MetricUnit.COUNT,
         ),
-        GameIds.REFLEX_TAP to GameProgression(
-            ProgressionKind.ENDLESS, MetricDirection.LOWER_IS_BETTER, "Mejor", MetricUnit.MILLIS,
-        ),
         GameIds.WATER_SORT to GameProgression(
             ProgressionKind.LEVELED, MetricDirection.HIGHER_IS_BETTER, "Nivel máx", MetricUnit.LEVEL,
         ),

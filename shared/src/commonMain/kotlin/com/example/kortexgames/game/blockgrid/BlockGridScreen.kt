@@ -2,7 +2,12 @@ package com.example.kortexgames.game.blockgrid
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -38,9 +43,11 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -61,8 +68,11 @@ import com.example.kortexgames.ui.components.SpaceBackdrop
 import com.example.kortexgames.ui.components.alphaIf
 import com.example.kortexgames.ui.components.bounceClick
 import kotlinx.coroutines.delay
+import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.random.Random
 
 // --- Constantes de interacción/dibujo -----------------------------------------
 
@@ -90,7 +100,7 @@ private fun BlockAccent.color(): Color = when (this) {
 }
 
 /**
- * Pantalla de "Neon Block Grid".
+ * Pantalla de "Tetris Neón".
  *
  * Estructura estándar de juego ENDLESS: antesala ([GameIntroScreen]) mientras
  * está en IDLE → tablero + mano a pantalla completa → [GameOverOverlay].
@@ -132,7 +142,7 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
     // Antesala del juego: mientras no ha arrancado (IDLE) se muestra la intro.
     if (state.status == GameStatus.IDLE) {
         GameIntroScreen(
-            title = "Neon Block Grid",
+            title = "Tetris Neón",
             description = "Arrastra las piezas al tablero y completa filas o columnas para romperlas. La partida termina cuando ninguna pieza cabe.",
             accent = CategoryPalette.SpatialVision,
             onStart = { vm.onIntent(BlockGridIntent.StartGame) },
@@ -194,6 +204,8 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
                 BoardCanvas(
                     board = state.board,
                     preview = state.drag?.preview,
+                    previewAccent = state.drag?.let { d -> state.hand.firstOrNull { it.id == d.pieceId } }
+                        ?.accent?.color(),
                     onClearFinished = { vm.onIntent(BlockGridIntent.LineClearFinished) },
                     modifier = Modifier
                         .padding(horizontal = 18.dp)
@@ -291,7 +303,7 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
             onPause = { vm.onIntent(BlockGridIntent.Pause) },
             onResume = { vm.onIntent(BlockGridIntent.Resume) },
             onExit = onExit,
-            gameTitle = "Neon Block Grid",
+            gameTitle = "Tetris Neón",
             helpText = "Arrastra las piezas al tablero y completa filas o columnas para romperlas. La partida termina cuando ninguna pieza cabe.",
             accent = CategoryPalette.SpatialVision,
         )
@@ -322,7 +334,7 @@ private fun BlockGridHud(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = "Neon Block Grid",
+            text = "Tetris Neón",
             style = MaterialTheme.typography.headlineSmall,
             color = LogicColors.OnDark,
             fontWeight = FontWeight.ExtraBold,
@@ -368,7 +380,8 @@ private fun HudPill(label: String, value: String, modifier: Modifier = Modifier)
 
 /**
  * La rejilla 8×8: un único `Canvas` que pinta celdas vacías, bloques asentados
- * (con halo neón), el fantasma del arrastre y la animación de limpieza.
+ * (con halo neón), el fantasma del arrastre, el glow de líneas a punto de
+ * romperse y la animación de limpieza con sus chispas.
  *
  * La limpieza es **fade + shrink dirigido por estado**: cuando el tablero trae
  * celdas [BoardCell.Clearing], un [Animatable] va de 0→1 y al llegar notifica
@@ -376,11 +389,16 @@ private fun HudPill(label: String, value: String, modifier: Modifier = Modifier)
  * Se rekeya con el set de celdas: si un combo nuevo cae en plena animación, el
  * ciclo arranca de cero para el conjunto ampliado — un único reloj, sin estados
  * a medias por celda.
+ *
+ * @param previewAccent acento de la pieza que se arrastra, usado para teñir el
+ *        glow de [PlacementPreview.clearingLines]; null en reposo (no hay nada
+ *        que iluminar).
  */
 @Composable
 private fun BoardCanvas(
     board: BoardGrid,
     preview: PlacementPreview?,
+    previewAccent: Color?,
     onClearFinished: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -401,9 +419,19 @@ private fun BoardCanvas(
         }
     }
 
+    // Latido suave del glow de anticipo (§9.4): respira mientras el jugador
+    // sostiene una jugada que rompería línea, para que se note sin marear.
+    val glowPulse by rememberInfiniteTransition(label = "lineGlowPulse").animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Reverse),
+        label = "lineGlowPulse",
+    )
+
     Canvas(modifier = modifier) {
         val cellPx = size.width / BOARD_SIZE
         val previewCells = preview?.cells.orEmpty()
+        val clearingLines = preview?.clearingLines?.takeIf { preview.isValid } ?: FullLines(emptySet(), emptySet())
 
         for (r in 0 until BOARD_SIZE) {
             for (c in 0 until BOARD_SIZE) {
@@ -430,9 +458,18 @@ private fun BoardCanvas(
                             alpha = 1f - p,
                             scale = 1f - 0.55f * p,
                         )
+                        // Chispas al romperse (mismo lenguaje que Crucigrama Neón):
+                        // esquirlas que salen del bloque mientras se desvanece.
+                        drawClearSparks(topLeft, cellPx, cell.accent.color(), p)
                     }
                 }
             }
+        }
+
+        // Anticipo: antes de soltar, ilumina la fila/columna entera que se
+        // completaría con la pieza en el hueco actual.
+        if (clearingLines.isNotEmpty() && previewAccent != null) {
+            drawLineGlowPreview(clearingLines, cellPx, previewAccent, glowPulse)
         }
     }
 }
@@ -682,4 +719,103 @@ private fun DrawScope.drawBlock(
         cornerRadius = corner,
         style = Stroke(width = 1.5.dp.toPx()),
     )
+}
+
+/**
+ * Glow de anticipo sobre una fila/columna que se completaría con la jugada en
+ * curso: una banda de luz con degradado (transparente→acento→transparente) y
+ * un núcleo nítido al centro, mismo lenguaje de "tubo de neón" que
+ * [drawNeonTile][com.example.kortexgames.ui.components.drawNeonTile] pero en
+ * franja completa. [pulse] (0..1, va y vuelve) le da un latido suave para que
+ * se note sin invadir la lectura del tablero (§9.4).
+ */
+private fun DrawScope.drawLineGlowPreview(lines: FullLines, cellPx: Float, accent: Color, pulse: Float) {
+    val hot = lerp(accent, Color.White, 0.3f)
+    val bandAlpha = 0.14f + 0.10f * pulse
+    val coreAlpha = 0.5f + 0.35f * pulse
+    val coreWidth = 2.dp.toPx()
+
+    lines.rows.forEach { r ->
+        val top = r * cellPx
+        drawRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(Color.Transparent, hot.copy(alpha = bandAlpha), Color.Transparent),
+                startY = top,
+                endY = top + cellPx,
+            ),
+            topLeft = Offset(0f, top),
+            size = Size(size.width, cellPx),
+        )
+        drawLine(
+            color = hot.copy(alpha = coreAlpha),
+            start = Offset(0f, top + cellPx / 2f),
+            end = Offset(size.width, top + cellPx / 2f),
+            strokeWidth = coreWidth,
+        )
+    }
+    lines.cols.forEach { c ->
+        val left = c * cellPx
+        drawRect(
+            brush = Brush.horizontalGradient(
+                colors = listOf(Color.Transparent, hot.copy(alpha = bandAlpha), Color.Transparent),
+                startX = left,
+                endX = left + cellPx,
+            ),
+            topLeft = Offset(left, 0f),
+            size = Size(cellPx, size.height),
+        )
+        drawLine(
+            color = hot.copy(alpha = coreAlpha),
+            start = Offset(left + cellPx / 2f, 0f),
+            end = Offset(left + cellPx / 2f, size.height),
+            strokeWidth = coreWidth,
+        )
+    }
+}
+
+/** 2π: círculo completo, para repartir las chispas de ruptura en toda dirección. */
+private const val TAU = 6.2831855f
+
+/** Nº de chispas que libera cada bloque de una línea rota. */
+private const val CLEAR_SPARK_COUNT = 6
+
+/**
+ * Chispas de ruptura de un bloque [BoardCell.Clearing] (mismo lenguaje visual
+ * que la ráfaga de acierto de Crucigrama Neón): esquirlas que nacen en el
+ * centro del bloque y salen disparadas hacia afuera mientras se desvanecen,
+ * sincronizadas con [progress] (0=recién roto..1=ya desvanecido del todo).
+ *
+ * La semilla sale de la posición de la celda (determinista, sin `remember`
+ * porque esto corre dentro de un `Canvas`): cada bloque siempre chispea igual,
+ * pero bloques distintos no se ven clonados.
+ */
+private fun DrawScope.drawClearSparks(topLeft: Offset, cellPx: Float, accent: Color, progress: Float) {
+    if (progress <= 0f || progress >= 1f) return
+    val center = topLeft + Offset(cellPx / 2f, cellPx / 2f)
+    val rnd = Random((topLeft.x * 131f + topLeft.y * 977f).toInt())
+    val hot = lerp(accent, Color.White, 0.35f)
+    // Salen rápido y frenan (ease-out), como esquirlas reales.
+    val ease = 1f - (1f - progress) * (1f - progress)
+    val alpha = 1f - progress
+    val maxDist = cellPx * 0.9f
+    val unit = cellPx * 0.2f
+
+    repeat(CLEAR_SPARK_COUNT) {
+        val angle = rnd.nextFloat() * TAU
+        val reach = 0.5f + rnd.nextFloat() * 0.6f
+        val length = 0.6f + rnd.nextFloat() * 0.5f
+        val dist = ease * maxDist * reach
+        val dx = cos(angle)
+        val dy = sin(angle)
+        val head = center + Offset(dx * dist, dy * dist)
+        val tail = center + Offset(dx * (dist - unit * length), dy * (dist - unit * length))
+        drawLine(
+            color = hot.copy(alpha = alpha),
+            start = tail,
+            end = head,
+            strokeWidth = 2.dp.toPx(),
+            cap = StrokeCap.Round,
+        )
+        drawCircle(Color.White.copy(alpha = 0.9f * alpha), radius = 1.4.dp.toPx(), center = head)
+    }
 }

@@ -37,7 +37,7 @@ sealed interface BubbleMathEffect : UiEffect
 
 /**
  * ViewModel MVI de Burbujas de Cálculo. Mismo patrón que los demás juegos
- * ([com.example.kortexgames.game.reflex.ReflexTapViewModel]): posee el motor,
+ * ([com.example.kortexgames.game.memory.SequenceMemoryViewModel]): posee el motor,
  * proyecta su `state`/`status`/`outcome` y, al terminar, persiste el resultado
  * (local-first) obteniendo el percentil frente al resto de jugadores.
  */

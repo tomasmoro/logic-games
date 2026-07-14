@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -40,9 +42,14 @@ import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.NeonIcon
+import com.example.kortexgames.ui.components.SpaceBackdrop
 import kotlinx.coroutines.launch
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.min
+import kotlin.math.sin
+import kotlin.random.Random
 
 /** Texto y descripción de la antesala; reutilizado también como ayuda en pausa. */
 private const val NEON_PULSE_HELP =
@@ -102,6 +109,9 @@ fun NeonPulseScreen(graph: AppGraph, onExit: () -> Unit) {
             accent = CategoryPalette.Reflexes,
             onStart = { vm.onIntent(NeonPulseIntent.Start) },
             onExit = onExit,
+            background = {
+                SpaceBackdrop(modifier = Modifier.fillMaxSize())
+            },
         )
         return
     }
@@ -115,6 +125,10 @@ fun NeonPulseScreen(graph: AppGraph, onExit: () -> Unit) {
             .fillMaxSize()
             .background(LogicColors.BackgroundDark),
     ) {
+        // Fondo espacial ambiental (mismo componente que Polarity Collision): da
+        // atmósfera de "campo de energía" sin competir con los nodos jugables.
+        SpaceBackdrop(modifier = Modifier.fillMaxSize())
+
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
@@ -185,7 +199,13 @@ fun NeonPulseScreen(graph: AppGraph, onExit: () -> Unit) {
 // ---------------------------------------------------------------------------
 
 /**
- * Pinta un [Node]: halo neón + núcleo sólido + **anillo de tiempo** que se contrae.
+ * Pinta un [Node] como **globo de tubo neón hueco** —el mismo lenguaje visual que
+ * `drawNeonBubble`/`drawNeonTile` (Memoria, Crucigrama): relleno de cristal tenue,
+ * halo ancho translúcido, halo intermedio, aro nítido y núcleo blanco— más el
+ * **anillo de tiempo** que se contrae por encima. No reutiliza `drawNeonBubble`
+ * directamente porque ese helper asume que ocupa todo el `DrawScope`; aquí el nodo
+ * es un punto dentro de un lienzo compartido, así que la geometría se calcula a mano
+ * con el mismo apilado de trazos.
  *
  * Todo se dibuja con primitivas de [DrawScope] (sin capas Compose) para mantener el
  * coste por frame mínimo. El color sale del tema (coral = normal, [LogicColors.Error]
@@ -198,23 +218,34 @@ private fun DrawScope.drawNode(node: Node, minDim: Float) {
     val center = Offset(node.x * size.width, node.y * size.height)
     val core = node.radius * minDim
     val color = if (node.type == NodeType.TRAP) LogicColors.Error else LogicColors.Coral
+    val stroke = core * TUBE_STROKE_FRACTION
 
-    // Halo: resplandor radial que se desvanece (identidad neón del diseño).
+    // Relleno "cristal": tinte radial suave, más brillante arriba, igual que las
+    // burbujas de Cálculo Mental.
     drawCircle(
         brush = Brush.radialGradient(
-            colors = listOf(color.copy(alpha = 0.45f), Color.Transparent),
-            center = center,
-            radius = core * 2.2f,
+            colors = listOf(
+                color.copy(alpha = 0.34f),
+                color.copy(alpha = 0.12f),
+                color.copy(alpha = 0.03f),
+            ),
+            center = Offset(center.x, center.y - core * 0.12f),
+            radius = core * 1.25f,
         ),
-        radius = core * 2.2f,
+        radius = core,
         center = center,
     )
+    // Halo exterior ancho y translúcido (identidad neón del diseño).
+    drawCircle(color.copy(alpha = 0.26f), core, center, style = Stroke(stroke * 4.5f))
+    // Halo intermedio: da cuerpo al resplandor.
+    drawCircle(color.copy(alpha = 0.50f), core, center, style = Stroke(stroke * 2.1f))
+    // Aro nítido del "tubo" neón.
+    drawCircle(color, core, center, style = Stroke(stroke))
+    // Núcleo blanco interior del tubo (look "prendido" del neón real).
+    drawCircle(Color.White.copy(alpha = 0.55f), core, center, style = Stroke(stroke * 0.4f))
 
-    // Núcleo sólido.
-    drawCircle(color = color, radius = core, center = center)
-
-    // Anillo de tiempo: parte grande (fracción 1) y se cierra hacia el núcleo
-    // (fracción 0). Cuando toca el núcleo, el motor ya lo habrá expirado.
+    // Anillo de tiempo: parte grande (fracción 1) y se cierra hacia el tubo
+    // (fracción 0). Cuando lo toca, el motor ya lo habrá expirado.
     val ringRadius = core + core * RING_SPAN * node.lifeFraction
     drawCircle(
         color = color.copy(alpha = 0.85f),
@@ -225,16 +256,36 @@ private fun DrawScope.drawNode(node: Node, minDim: Float) {
 }
 
 /**
- * Pinta una explosión de acierto: círculo que **crece y se desvanece** en alpha,
- * dando la sensación de "reventar" el nodo. Su avance (`0..1`) lo lleva un
- * [Animatable] de la capa Compose.
+ * Pinta una explosión de acierto: **chispas** que salen disparadas radialmente desde
+ * el nodo (mismo lenguaje que `drawTileSparks` de Memoria, pero en círculo completo
+ * para celebrar el acierto) más un anillo de onda expansiva que las acompaña. Todo
+ * se desvanece según [Burst.progress] (`0` recién nacida → `1` disuelta).
  */
 private fun DrawScope.drawBurst(burst: Burst, minDim: Float) {
     val p = burst.progress.value
     val center = Offset(burst.x * size.width, burst.y * size.height)
     val base = NeonPulseConfig.NODE_RADIUS * minDim
+    val color = LogicColors.Coral
+    val alpha = 1f - p
+
+    burst.sparkAngles.forEachIndexed { i, angleDeg ->
+        val angle = angleDeg * (PI.toFloat() / 180f)
+        val dir = Offset(cos(angle), sin(angle))
+        val travel = base * (0.9f + SPARK_TRAVEL * p) * burst.sparkLengths[i]
+        val start = center + dir * (base * 0.5f + travel * 0.4f)
+        val end = center + dir * (base * 0.5f + travel)
+        drawLine(
+            color = color.copy(alpha = alpha * 0.95f),
+            start = start,
+            end = end,
+            strokeWidth = SPARK_WIDTH_DP.dp.toPx() * (1f - p * 0.5f),
+            cap = StrokeCap.Round,
+        )
+    }
+
+    // Onda expansiva que acompaña a las chispas (retenida del diseño previo).
     drawCircle(
-        color = LogicColors.Coral.copy(alpha = (1f - p) * 0.9f),
+        color = color.copy(alpha = alpha * 0.7f),
         radius = base * (1f + BURST_GROWTH * p),
         center = center,
         style = Stroke(width = RING_STROKE_DP.dp.toPx()),
@@ -244,9 +295,15 @@ private fun DrawScope.drawBurst(burst: Burst, minDim: Float) {
 /**
  * Animación efímera de acierto. [x]/[y] en espacio normalizado `[0f..1f]`;
  * [progress] avanza de 0 (recién nacida) a 1 (desvanecida), momento en que la UI
- * la retira de la lista.
+ * la retira de la lista. Los ángulos/longitudes de chispa se fijan una sola vez al
+ * crear el burst (no en cada frame) para que cada chispa vuele en línea recta.
  */
-private class Burst(val x: Float, val y: Float, val progress: Animatable<Float, *>)
+private class Burst(val x: Float, val y: Float, val progress: Animatable<Float, *>) {
+    val sparkAngles: List<Float> = List(SPARK_COUNT) { i ->
+        (360f / SPARK_COUNT) * i + Random.nextFloat() * 18f - 9f
+    }
+    val sparkLengths: List<Float> = List(SPARK_COUNT) { 0.75f + Random.nextFloat() * 0.5f }
+}
 
 // ---------------------------------------------------------------------------
 // HUD
@@ -264,32 +321,39 @@ private fun NeonPulseHud(
     lives: Int,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    Box(modifier = modifier) {
+        // Puntuación arriba a la izquierda: no compite con las vidas/tiempo, que
+        // quedan centrados para leerse de un vistazo sin mover la vista.
         Text(
             text = "$score",
             style = MaterialTheme.typography.headlineMedium,
             color = LogicColors.OnDark,
+            modifier = Modifier.align(Alignment.TopStart),
         )
-        Text(
-            text = "${(remainingMs / 1000).coerceAtLeast(0)}s",
-            style = MaterialTheme.typography.titleLarge,
-            color = LogicColors.OnDarkMuted,
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            repeat(NeonPulseConfig.INITIAL_LIVES) { i ->
-                val alive = i < lives
-                NeonIcon(
-                    icon = if (alive) KortexIcons.Heart else KortexIcons.HeartOutline,
-                    tint = if (alive) LogicColors.Coral else LogicColors.OnDarkMuted,
-                    size = 22.dp,
-                    glow = alive,
-                    contentDescription = if (alive) "Vida" else "Vida perdida",
-                )
+
+        // Vidas centradas arriba y, justo debajo, el tiempo restante: agrupa las dos
+        // señales de "cuánto me queda" (vida/tiempo) en el eje central del HUD.
+        Column(
+            modifier = Modifier.align(Alignment.TopCenter),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                repeat(NeonPulseConfig.INITIAL_LIVES) { i ->
+                    val alive = i < lives
+                    NeonIcon(
+                        icon = if (alive) KortexIcons.Heart else KortexIcons.HeartOutline,
+                        tint = if (alive) LogicColors.Coral else LogicColors.OnDarkMuted,
+                        size = 22.dp,
+                        glow = alive,
+                        contentDescription = if (alive) "Vida" else "Vida perdida",
+                    )
+                }
             }
+            Text(
+                text = "${(remainingMs / 1000).coerceAtLeast(0)}s",
+                style = MaterialTheme.typography.titleLarge,
+                color = LogicColors.OnDarkMuted,
+            )
         }
     }
 }
@@ -322,5 +386,17 @@ private const val RING_STROKE_DP = 3f
 /** Duración de la animación de explosión (ms). */
 private const val BURST_MS = 450
 
-/** Cuánto crece la explosión respecto a su radio base. */
+/** Cuánto crece la onda expansiva respecto al radio base del nodo. */
 private const val BURST_GROWTH = 2.5f
+
+/** Grosor del tubo neón del nodo, como fracción de su radio de núcleo. */
+private const val TUBE_STROKE_FRACTION = 0.22f
+
+/** Número de chispas que dispara cada acierto. */
+private const val SPARK_COUNT = 8
+
+/** Cuánto se alargan las chispas a medida que avanza la explosión. */
+private const val SPARK_TRAVEL = 2.2f
+
+/** Grosor de cada chispa (dp). */
+private const val SPARK_WIDTH_DP = 2.5f
