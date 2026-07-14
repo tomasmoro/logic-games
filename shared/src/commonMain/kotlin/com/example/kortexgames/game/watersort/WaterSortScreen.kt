@@ -34,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -55,7 +56,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
@@ -190,10 +191,13 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
 
     val game = state.game
 
-    // Coordenadas de cada tubo y del contenedor, para posicionar el tubo viajero
-    // y el chorro respecto a los tubos reales (sin importar en qué fila estén).
-    var containerCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
-    val tubeCoords = remember { mutableMapOf<Int, LayoutCoordinates>() }
+    // Posición (en coords de ROOT) de cada tubo y del contenedor. Se **congelan
+    // mientras NO se anima**: leer las coordenadas en vivo justo cuando el layout
+    // cambia (el origen pasa a placeholder) devolvía left=0 durante un frame — el
+    // "destello" del tubo a la izquierda. Al usar el último valor estable, el tubo
+    // viajero arranca desde la posición correcta ya en el primer frame.
+    var containerOrigin by remember { mutableStateOf(Offset.Zero) }
+    val tubeBounds = remember { mutableStateMapOf<Int, Rect>() }
 
     val progress = remember { Animatable(0f) }
     // Id del vertido cuya animación ya arrancó. Sirve para (1) lanzar la animación
@@ -231,12 +235,8 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
     val animating = pour != null && (!started || raw < 1f)
 
     /** Rect del tubo [i] en coordenadas del contenedor (o null si aún no medido). */
-    fun boundsOf(i: Int): Rect? {
-        val container = containerCoords ?: return null
-        val tube = tubeCoords[i] ?: return null
-        if (!tube.isAttached || !container.isAttached) return null
-        return container.localBoundingBoxOf(tube)
-    }
+    fun boundsOf(i: Int): Rect? =
+        tubeBounds[i]?.translate(-containerOrigin.x, -containerOrigin.y)
 
     Box(Modifier.fillMaxSize().background(LogicColors.BackgroundDark)) {
         // Textura ambiental de muro arcade "neo-retro" (azul Lógica), muy sutil.
@@ -280,75 +280,96 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .onGloballyPositioned { containerCoords = it },
+                    .onGloballyPositioned { containerOrigin = it.boundsInRoot().topLeft },
                 contentAlignment = Alignment.Center,
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(28.dp)) {
                     game.tubes.chunked(perRow).forEachIndexed { rowIdx, rowTubes ->
+                        // La fila que contiene el origen se dibuja por encima de las demás,
+                        // para que el frasco pueda "volar" sobre la otra fila (§ z-order).
+                        val rowHasSource = activePour != null && activePour.from / perRow == rowIdx
                         Row(
+                            modifier = Modifier.zIndex(if (rowHasSource) 1f else 0f),
                             horizontalArrangement = Arrangement.spacedBy(14.dp),
                             verticalAlignment = Alignment.Bottom,
                         ) {
                             rowTubes.forEachIndexed { colIdx, tube ->
                                 val index = rowIdx * perRow + colIdx
-                                val isTravelingSource = activePour != null && index == activePour.from
+                                val isSource = activePour != null && index == activePour.from
+                                val isDest = activePour != null && index == activePour.to
+                                val isSel = game.selected == index
+                                val top = tube.topColorOrNull()
 
-                                // El tubo seleccionado (o el origen que va a viajar) se
-                                // dibuja por encima del resto (§ petición: siempre arriba).
-                                val elevated = game.selected == index || isTravelingSource
-                                val slotModifier = Modifier
-                                    .width(TubeWidth)
-                                    .zIndex(if (elevated) 1f else 0f)
-                                    .onGloballyPositioned { tubeCoords[index] = it }
+                                // El origen VIAJA en su propio sitio (mismo nodo → nunca
+                                // recién compuesto, sin destello): se traslada y gira con
+                                // graphicsLayer hacia el destino. El destino se rellena in
+                                // situ; el resto, normal. Bandas fraccionarias animan el
+                                // trasvase (origen drena, destino sube) según `pourFactor`.
+                                val bands = when {
+                                    isSource -> sourceBands(game.tubes[index], activePour!!, pourFactor)
+                                    isDest -> destBands(tube, activePour!!, pourFactor)
+                                    else -> tube.segments.map { LiquidBand(it, 1f) }
+                                }
 
-                                when {
-                                    // El origen viaja en el overlay: aquí solo reservamos
-                                    // su hueco (placeholder vacío) para no colapsar la fila.
-                                    isTravelingSource -> Box(
-                                        slotModifier.aspectRatio(TubeAspect),
-                                    )
-                                    // El destino se rellena in situ durante el vertido. Ya
-                                    // brilla si este vertido lo deja completo.
-                                    activePour != null && index == activePour.to -> TubeView(
-                                        bands = destBands(tube, activePour, pourFactor),
-                                        capacity = game.capacity,
-                                        highlightColor = null,
-                                        lifted = false,
-                                        glowing = tube.isGlowing(game.capacity),
-                                        glowColor = PotionColors[activePour.color],
-                                        tiltDegrees = 0f,
-                                        enabled = false,
-                                        onClick = {},
-                                        modifier = slotModifier,
-                                    )
-                                    else -> {
-                                        val isSel = game.selected == index
-                                        val top = tube.topColorOrNull()
-                                        TubeView(
-                                            bands = tube.segments.map { LiquidBand(it, 1f) },
-                                            capacity = game.capacity,
-                                            // Borde neón del color superior al seleccionar (§ petición).
-                                            highlightColor = if (isSel) top else null,
-                                            lifted = isSel,
-                                            glowing = tube.isGlowing(game.capacity),
-                                            glowColor = top ?: LogicColors.NeonCyan,
-                                            tiltDegrees = 0f,
-                                            // Los demás frascos siguen tocables aunque otro esté
-                                            // vertiendo (§ petición: no bloquear el resto).
-                                            enabled = true,
-                                            onClick = { vm.onIntent(WaterSortIntent.TapTube(index)) },
-                                            modifier = slotModifier,
-                                        )
+                                var travelX = 0f
+                                var travelY = 0f
+                                var angle = 0f
+                                if (isSource) {
+                                    val fromRect = boundsOf(index)
+                                    val destRect = boundsOf(activePour!!.to)
+                                    if (fromRect != null && destRect != null) {
+                                        val travel = travelFactor(p)
+                                        val dir = if (destRect.center.x >= fromRect.center.x) 1f else -1f
+                                        val cur = travelingRect(fromRect, destRect, dir, travel)
+                                        // Traslación relativa a SU sitio (por eso -from).
+                                        travelX = cur.left - fromRect.left
+                                        travelY = cur.top - fromRect.top
+                                        angle = dir * TILT_DEGREES * travel
                                     }
                                 }
+
+                                // Seleccionado o vertiendo → por encima de sus vecinos.
+                                val elevated = isSel || isSource
+                                TubeView(
+                                    bands = bands,
+                                    capacity = game.capacity,
+                                    // Borde neón: color vertido si está sirviendo (se conserva
+                                    // al derramar), o color superior si está seleccionado.
+                                    highlightColor = when {
+                                        isSource -> PotionColors[activePour!!.color]
+                                        isSel -> top
+                                        else -> null
+                                    },
+                                    lifted = isSel,
+                                    glowing = tube.isGlowing(game.capacity),
+                                    glowColor = if (isSource) PotionColors[activePour!!.color]
+                                    else top ?: LogicColors.NeonCyan,
+                                    tiltDegrees = angle,
+                                    travelX = travelX,
+                                    travelY = travelY,
+                                    // Origen y destino no son tocables mientras dura el vertido;
+                                    // el resto de frascos sí (§ petición: no bloquear el resto).
+                                    enabled = !isSource && !isDest,
+                                    onClick = { vm.onIntent(WaterSortIntent.TapTube(index)) },
+                                    modifier = Modifier
+                                        .width(TubeWidth)
+                                        .zIndex(if (elevated) 1f else 0f)
+                                        // Congela la posición SOLO mientras no se anima; durante
+                                        // el vertido se reutiliza el último valor estable.
+                                        .onGloballyPositioned { coords ->
+                                            if (coords.isAttached && !animating) {
+                                                val r = coords.boundsInRoot()
+                                                if (tubeBounds[index] != r) tubeBounds[index] = r
+                                            }
+                                        },
+                                )
                             }
                         }
                     }
                 }
 
-                // --- Capa superior: tubo viajero + chorro (solo durante el vertido) ---
+                // --- Capa superior: chorro neón (el tubo viaja en la propia rejilla) ---
                 if (activePour != null) {
-
                     val fromRect = boundsOf(activePour.from)
                     val destRect = boundsOf(activePour.to)
                     if (fromRect != null && destRect != null) {
@@ -357,35 +378,7 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
                         val current = travelingRect(fromRect, destRect, dir, travel)
                         val angle = dir * TILT_DEGREES * travel
 
-                        // Tubo origen "en vuelo": posición y giro interpolados; el líquido
-                        // solo baja durante la fase de vertido (pourFactor).
-                        TubeView(
-                            bands = sourceBands(game.tubes[activePour.from], activePour, pourFactor),
-                            capacity = game.capacity,
-                            // Mantiene el borde neón del color vertido durante todo el
-                            // trasvase (§ petición: conservar el borde al derramar).
-                            highlightColor = PotionColors[activePour.color],
-                            lifted = false,
-                            glowing = false,
-                            glowColor = PotionColors[activePour.color],
-                            tiltDegrees = angle,
-                            enabled = false,
-                            onClick = {},
-                            // Posicionamos con `graphicsLayer` (traslación en fase de
-                            // dibujo), NO con `offset { }`: el offset diferido no se
-                            // aplica en el primer frame del nodo recién compuesto, lo que
-                            // hacía destellar el tubo un frame en la esquina (TopStart)
-                            // antes de saltar al origen.
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .width(TubeWidth)
-                                .graphicsLayer {
-                                    translationX = current.left
-                                    translationY = current.top
-                                },
-                        )
-
-                        // Chorro neón desde la esquina del pico del tubo viajero al destino.
+                        // Chorro neón desde la esquina del pico del tubo (ya viajero) al destino.
                         Canvas(Modifier.fillMaxSize()) {
                             drawPourStream(current, destRect, dir, angle, PotionColors[activePour.color], pourFactor)
                         }
@@ -612,6 +605,8 @@ private fun TubeView(
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    travelX: Float = 0f,
+    travelY: Float = 0f,
 ) {
     // El tubo seleccionado se eleva con física de resorte (sensación táctil, §9.4).
     val lift by animateDpAsState(
@@ -654,7 +649,10 @@ private fun TubeView(
                 .fillMaxSize()
                 .offset(y = lift)
                 .graphicsLayer {
-                    // Pivota sobre la base (como un tubo real al servir).
+                    // Traslada el frasco hacia el destino cuando "viaja" (mismo nodo de la
+                    // rejilla → sin nodo nuevo, sin destello) y pivota sobre su base al servir.
+                    translationX = travelX
+                    translationY = travelY
                     rotationZ = tiltDegrees
                     transformOrigin = TransformOrigin(0.5f, 1f)
                 }

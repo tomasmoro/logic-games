@@ -1,7 +1,13 @@
 package com.example.kortexgames.game.neoncircuit
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -25,6 +31,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,6 +62,9 @@ import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.LevelStripState
 import com.example.kortexgames.ui.components.SpaceBackdrop
 import com.example.kortexgames.ui.components.bounceClick
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 // --- Constantes de composición de la placa ------------------------------------
 
@@ -69,6 +79,16 @@ private const val GLOW_LAYERS = 3
 
 /** Cuánto engorda el cable al palpitar tras conectar un par (fracción extra). */
 private const val PULSE_WIDTH_GAIN = 0.35f
+
+/**
+ * Multiplicador MÍNIMO de alfa del halo para un cable YA conectado: siempre por
+ * encima de 1 para que incluso en el valle de la respiración se lea más vivo
+ * que uno en camino (que usa un halo fijo de referencia = ×1).
+ */
+private const val CONNECTED_GLOW_MIN = 1f
+
+/** Cuánto MÁS se intensifica el halo conectado en el pico de la respiración. */
+private const val CONNECTED_GLOW_AMPLITUDE = 0.4f
 
 /**
  * Traduce una **identidad de canal** ([WireColor], dominio puro) al token real de
@@ -285,6 +305,29 @@ private fun CircuitBoard(
     modifier: Modifier = Modifier,
 ) {
     val size = game.gridSize
+    // El bloque de `pointerInput` solo se relanza cuando cambian sus claves
+    // (size, cellPx); entre dos niveles del MISMO tamaño de tablero esas claves
+    // no cambian, así que su closure NO se reconstruye. Sin `rememberUpdatedState`,
+    // `onDragStart` seguiría capturando el `game` (nodos) del nivel anterior y el
+    // jugador no podría arrancar ningún cable en el nivel nuevo.
+    val latestGame by rememberUpdatedState(game)
+
+    // Respiración lenta (§9.4) del halo de los cables YA conectados: un único
+    // bucle compartido por todos ellos (no uno por cable, que competirían entre
+    // sí) para que el circuito se sienta "vivo". 0..1: drawWire lo combina con
+    // [CONNECTED_GLOW_MIN]/[CONNECTED_GLOW_AMPLITUDE] para que el valle YA esté
+    // por encima de un cable en camino y el pico sea claramente más brillante.
+    val glowTransition = rememberInfiniteTransition(label = "connectedWireGlow")
+    val connectedGlow by glowTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "glow",
+    )
+
     BoxWithConstraints(modifier = modifier) {
         val cellDp: Dp = maxWidth / size
         val cellPx: Float = with(LocalDensity.current) { cellDp.toPx() }
@@ -304,7 +347,7 @@ private fun CircuitBoard(
                         onDragStart = { offset ->
                             val cell = offsetToCell(offset)
                             // Solo se arranca trazo si el dedo posó sobre un nodo.
-                            game.nodeAt(cell)?.let { node ->
+                            latestGame.nodeAt(cell)?.let { node ->
                                 onIntent(NeonCircuitIntent.StartPath(node.color, cell))
                             }
                         },
@@ -322,11 +365,21 @@ private fun CircuitBoard(
             // Cables debajo, nodos encima (así los terminales tapan el arranque
             // del trazo y se leen como el "conector" del que sale el cable).
             game.paths.values.forEach { path ->
+                val connected = game.isColorConnected(path.color)
                 val boost = if (path.color == pulseColor) 1f + PULSE_WIDTH_GAIN * pulse else 1f
-                drawWire(path, cellPx, boost)
+                drawWire(path, cellPx, boost, connected, connectedGlow)
             }
             game.nodes.forEach { node ->
                 drawNode(node, cellPx, connected = game.isColorConnected(node.color))
+            }
+
+            // Chispas de celebración: al cerrar un par, saltan de sus dos nodos
+            // mientras dura la palpitación (mismo Animatable que engorda el cable).
+            if (pulseColor != null && pulse > 0f) {
+                val accent = pulseColor.toAccent()
+                game.nodes.filter { it.color == pulseColor }.forEach { node ->
+                    drawConnectionSparks(cellCenter(node.position, cellPx), accent, cellPx, pulse)
+                }
             }
         }
     }
@@ -358,20 +411,41 @@ private fun DrawScope.drawBoardBackdrop(gridSize: Int, cellPx: Float) {
 }
 
 /**
- * Dibuja un cable como trazo continuo con codos redondeados y halo neón.
+ * Dibuja un cable como trazo continuo con codos redondeados, con la MISMA
+ * receta de "tubo de neón" que [drawNeonTile] (halo ancho → halo intermedio →
+ * trazo nítido → núcleo blanco), solo que sobre un [Path] arbitrario en vez de
+ * un contorno de tile. `StrokeCap.Round` + `StrokeJoin.Round` hacen que tanto
+ * las puntas como los codos salgan suaves. Un cable de una sola celda (solo el
+ * nodo de arranque) no traza línea: lo representa el propio nodo.
  *
- * El halo son [GLOW_LAYERS] pasadas del MISMO [Path], cada una más ancha y más
- * translúcida, pintadas de fuera hacia dentro; encima va el trazo sólido. Con
- * `StrokeCap.Round` + `StrokeJoin.Round` tanto las puntas como los giros quedan
- * suaves. Un cable de una sola celda (solo el nodo de arranque) no traza línea:
- * lo representa el propio nodo.
+ * Un cable **ya conectado** brilla más que uno todavía en camino ([glowPulse]
+ * lo hace además respirar suavemente, igual que el halo de [drawNeonTile] al
+ * "encender": ver el bucle compartido en `CircuitBoard`) y se le añade el
+ * núcleo blanco interior — el remate que distingue un par cerrado de uno a
+ * medio trazar.
  *
  * @param widthBoost multiplicador del grosor para la palpitación al conectar.
+ * @param connected si el par de este canal ya está unido extremo a extremo.
+ * @param glowPulse respiración (0..1) del halo para cables conectados; sin
+ *   efecto en cables en camino. Ver [CONNECTED_GLOW_MIN]/[CONNECTED_GLOW_AMPLITUDE].
  */
-private fun DrawScope.drawWire(path: WirePath, cellPx: Float, widthBoost: Float) {
+private fun DrawScope.drawWire(
+    path: WirePath,
+    cellPx: Float,
+    widthBoost: Float,
+    connected: Boolean,
+    glowPulse: Float,
+) {
     if (path.cells.size < 2) return
     val accent = path.color.toAccent()
-    val baseWidth = cellPx * WIRE_WIDTH_FRACTION * widthBoost
+    val stroke = cellPx * WIRE_WIDTH_FRACTION * widthBoost
+    // Factor de brillo: en camino siempre ×1; conectado, oscila entre
+    // [CONNECTED_GLOW_MIN] (ya por encima de "en camino") y ese mínimo más
+    // [CONNECTED_GLOW_AMPLITUDE] en el pico de la respiración. `widthScale`
+    // traduce parte de ese factor a un halo que también CRECE, no solo se
+    // aclara: así la respiración se nota incluso donde el alfa ya satura.
+    val glow = if (connected) CONNECTED_GLOW_MIN + CONNECTED_GLOW_AMPLITUDE * glowPulse else 1f
+    val widthScale = 1f + (glow - 1f) * 0.35f
 
     val line = Path().apply {
         val first = cellCenter(path.cells.first(), cellPx)
@@ -382,22 +456,59 @@ private fun DrawScope.drawWire(path: WirePath, cellPx: Float, widthBoost: Float)
         }
     }
 
-    for (layer in GLOW_LAYERS downTo 1) {
-        drawPath(
-            path = line,
-            color = accent.copy(alpha = 0.12f * (GLOW_LAYERS + 1 - layer)),
-            style = Stroke(
-                width = baseWidth + layer * (cellPx * 0.10f),
-                cap = StrokeCap.Round,
-                join = StrokeJoin.Round,
-            ),
-        )
-    }
+    // Halo exterior ancho y translúcido.
+    drawPath(
+        path = line,
+        color = accent.copy(alpha = (0.22f * glow).coerceAtMost(1f)),
+        style = Stroke(width = stroke * 2.6f * widthScale, cap = StrokeCap.Round, join = StrokeJoin.Round),
+    )
+    // Halo intermedio: da cuerpo al resplandor.
+    drawPath(
+        path = line,
+        color = accent.copy(alpha = (0.40f * glow).coerceAtMost(1f)),
+        style = Stroke(width = stroke * 1.7f * widthScale, cap = StrokeCap.Round, join = StrokeJoin.Round),
+    )
+    // Trazo nítido del "tubo" neón.
     drawPath(
         path = line,
         color = accent,
-        style = Stroke(width = baseWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round),
     )
+    // Núcleo blanco interior del tubo al conectar (el look "prendido" del neón real);
+    // también respira, nunca desaparece del todo.
+    if (connected) {
+        drawPath(
+            path = line,
+            color = Color.White.copy(alpha = (0.30f * glow).coerceAtMost(0.9f)),
+            style = Stroke(width = stroke * 0.42f * widthScale, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
+    }
+}
+
+/**
+ * Chispas radiales alrededor de [center]: mismo lenguaje que las chispas de
+ * tecla de [drawNeonTile] (líneas cortas que nacen del borde y se desvanecen)
+ * pero en corona completa alrededor de un punto, para celebrar que un par
+ * acaba de conectar. [amt] es la palpitación (1 → recién conectado, 0 → ya
+ * apagada) que ya usa [PULSE_WIDTH_GAIN] para engordar el cable.
+ */
+private fun DrawScope.drawConnectionSparks(center: Offset, color: Color, cellPx: Float, amt: Float) {
+    val rays = 6
+    val innerRadius = cellPx * NODE_RADIUS_FRACTION * 1.3f
+    val length = cellPx * 0.34f * amt
+    val strokeWidth = cellPx * 0.05f
+    val tint = color.copy(alpha = 0.85f * amt)
+    repeat(rays) { i ->
+        val angle = (2.0 * PI * i / rays).toFloat()
+        val dir = Offset(cos(angle), sin(angle))
+        drawLine(
+            color = tint,
+            start = center + dir * innerRadius,
+            end = center + dir * (innerRadius + length),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round,
+        )
+    }
 }
 
 /**

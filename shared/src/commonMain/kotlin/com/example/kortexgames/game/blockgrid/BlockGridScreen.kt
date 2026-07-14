@@ -41,7 +41,6 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -67,6 +66,7 @@ import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.SpaceBackdrop
 import com.example.kortexgames.ui.components.alphaIf
 import com.example.kortexgames.ui.components.bounceClick
+import com.example.kortexgames.ui.components.drawNeonTile
 import kotlinx.coroutines.delay
 import kotlin.math.cos
 import kotlin.math.floor
@@ -669,9 +669,12 @@ private fun DrawScope.drawGhostCell(topLeft: Offset, cellPx: Float, valid: Boole
 }
 
 /**
- * Bloque neón: halo radial (la "luz" sobre el tablero oscuro), cuerpo saturado
- * y arista superior clara (volumen). [scale]/[alpha] sirven a la animación de
- * limpieza (encoge alrededor de su centro mientras se funde).
+ * Bloque neón: **tubo hueco**, mismo lenguaje que las celdas de Crucigrama Neón
+ * ([drawNeonTile]) — contorno luminoso con halo y núcleo blanco, interior apenas
+ * teñido (no relleno sólido). [scale]/[alpha] sirven a la animación de limpieza
+ * (encoge alrededor de su centro mientras se funde); [glowBoost] sube el
+ * encendido a pleno para la pieza en vuelo (es el foco de atención en ese
+ * momento) frente al brillo algo más contenido de un bloque ya asentado.
  */
 private fun DrawScope.drawBlock(
     topLeft: Offset,
@@ -681,94 +684,57 @@ private fun DrawScope.drawBlock(
     scale: Float = 1f,
     glowBoost: Boolean = false,
 ) {
-    if (alpha <= 0f) return
-    val center = topLeft + Offset(cellPx / 2f, cellPx / 2f)
-    val inset = cellPx * 0.06f
-    val side = (cellPx - inset * 2) * scale
-    val corner = CornerRadius(cellPx * 0.20f * scale)
-    val blockTopLeft = center - Offset(side / 2f, side / 2f)
-
-    // Halo: el resplandor es lo que vende el "neón"; discreto en tablero, más
-    // intenso en la pieza en vuelo (es el foco de atención en ese momento).
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(accent.copy(alpha = (if (glowBoost) 0.45f else 0.25f) * alpha), Color.Transparent),
-            center = center,
-            radius = cellPx * 0.95f,
-        ),
-        radius = cellPx * 0.85f,
-        center = center,
-    )
-    drawRoundRect(
-        color = accent.copy(alpha = 0.92f * alpha),
-        topLeft = blockTopLeft,
-        size = Size(side, side),
-        cornerRadius = corner,
-    )
-    // Arista superior iluminada: da volumen sin sombras duras (§9.6).
-    drawRoundRect(
-        color = Color.White.copy(alpha = 0.22f * alpha),
-        topLeft = blockTopLeft,
-        size = Size(side, side * 0.45f),
-        cornerRadius = corner,
-    )
-    drawRoundRect(
-        color = accent.copy(alpha = alpha),
-        topLeft = blockTopLeft,
-        size = Size(side, side),
-        cornerRadius = corner,
-        style = Stroke(width = 1.5.dp.toPx()),
+    drawNeonTile(
+        baseColor = accent,
+        activeAmt = if (glowBoost) 1f else 0.78f,
+        cornerRadius = (cellPx * 0.22f).toDp(),
+        sparks = false,
+        baseMargin = (cellPx * 0.07f).toDp(),
+        strokeScale = 0.8f,
+        rectTopLeft = topLeft,
+        rectSize = Size(cellPx, cellPx),
+        alpha = alpha,
+        scale = scale,
     )
 }
 
 /**
- * Glow de anticipo sobre una fila/columna que se completaría con la jugada en
- * curso: una banda de luz con degradado (transparente→acento→transparente) y
- * un núcleo nítido al centro, mismo lenguaje de "tubo de neón" que
- * [drawNeonTile][com.example.kortexgames.ui.components.drawNeonTile] pero en
- * franja completa. [pulse] (0..1, va y vuelve) le da un latido suave para que
- * se note sin invadir la lectura del tablero (§9.4).
+ * Anticipo de línea completa: mientras el jugador sostiene una jugada que
+ * rompería una fila/columna, cada celda de esa línea se "enciende" con el
+ * mismo lenguaje de botón de Memoria de Secuencias al pulsarlo
+ * ([drawNeonTile] a pleno encendido) — así el jugador reconoce de un vistazo
+ * qué línea va a saltar antes incluso de soltar el dedo. Sin chispas: al
+ * encenderse una línea entera (no una única celda), repetir el burst en cada
+ * bloque saturaría el tablero. [pulse] (0..1, va y vuelve) le da un latido
+ * suave al conjunto para que se note sin marear (§9.4); se calcula el set de
+ * celdas una sola vez para no re-encender dos veces la intersección de una
+ * fila y una columna que rompen a la vez.
+ *
+ * El encendido va a **tope** (no atenuado como un bloque asentado normal, ver
+ * [drawBlock]) y con más tinte blanco que el acento de la pieza: la línea debe
+ * saltar a la vista de inmediato, no competir en brillo con el resto del
+ * tablero.
  */
 private fun DrawScope.drawLineGlowPreview(lines: FullLines, cellPx: Float, accent: Color, pulse: Float) {
-    val hot = lerp(accent, Color.White, 0.3f)
-    val bandAlpha = 0.14f + 0.10f * pulse
-    val coreAlpha = 0.5f + 0.35f * pulse
-    val coreWidth = 2.dp.toPx()
+    val hot = lerp(accent, Color.White, 0.45f)
+    val activeAmt = 0.5f
+    val corner = (cellPx * 0.22f).toDp()
+    val margin = (cellPx * 0.045f).toDp()
 
-    lines.rows.forEach { r ->
-        val top = r * cellPx
-        drawRect(
-            brush = Brush.verticalGradient(
-                colors = listOf(Color.Transparent, hot.copy(alpha = bandAlpha), Color.Transparent),
-                startY = top,
-                endY = top + cellPx,
-            ),
-            topLeft = Offset(0f, top),
-            size = Size(size.width, cellPx),
-        )
-        drawLine(
-            color = hot.copy(alpha = coreAlpha),
-            start = Offset(0f, top + cellPx / 2f),
-            end = Offset(size.width, top + cellPx / 2f),
-            strokeWidth = coreWidth,
-        )
+    val cells = buildSet {
+        lines.rows.forEach { r -> for (c in 0 until BOARD_SIZE) add(GridPos(r, c)) }
+        lines.cols.forEach { c -> for (r in 0 until BOARD_SIZE) add(GridPos(r, c)) }
     }
-    lines.cols.forEach { c ->
-        val left = c * cellPx
-        drawRect(
-            brush = Brush.horizontalGradient(
-                colors = listOf(Color.Transparent, hot.copy(alpha = bandAlpha), Color.Transparent),
-                startX = left,
-                endX = left + cellPx,
-            ),
-            topLeft = Offset(left, 0f),
-            size = Size(cellPx, size.height),
-        )
-        drawLine(
-            color = hot.copy(alpha = coreAlpha),
-            start = Offset(left + cellPx / 2f, 0f),
-            end = Offset(left + cellPx / 2f, size.height),
-            strokeWidth = coreWidth,
+    cells.forEach { pos ->
+        drawNeonTile(
+            baseColor = hot,
+            activeAmt = activeAmt,
+            cornerRadius = corner,
+            sparks = false,
+            baseMargin = margin,
+            strokeScale = 1.35f + 0.35f * pulse,
+            rectTopLeft = Offset(pos.col * cellPx, pos.row * cellPx),
+            rectSize = Size(cellPx, cellPx),
         )
     }
 }

@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -292,52 +291,44 @@ private fun DailyGoalCard(
     onClaim: () -> Unit,
 ) {
     val percent = (goal.progress * 100).roundToInt()
-    // Box contenedor SIN recorte: deja que el botón circular sobresalga del borde.
-    Box(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(28.dp))
-                .background(LogicColors.SurfaceDark)
-                .padding(vertical = 24.dp, horizontal = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(28.dp))
+            .background(LogicColors.SurfaceDark)
+            .padding(vertical = 24.dp, horizontal = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("OBJETIVO DIARIO", style = MaterialTheme.typography.titleLarge, color = LogicColors.OnDark)
+            Text("Potencia tu mente hoy", style = MaterialTheme.typography.bodyMedium, color = LogicColors.OnDarkMuted)
+        }
+
+        CircularProgressRing(
+            progress = goal.progress,
+            size = 168.dp,
+            strokeWidth = 15.dp,
+            progressColors = LogicGradients.ring,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("OBJETIVO DIARIO", style = MaterialTheme.typography.titleLarge, color = LogicColors.OnDark)
-                Text("Potencia tu mente hoy", style = MaterialTheme.typography.bodyMedium, color = LogicColors.OnDarkMuted)
-            }
-
-            CircularProgressRing(
-                progress = goal.progress,
-                size = 168.dp,
-                strokeWidth = 15.dp,
-                progressColors = LogicGradients.ring,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("$percent%", style = MaterialTheme.typography.displayLarge, color = LogicColors.OnDark)
-                    Text(
-                        "${goal.completed} / ${goal.target} juegos",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = LogicColors.OnDarkMuted,
-                    )
-                }
-            }
-
-            // "Tu misión de hoy": los juegos del día con su estado (hecho/pendiente).
-            if (goal.mission.isNotEmpty()) {
-                DailyMissionRow(mission = goal.mission, onOpenGame = onOpenGame)
+                Text("$percent%", style = MaterialTheme.typography.displayLarge, color = LogicColors.OnDark)
+                Text(
+                    "${goal.completed} / ${goal.target} juegos",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = LogicColors.OnDarkMuted,
+                )
             }
         }
 
-        // Botón circular "jugar ahora": anclado abajo-derecha y desplazado hacia
-        // fuera para sobresalir del borde de la tarjeta (muy visible, acento escaso).
-        PlayNowFab(
-            onClick = onPlay,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .offset(x = 22.dp, y = 26.dp),
-        )
+        // "Tu misión de hoy": los juegos del día con su estado (hecho/pendiente).
+        if (goal.mission.isNotEmpty()) {
+            DailyMissionRow(mission = goal.mission, onOpenGame = onOpenGame)
+        }
+
+        // Botón circular "jugar ahora": centrado dentro de la tarjeta como CTA claro,
+        // un poco separado de la misión para respirar. Único acento animado (§9.4).
+        PlayNowFab(onClick = onPlay, modifier = Modifier.padding(top = 4.dp))
     }
 }
 

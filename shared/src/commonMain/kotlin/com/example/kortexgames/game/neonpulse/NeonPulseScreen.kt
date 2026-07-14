@@ -1,7 +1,10 @@
 package com.example.kortexgames.game.neonpulse
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -16,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
@@ -23,6 +27,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -339,14 +344,7 @@ private fun NeonPulseHud(
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 repeat(NeonPulseConfig.INITIAL_LIVES) { i ->
-                    val alive = i < lives
-                    NeonIcon(
-                        icon = if (alive) KortexIcons.Heart else KortexIcons.HeartOutline,
-                        tint = if (alive) LogicColors.Coral else LogicColors.OnDarkMuted,
-                        size = 22.dp,
-                        glow = alive,
-                        contentDescription = if (alive) "Vida" else "Vida perdida",
-                    )
+                    NeonPulseHeart(alive = i < lives)
                 }
             }
             Text(
@@ -355,6 +353,35 @@ private fun NeonPulseHud(
                 color = LogicColors.OnDarkMuted,
             )
         }
+    }
+}
+
+/**
+ * Un corazón del HUD de vidas. Antes el icono/tinte/halo cambiaban de golpe al
+ * perder una vida (salto brusco entre `Favorite` y `FavoriteBorder`); aquí se
+ * cruza con [Crossfade] y se añade un "pop" de escala (spring) al apagarse, para
+ * que la pérdida se lea como una animación y no como un parpadeo.
+ */
+@Composable
+private fun NeonPulseHeart(alive: Boolean) {
+    val scale = remember { Animatable(1f) }
+    LaunchedEffect(alive) {
+        if (!alive) {
+            scale.snapTo(1.35f)
+            scale.animateTo(
+                targetValue = 1f,
+                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+            )
+        }
+    }
+    Crossfade(targetState = alive, animationSpec = tween(180), modifier = Modifier.scale(scale.value)) { isAlive ->
+        NeonIcon(
+            icon = if (isAlive) KortexIcons.Heart else KortexIcons.HeartOutline,
+            tint = if (isAlive) LogicColors.Coral else LogicColors.OnDarkMuted,
+            size = 22.dp,
+            glow = isAlive,
+            contentDescription = if (isAlive) "Vida" else "Vida perdida",
+        )
     }
 }
 

@@ -118,6 +118,9 @@ object GameProgressions {
         GameIds.HYPERGATE to GameProgression(
             ProgressionKind.ENDLESS, MetricDirection.HIGHER_IS_BETTER, "Mejor", MetricUnit.POINTS,
         ),
+        GameIds.NEON_CIRCUIT to GameProgression(
+            ProgressionKind.LEVELED, MetricDirection.HIGHER_IS_BETTER, "Nivel máx", MetricUnit.LEVEL,
+        ),
     )
 
     /** Progresión de un juego, o null si el id es null o no está registrado. */

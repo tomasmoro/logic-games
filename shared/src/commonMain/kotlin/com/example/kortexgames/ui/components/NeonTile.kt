@@ -33,6 +33,17 @@ import com.example.kortexgames.core.theme.LogicColors
  * @param strokeScale factor sobre el grosor del tubo (y sus halos). <1 adelgaza el
  *   neón: útil cuando la celda es pequeña (rejillas densas) y un tubo grueso tapaba la
  *   letra. 1 = grosor estándar.
+ * @param rectTopLeft esquina superior izquierda del recuadro del tile dentro del
+ *   `DrawScope` actual. Por defecto [Offset.Zero], que es lo correcto cuando el tile
+ *   es dueño de todo su `Canvas` (Memoria, Crucigrama). Los tableros que pintan
+ *   muchas celdas en un único `Canvas` compartido (p. ej. Tetris Neón) pasan aquí la
+ *   posición de cada celda para reutilizar el mismo dibujo sin un `Canvas` por celda.
+ * @param rectSize tamaño del recuadro del tile; por defecto el tamaño completo del
+ *   `DrawScope` (mismo razonamiento que [rectTopLeft]).
+ * @param alpha multiplicador de opacidad global del tile (0..1); sirve para el
+ *   fundido de piezas que se desvanecen (limpieza de líneas).
+ * @param scale factor de escala del tubo alrededor de su propio centro (1 = tamaño
+ *   normal); sirve para el encogimiento de piezas que se desvanecen.
  */
 fun DrawScope.drawNeonTile(
     baseColor: Color,
@@ -41,8 +52,13 @@ fun DrawScope.drawNeonTile(
     sparks: Boolean = true,
     baseMargin: Dp = 7.dp,
     strokeScale: Float = 1f,
+    rectTopLeft: Offset = Offset.Zero,
+    rectSize: Size = size,
+    alpha: Float = 1f,
+    scale: Float = 1f,
 ) {
-    val corner = CornerRadius(cornerRadius.toPx(), cornerRadius.toPx())
+    if (alpha <= 0f) return
+    val corner = CornerRadius(cornerRadius.toPx() * scale, cornerRadius.toPx() * scale)
 
     // Borde: en reposo un neón atenuado (tubo "en espera"); encendido, color pleno.
     val idle = lerp(baseColor, LogicColors.SurfaceVariantDark, 0.38f)
@@ -51,63 +67,67 @@ fun DrawScope.drawNeonTile(
     val stroke = (2.4.dp + 1.8.dp * activeAmt).toPx() * strokeScale
     // Margen para que los halos quepan dentro de los límites del tile (crece al encender).
     val margin = (baseMargin + 2.dp * activeAmt).toPx()
-    val topLeft = Offset(margin, margin)
-    val rectSize = Size(size.width - margin * 2f, size.height - margin * 2f)
+    val fullSize = Size(rectSize.width - margin * 2f, rectSize.height - margin * 2f)
+    // El encogimiento ([scale]) se hace alrededor del centro del recuadro, no de su
+    // esquina, para que el tubo se contraiga "in situ" en vez de desplazarse.
+    val center = rectTopLeft + Offset(rectSize.width / 2f, rectSize.height / 2f)
+    val shrunkSize = Size(fullSize.width * scale, fullSize.height * scale)
+    val topLeft = center - Offset(shrunkSize.width / 2f, shrunkSize.height / 2f)
 
     // Relleno interior: hueco en reposo; al encenderse se llena con un tinte radial.
     if (activeAmt > 0f) {
         drawRoundRect(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    baseColor.copy(alpha = 0.30f * activeAmt),
-                    baseColor.copy(alpha = 0.04f * activeAmt),
+                    baseColor.copy(alpha = 0.30f * activeAmt * alpha),
+                    baseColor.copy(alpha = 0.04f * activeAmt * alpha),
                 ),
-                center = Offset(size.width / 2f, size.height / 2f),
-                radius = size.minDimension / 1.3f,
+                center = center,
+                radius = rectSize.minDimension / 1.3f,
             ),
             topLeft = topLeft,
-            size = rectSize,
+            size = shrunkSize,
             cornerRadius = corner,
         )
     }
 
     // Halo exterior ancho y translúcido (respira con el encendido).
     drawRoundRect(
-        color = edge.copy(alpha = 0.30f * (0.35f + 0.65f * activeAmt)),
+        color = edge.copy(alpha = 0.30f * (0.35f + 0.65f * activeAmt) * alpha),
         topLeft = topLeft,
-        size = rectSize,
+        size = shrunkSize,
         cornerRadius = corner,
         style = Stroke(width = stroke * 4.5f),
     )
     // Halo intermedio: da cuerpo al resplandor.
     drawRoundRect(
-        color = edge.copy(alpha = 0.55f * (0.45f + 0.55f * activeAmt)),
+        color = edge.copy(alpha = 0.55f * (0.45f + 0.55f * activeAmt) * alpha),
         topLeft = topLeft,
-        size = rectSize,
+        size = shrunkSize,
         cornerRadius = corner,
         style = Stroke(width = stroke * 2.1f),
     )
     // Trazo nítido del "tubo" neón.
     drawRoundRect(
-        color = edge,
+        color = edge.copy(alpha = alpha),
         topLeft = topLeft,
-        size = rectSize,
+        size = shrunkSize,
         cornerRadius = corner,
         style = Stroke(width = stroke),
     )
     // Núcleo blanco interior del tubo al encender (el look "prendido" del neón real).
     if (activeAmt > 0f) {
         drawRoundRect(
-            color = Color.White.copy(alpha = 0.55f * activeAmt),
+            color = Color.White.copy(alpha = 0.55f * activeAmt * alpha),
             topLeft = topLeft,
-            size = rectSize,
+            size = shrunkSize,
             cornerRadius = corner,
             style = Stroke(width = stroke * 0.42f),
         )
     }
 
     if (sparks && activeAmt > 0.05f) {
-        drawTileSparks(edge, topLeft.y, size.width / 2f, activeAmt)
+        drawTileSparks(edge.copy(alpha = edge.alpha * alpha), topLeft.y, center.x, activeAmt)
     }
 }
 

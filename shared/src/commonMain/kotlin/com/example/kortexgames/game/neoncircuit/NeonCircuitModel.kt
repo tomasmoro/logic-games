@@ -48,7 +48,7 @@ import kotlin.math.abs
 const val MIN_GRID_SIZE: Int = 5
 
 /** Lado máximo del tablero cuadrado (nivel avanzado). */
-const val MAX_GRID_SIZE: Int = 8
+const val MAX_GRID_SIZE: Int = 9
 
 /**
  * Coordenada de celda del tablero: fila y columna, ambas 0-based.

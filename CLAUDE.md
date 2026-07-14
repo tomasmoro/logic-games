@@ -371,3 +371,29 @@ categorías, racha, ajustes, botones):
   sombras duras.
 - Espaciado base múltiplos de `4dp`; ritmo vertical cómodo (`16–20dp` entre
   bloques).
+
+### 9.7 Borde neón (REGLA: fuente única, no bordes ad-hoc)
+
+Todo tablero/tecla/celda de un minijuego que necesite un borde "de neón" (tubo
+de luz con halo) **reutiliza los componentes compartidos de `ui/components`**
+en vez de dibujar su propio `drawRoundRect`/`Stroke` suelto:
+
+- **[`drawNeonTile`](shared/src/commonMain/kotlin/com/example/kortexgames/ui/components/NeonTile.kt)**
+  (`DrawScope`): el "tubo hueco" que usan las teclas de Memoria de Secuencias y
+  las celdas de Crucigrama Neón — halo ancho → halo intermedio → trazo nítido →
+  núcleo blanco al encender (`activeAmt`), con chispas opcionales. Úsalo para
+  celdas/teclas individuales; si un trazo no es un contorno de tile (p. ej. los
+  cables de Circuito Neón, dibujados sobre un `Path` arbitrario), replica la
+  MISMA proporción de capas (halo ancho → intermedio → nítido → núcleo) en vez
+  de inventar un halo distinto — no llames a `drawNeonTile` sobre el fondo
+  entero del tablero solo por reutilizar la función: en tableros grandes con
+  mucho contenido encima (rejilla, cables, nodos) un marco así de intenso
+  compite con el resto y se ve sobrecargado; ahí basta un contorno sutil.
+- **[`NeonFrame`](shared/src/commonMain/kotlin/com/example/kortexgames/ui/components/NeonFrame.kt)**
+  (`@Composable`): el "bezel" de consola arcade con borde giratorio, para
+  envolver un panel/pantalla completa (no una celda suelta).
+
+Si un juego nuevo necesita un borde de neón que estos componentes no cubren,
+amplía `drawNeonTile`/`NeonFrame` (parámetros o nueva variante) en vez de
+copiar su lógica: así todos los tableros comparten idéntica estética y un
+ajuste de "look" se hace en un solo sitio.
