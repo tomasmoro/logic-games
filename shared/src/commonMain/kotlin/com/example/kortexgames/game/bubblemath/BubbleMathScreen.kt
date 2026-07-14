@@ -59,6 +59,7 @@ import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
+import com.example.kortexgames.ui.components.ReviveAdOverlay
 import com.example.kortexgames.ui.components.bounceClick
 import com.example.kortexgames.ui.components.drawNeonBubble
 import kotlin.math.cos
@@ -213,17 +214,36 @@ fun BubbleMathScreen(graph: AppGraph, onExit: () -> Unit) {
     }
 
     // Botón de pausa + menú (Reanudar / audio / ayuda / Salir), común a todos los juegos.
-    GamePauseControls(
-        status = state.status,
-        settings = graph.settingsRepository,
-        audio = graph.audio,
-        onPause = { vm.onIntent(BubbleMathIntent.Pause) },
-        onResume = { vm.onIntent(BubbleMathIntent.Resume) },
-        onExit = onExit,
-        gameTitle = "Burbujas de Cálculo",
-        helpText = "Revienta las burbujas con el resultado correcto antes de que toquen el suelo; encadena aciertos para subir el combo.",
-        accent = CategoryPalette.MentalMath,
-    )
+    // Se oculta durante la oferta de revivir: no tiene sentido pausar mientras se
+    // decide (y evita solapar el menú de pausa con el overlay de segunda oportunidad).
+    if (game.phase != BubblePhase.REVIVE_OFFER) {
+        GamePauseControls(
+            status = state.status,
+            settings = graph.settingsRepository,
+            audio = graph.audio,
+            onPause = { vm.onIntent(BubbleMathIntent.Pause) },
+            onResume = { vm.onIntent(BubbleMathIntent.Resume) },
+            onExit = onExit,
+            gameTitle = "Burbujas de Cálculo",
+            helpText = "Revienta las burbujas con el resultado correcto antes de que toquen el suelo; encadena aciertos para subir el combo.",
+            accent = CategoryPalette.MentalMath,
+        )
+    }
+
+    // Segunda oportunidad: al quedarse sin vidas (una vez por partida) se ofrece
+    // revivir con una vida extra viendo un anuncio. Componente reutilizable común.
+    // Se emite EL ÚLTIMO para quedar por encima del botón de pausa (el juego sigue en
+    // RUNNING mientras se decide) y bloquear el tablero con su propio scrim.
+    if (game.phase == BubblePhase.REVIVE_OFFER) {
+        ReviveAdOverlay(
+            adManager = graph.adManager,
+            onRevive = { vm.onIntent(BubbleMathIntent.Revive) },
+            onDecline = { vm.onIntent(BubbleMathIntent.DeclineRevive) },
+            rewardLabel = "una vida extra",
+            accent = CategoryPalette.MentalMath,
+            audio = graph.audio,
+        )
+    }
 }
 
 /**

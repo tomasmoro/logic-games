@@ -28,6 +28,14 @@ data class PourEvent(
 )
 
 /**
+ * Máximo de tubos extra que el jugador puede añadir por partida viendo un anuncio
+ * recompensado. Se limita a **uno**: un solo tubo vacío ya da un margen de maniobra
+ * decisivo cuando el jugador se atasca; permitir más trivializaría el nivel. Es la
+ * ayuda monetizada del juego (§1).
+ */
+const val MAX_EXTRA_TUBES: Int = 1
+
+/**
  * Estado de UI de "Ordena las Pociones".
  *
  * @property tubes tablero actual (fuente de verdad para pintar).
@@ -38,6 +46,9 @@ data class PourEvent(
  * @property solved true cuando todos los tubos están resueltos (victoria).
  * @property canUndo hay historial para deshacer el último vertido.
  * @property lastPour último vertido correcto, para animar el chorro (o null).
+ * @property extraTubesUsed tubos extra ya añadidos (vía anuncio) en esta partida.
+ * @property canAddTube aún queda cupo de tubos extra ([MAX_EXTRA_TUBES]) y la
+ *   partida sigue en curso → la UI puede ofrecer el botón "Tubo extra".
  */
 data class WaterSortState(
     val tubes: List<Tube> = emptyList(),
@@ -49,6 +60,8 @@ data class WaterSortState(
     val solved: Boolean = false,
     val canUndo: Boolean = false,
     val lastPour: PourEvent? = null,
+    val extraTubesUsed: Int = 0,
+    val canAddTube: Boolean = true,
 )
 
 /**
@@ -214,14 +227,54 @@ class WaterSortEngine(
         )
     }
 
-    /** Reinicia el MISMO nivel a su estado inicial (no genera uno nuevo). */
+    /**
+     * Añade un **tubo de ensayo vacío** al tablero como ayuda (recompensa por ver un
+     * anuncio). Da margen de maniobra sin regenerar el nivel. La concede el ViewModel
+     * SOLO tras completarse el anuncio recompensado; aquí se aplica la regla de negocio:
+     *  - no hace nada si la partida ya está resuelta o se agotó el cupo ([MAX_EXTRA_TUBES]);
+     *  - el tubo se añade también a [initialTubes] y a **cada snapshot del historial**
+     *    para que el conteo de tubos sea consistente: así ni **deshacer** ni **reiniciar**
+     *    le quitan al jugador la ayuda que ya "pagó" viendo el anuncio.
+     *
+     * @return true si se añadió el tubo; false si no correspondía (cupo/estado).
+     */
+    fun addExtraTube(): Boolean {
+        val s = _state.value
+        if (s.solved || s.extraTubesUsed >= MAX_EXTRA_TUBES) return false
+
+        // Crece el tablero en todas las "líneas de tiempo" (inicial + historial) para
+        // que undo/restart mantengan el tubo extra y no rompan índices de tubo.
+        initialTubes = initialTubes + Tube()
+        for (i in history.indices) history[i] = history[i] + Tube()
+
+        // Feedback inmediato de aparición (§9.4): toque ligero, no intrusivo.
+        audio.playSound(SoundEffect.TAP)
+        audio.hapticFeedback(HapticFeedback.LIGHT)
+
+        val used = s.extraTubesUsed + 1
+        _state.value = s.copy(
+            tubes = s.tubes + Tube(),
+            extraTubesUsed = used,
+            canAddTube = used < MAX_EXTRA_TUBES,
+        )
+        return true
+    }
+
+    /**
+     * Reinicia el MISMO nivel a su estado inicial (no genera uno nuevo). Conserva los
+     * tubos extra ya obtenidos por anuncio ([initialTubes] los incluye) y su contador,
+     * para no devolverle al jugador un tablero más difícil del que ya "pagó".
+     */
     fun restart() {
         history.clear()
+        val used = _state.value.extraTubesUsed
         _state.value = WaterSortState(
             tubes = initialTubes,
             capacity = configForLevel(currentLevel).capacity,
             round = currentLevel,
             totalRounds = currentLevel,
+            extraTubesUsed = used,
+            canAddTube = used < MAX_EXTRA_TUBES,
         )
     }
 

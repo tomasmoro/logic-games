@@ -384,7 +384,7 @@ object CrucigramaNeonGenerator {
                 "SOL" to "Estrella que ilumina el cielo",
                 "SAL" to "Cloruro de sodio"
             ),
-            extras = listOf( "SON", "LOSA", "SOLO", "LANA", "ASOLAN", "SALA"),
+            extras = listOf( "SON", "LOSA", "SOLO", "LANA", "SALA"),
         ),
         LevelDef(
             listOf(

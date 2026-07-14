@@ -21,7 +21,15 @@ enum class BubblePhase {
     /** Las burbujas caen y el jugador puede tocarlas. */
     PLAYING,
 
-    /** Se acabaron las vidas; se muestra el resultado. */
+    /**
+     * Se acabaron las vidas pero aún NO se ha finalizado: se ofrece al jugador
+     * **revivir viendo un anuncio** (una vida extra). El bucle está detenido y el
+     * reloj de la ronda congelado; se sale de aquí por [grantRevive] (continúa) o
+     * [declineRevive] (fin de partida real). Solo se ofrece una vez por partida.
+     */
+    REVIVE_OFFER,
+
+    /** Se acabaron las vidas (sin revivir); se muestra el resultado. */
     GAME_OVER,
 }
 
@@ -131,6 +139,10 @@ class BubbleMathEngine(
 
     private var nextBubbleId = 0
 
+    // ¿Ya se ofreció (y usó/rechazó) el revivir por anuncio en esta partida? El trato
+    // de "segunda oportunidad" se ofrece UNA sola vez: al perder de nuevo, fin directo.
+    private var reviveOffered = false
+
     // Cronómetro propio de la ronda (para la física de caída), consciente de pausas.
     private var roundMark: TimeSource.Monotonic.ValueTimeMark? = null
     private var roundAccumMs: Long = 0
@@ -150,6 +162,7 @@ class BubbleMathEngine(
         missCount = 0
         nextBubbleId = 0
         nextRoundPending = false
+        reviveOffered = false
         _state.value = BubbleMathState()
         startRound()
     }
@@ -299,7 +312,7 @@ class BubbleMathEngine(
                 lastBurst = BubbleBurst(bubble.x, bubble.y.coerceIn(0f, 1f), bubble.id, success = false),
             )
         }
-        if (lives <= 0) gameOver()
+        if (lives <= 0) endOrOfferRevive()
     }
 
     private fun onTargetMissed() {
@@ -318,7 +331,7 @@ class BubbleMathEngine(
                 lastBurst = null,
             )
         }
-        if (lives <= 0) gameOver() else scheduleNextRound()
+        if (lives <= 0) endOrOfferRevive() else scheduleNextRound()
     }
 
     /** Pausa breve entre rondas para que se lea el feedback, y arranca la siguiente. */
@@ -330,6 +343,49 @@ class BubbleMathEngine(
             nextRoundPending = false
             if (_state.value.phase == BubblePhase.PLAYING) startRound()
         }
+    }
+
+    /**
+     * Sin vidas: si aún no se ofreció, entra en [BubblePhase.REVIVE_OFFER] (una
+     * segunda oportunidad viendo un anuncio); si ya se ofreció, termina la partida.
+     */
+    private fun endOrOfferRevive() {
+        if (reviveOffered) {
+            gameOver()
+            return
+        }
+        // Detiene la física y congela el reloj de la ronda: mientras el jugador decide
+        // (y ve el anuncio) las burbujas no deben "adelantarse" al reanudar.
+        loopJob?.cancel()
+        transitionJob?.cancel()
+        nextRoundPending = false
+        roundAccumMs += roundMark?.elapsedNow()?.inWholeMilliseconds ?: 0
+        roundMark = null
+        _state.update { it.copy(phase = BubblePhase.REVIVE_OFFER, bubbles = emptyList()) }
+    }
+
+    /**
+     * El anuncio concedió la recompensa: repone la vida y **continúa la partida** con
+     * una ronda nueva (conservando puntos, ronda y combo reiniciado). Se marca el trato
+     * como usado para no volver a ofrecerlo. Sin efecto si no se estaba ofreciendo.
+     */
+    fun grantRevive() {
+        if (_state.value.phase != BubblePhase.REVIVE_OFFER) return
+        reviveOffered = true
+        _state.update {
+            it.copy(phase = BubblePhase.PLAYING, lives = REVIVE_LIVES, combo = 0)
+        }
+        startRound()
+    }
+
+    /**
+     * El jugador rechaza la oferta (o el anuncio se cerró / no había): fin de partida
+     * real. Sin efecto si no se estaba ofreciendo.
+     */
+    fun declineRevive() {
+        if (_state.value.phase != BubblePhase.REVIVE_OFFER) return
+        reviveOffered = true
+        gameOver()
     }
 
     private fun gameOver() {
@@ -360,6 +416,11 @@ class BubbleMathEngine(
         const val MIN_FALL_MS = 2600L     // caída más rápida posible
         const val MAX_ENTER_DELAY = 0.30f // escalonado de entrada (fracción)
         const val ROUND_GAP_MS = 650L     // pausa entre rondas
+
+        // --- Revivir por anuncio ---
+        // Vidas con las que se continúa tras ver el anuncio. Una sola: es una segunda
+        // oportunidad, no un reinicio; sigue siendo tenso.
+        const val REVIVE_LIVES = 1
 
         // --- Puntuación ---
         const val BASE_POINTS = 50

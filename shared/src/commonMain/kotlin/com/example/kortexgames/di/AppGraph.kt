@@ -1,6 +1,7 @@
 package com.example.kortexgames.di
 
 import com.example.kortexgames.core.ads.AdManager
+import com.example.kortexgames.core.ads.SimulatedRewardedAdPresenter
 import com.example.kortexgames.core.audio.AudioAndHapticManager
 import com.example.kortexgames.core.audio.PlatformContext
 import com.example.kortexgames.core.audio.createAudioAndHapticManager
@@ -123,7 +124,14 @@ class AppGraph(context: PlatformContext) {
     val adManager = AdManager(
         scope = appScope,
         isPremium = { (authState as? AuthState.Authenticated)?.plan == PlanType.PREMIUM },
-    ).also { it.start() }
+    ).also {
+        it.start()
+        // Presentador de anuncios recompensados: placeholder de desarrollo hasta
+        // integrar AdMob real en cada plataforma. Permite que el flujo de "revivir
+        // viendo un anuncio" (p. ej. una vida extra en Burbujas de Cálculo) funcione
+        // end-to-end. SUSTITUIR por el presentador real al integrar el SDK.
+        it.setRewardedAdPresenter(SimulatedRewardedAdPresenter())
+    }
 
     // --- Objetivo diario (misión de 3 juegos del día → recompensa) ----------
     val dailyGoalManager = DailyGoalManager(

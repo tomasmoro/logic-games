@@ -2,6 +2,7 @@ package com.example.kortexgames.game.watersort
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -12,6 +13,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +22,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -195,6 +199,22 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
     // Id del vertido cuya animación ya arrancó. Sirve para (1) lanzar la animación
     // y (2) saber si el `progress` actual corresponde ya al vertido en curso.
     var animId by remember { mutableStateOf<Long?>(null) }
+
+    // Anuncios (simulados hasta integrar el SDK real): tanto "Tubo extra" como
+    // "Reiniciar" muestran un anuncio y, al completarse, la UI envía el intent que
+    // ejecuta la acción. Guardamos ese intent pendiente + el texto a mostrar; null =
+    // sin anuncio en curso. Se modela con el efecto one-shot del ViewModel (MVI).
+    var pendingAd by remember { mutableStateOf<PendingAd?>(null) }
+    LaunchedEffect(vm) {
+        vm.effect.collect { effect ->
+            pendingAd = when (effect) {
+                WaterSortEffect.ShowRewardedAd ->
+                    PendingAd(WaterSortIntent.ExtraTubeRewarded, "Al terminar recibirás un tubo extra")
+                WaterSortEffect.ShowRestartAd ->
+                    PendingAd(WaterSortIntent.Restart, "Al terminar se reiniciará el nivel")
+            }
+        }
+    }
 
     val pour = game.lastPour
 
@@ -389,9 +409,34 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
                     label = "Reiniciar",
                     tint = LogicColors.Amber,
                     enabled = !animating,
-                    onClick = { vm.onIntent(WaterSortIntent.Restart) },
+                    // Reiniciar también pasa por un anuncio (petición del usuario).
+                    onClick = { vm.onIntent(WaterSortIntent.WatchAdForRestart) },
                 )
+                // Ayuda opcional monetizada: ver un anuncio para sumar un tubo vacío.
+                // Se oculta al agotar el cupo (canAddTube = false) para no ofrecer una
+                // acción imposible; deshabilitado mientras un vertido está en curso.
+                if (game.canAddTube) {
+                    ActionButton(
+                        icon = KortexIcons.RewardedAd,
+                        label = "Tubo extra",
+                        tint = LogicColors.NeonGreen,
+                        enabled = !animating && !game.solved,
+                        onClick = { vm.onIntent(WaterSortIntent.WatchAdForExtraTube) },
+                    )
+                }
             }
+        }
+
+        // Anuncio (simulado): al completarse ejecuta la acción pendiente (tubo extra o
+        // reinicio). Va sobre el juego pero bajo el game-over; si el jugador resolviera
+        // durante el anuncio, la recompensa del tubo se descarta en el motor.
+        pendingAd?.let { ad ->
+            RewardedAdOverlay(
+                accent = CategoryPalette.Logic,
+                message = ad.message,
+                onReward = { vm.onIntent(ad.onComplete) },
+                onDismiss = { pendingAd = null },
+            )
         }
 
         // El overlay de fin de partida espera a que termine el último vertido para
@@ -723,6 +768,82 @@ private fun ActionButton(
         }
         Spacer(Modifier.height(4.dp))
         Text(label, style = MaterialTheme.typography.labelLarge, color = effectiveTint)
+    }
+}
+
+/**
+ * Anuncio pendiente de completarse: qué intent ejecutar al terminar ([onComplete]) y
+ * el texto que ve el jugador ([message]). Permite reutilizar un único overlay tanto
+ * para el "tubo extra" como para el "reinicio".
+ */
+private data class PendingAd(val onComplete: WaterSortIntent, val message: String)
+
+/** Duración del anuncio **simulado**. La sustituirá el SDK real. */
+private const val AD_SIMULATION_MS = 2500
+
+/**
+ * Overlay de **anuncio** (por ahora SIMULADO — aquí se integrará el SDK real, p. ej.
+ * AdMob rewarded). Atenúa la pantalla, bloquea la interacción con el juego y muestra
+ * una barra que se llena en [AD_SIMULATION_MS]; al completarse ejecuta la acción
+ * ([onReward]) y se cierra ([onDismiss]). La acción solo se ejecuta si el "anuncio" se
+ * ve completo, igual que exigiría un rewarded real (no se puede saltar).
+ */
+@Composable
+private fun RewardedAdOverlay(
+    accent: Color,
+    message: String,
+    onReward: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        progress.animateTo(1f, tween(AD_SIMULATION_MS, easing = LinearEasing))
+        onReward()
+        onDismiss()
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(LogicColors.BackgroundDark.copy(alpha = 0.92f))
+            // Consume los toques para que no lleguen a los tubos de debajo durante el anuncio.
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(40.dp),
+        ) {
+            NeonIcon(icon = KortexIcons.RewardedAd, tint = accent, glow = true, size = 56.dp)
+            Spacer(Modifier.height(20.dp))
+            Text(
+                "Anuncio",
+                style = MaterialTheme.typography.headlineMedium,
+                color = LogicColors.OnDark,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = LogicColors.OnDarkMuted,
+            )
+            Spacer(Modifier.height(24.dp))
+            // Barra de progreso del anuncio (llena → recompensa).
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(LogicColors.SurfaceVariantDark),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress.value)
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(accent),
+                )
+            }
+        }
     }
 }
 

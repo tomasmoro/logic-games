@@ -19,6 +19,7 @@ import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.MusicOff
+import androidx.compose.material.icons.rounded.OndemandVideo
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.automirrored.rounded.Undo
@@ -109,6 +110,13 @@ object KortexIcons {
 
     /** Háptica (vibración) activada. */
     val Haptics: ImageVector = Icons.Rounded.Vibration
+
+    /**
+     * Vídeo recompensado: ver un anuncio a cambio de una ventaja opcional (p. ej.
+     * un tubo extra en "Ordena las Pociones"). Señala visualmente que la acción
+     * está sujeta a un anuncio, no que sea gratuita.
+     */
+    val RewardedAd: ImageVector = Icons.Rounded.OndemandVideo
 }
 
 /**

@@ -31,6 +31,12 @@ sealed interface BubbleMathIntent : UiIntent {
     data object Pause : BubbleMathIntent
     data object Resume : BubbleMathIntent
     data object PlayAgain : BubbleMathIntent
+
+    /** El anuncio recompensado concedió la vida extra: continúa la partida. */
+    data object Revive : BubbleMathIntent
+
+    /** Se rechazó la oferta de revivir (o el anuncio no se completó): fin de partida. */
+    data object DeclineRevive : BubbleMathIntent
 }
 
 sealed interface BubbleMathEffect : UiEffect
@@ -62,6 +68,8 @@ class BubbleMathViewModel(
             is BubbleMathIntent.TapBubble -> engine.onBubbleTap(intent.id)
             BubbleMathIntent.Pause -> engine.pause()
             BubbleMathIntent.Resume -> engine.resume()
+            BubbleMathIntent.Revive -> engine.grantRevive()
+            BubbleMathIntent.DeclineRevive -> engine.declineRevive()
             BubbleMathIntent.Start,
             BubbleMathIntent.PlayAgain -> {
                 setState { copy(gameOver = null) }

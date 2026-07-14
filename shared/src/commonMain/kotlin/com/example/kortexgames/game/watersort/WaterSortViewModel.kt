@@ -40,6 +40,25 @@ sealed interface WaterSortIntent : UiIntent {
     /** El jugador tocó el tubo [index] (selección de origen o destino). */
     data class TapTube(val index: Int) : WaterSortIntent
     data object Undo : WaterSortIntent
+
+    /**
+     * El jugador pulsó "Tubo extra": pide ver un anuncio recompensado. NO añade el
+     * tubo aún; solo dispara [WaterSortEffect.ShowRewardedAd]. El tubo se concede al
+     * completarse el anuncio, cuando la UI envía [ExtraTubeRewarded].
+     */
+    data object WatchAdForExtraTube : WaterSortIntent
+
+    /** La UI confirma que el anuncio recompensado terminó → se concede el tubo extra. */
+    data object ExtraTubeRewarded : WaterSortIntent
+
+    /**
+     * El jugador pulsó "Reiniciar": pide ver un anuncio antes de rehacer el nivel.
+     * Dispara [WaterSortEffect.ShowRestartAd]; el reinicio real ([Restart]) lo envía
+     * la UI al terminar el anuncio.
+     */
+    data object WatchAdForRestart : WaterSortIntent
+
+    /** Reinicia de verdad el nivel. La UI lo envía tras completarse el anuncio. */
     data object Restart : WaterSortIntent
     data object Pause : WaterSortIntent
     data object Resume : WaterSortIntent
@@ -57,7 +76,22 @@ sealed interface WaterSortIntent : UiIntent {
     data object ChooseLevel : WaterSortIntent
 }
 
-sealed interface WaterSortEffect : UiEffect
+sealed interface WaterSortEffect : UiEffect {
+    /**
+     * Pide a la UI mostrar un **anuncio recompensado**. Al terminar, la UI debe
+     * devolver [WaterSortIntent.ExtraTubeRewarded] para que se conceda el tubo extra.
+     * Es un evento one-shot (no estado): se modela como efecto para no reemitirse en
+     * recomposición (CLAUDE.md §4, patrón MVI).
+     */
+    data object ShowRewardedAd : WaterSortEffect
+
+    /**
+     * Pide a la UI mostrar un anuncio **antes de reiniciar** el nivel. Al terminar, la
+     * UI devuelve [WaterSortIntent.Restart] para rehacer la partida. Mismo mecanismo
+     * one-shot que [ShowRewardedAd].
+     */
+    data object ShowRestartAd : WaterSortEffect
+}
 
 /**
  * ViewModel MVI de "Ordena las Pociones". Juego **LEVELED**: arranca en el selector
@@ -93,9 +127,12 @@ class WaterSortViewModel(
         when (intent) {
             is WaterSortIntent.TapTube -> engine.onTubeTap(intent.index)
             WaterSortIntent.Undo -> engine.undo()
+            WaterSortIntent.WatchAdForRestart -> sendEffect(WaterSortEffect.ShowRestartAd)
             WaterSortIntent.Restart -> engine.restart()
             WaterSortIntent.Pause -> engine.pause()
             WaterSortIntent.Resume -> engine.resume()
+            WaterSortIntent.WatchAdForExtraTube -> requestExtraTubeAd()
+            WaterSortIntent.ExtraTubeRewarded -> engine.addExtraTube()
             is WaterSortIntent.PlayLevel -> playLevel(intent.level)
             WaterSortIntent.PlayAgain -> playLevel(currentState.currentLevel)
             WaterSortIntent.NextLevel -> playLevel(currentState.currentLevel + 1)
@@ -103,6 +140,16 @@ class WaterSortViewModel(
                 copy(phase = LeveledGamePhase.LEVEL_SELECT, gameOver = null)
             }
         }
+    }
+
+    /**
+     * Solicita el anuncio recompensado para el tubo extra. Comprueba el cupo aquí
+     * (defensa en profundidad, aparte de que la UI oculta el botón) para no gastar un
+     * anuncio si ya no queda margen o la partida terminó.
+     */
+    private fun requestExtraTubeAd() {
+        if (!currentState.game.canAddTube) return
+        sendEffect(WaterSortEffect.ShowRewardedAd)
     }
 
     /** Empieza (o reempieza) un nivel concreto: limpia el game-over y arranca el motor. */
