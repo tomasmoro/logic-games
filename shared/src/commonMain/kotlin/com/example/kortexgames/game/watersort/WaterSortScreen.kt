@@ -44,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -667,7 +668,11 @@ private fun TubeView(
  * Pinta el frasco de ensayo: vidrio (fondo + reflejo), líquido en **bandas
  * separadas** (con aire de vidrio entre colores para que se lean como líquidos
  * distintos, § petición) y borde/halo neón. La última banda puede ser fraccionaria
- * (superficie del líquido durante el vertido).
+ * (superficie del líquido durante el vertido). La banda más baja **hunde su borde
+ * inferior en la base en U del vidrio** (sin corners propios) para que el recorte
+ * ([clipPath]) la redondee exactamente igual que el frasco, en vez de flotar como
+ * un rectángulo con su propio radio, desalineado del cristal (§ petición: mejorar
+ * el redondeo del líquido base).
  *
  * @param haloColor color del halo neón interior (selección/en vuelo/completado); null = sin halo.
  * @param haloAlpha intensidad del halo 0..1 (pulsa cuando el tubo está completado).
@@ -690,25 +695,38 @@ private fun DrawScope.drawTube(
         val topGap = 7.dp.toPx() // deja aire en la boca aunque esté lleno
         val sep = BandSeparation.toPx()
         val corner = CornerRadius(BandCorner.toPx(), BandCorner.toPx())
+        val flat = CornerRadius.Zero
         val slotHeight = (size.height - topGap) / capacity
         val innerWidth = size.width - inset * 2
-        var yBottom = size.height - inset // pequeño colchón sobre la base en U
-        for (band in bands) {
+        val menWidth = 3.dp.toPx()
+        var yBottom = size.height
+        bands.forEachIndexed { index, band ->
             val h = band.heightSlots * slotHeight
-            if (h <= 0f) continue
+            if (h <= 0f) return@forEachIndexed
+            val isBottomBand = index == 0
             // Reserva `sep` de aire en la parte alta de cada banda → franjas separadas.
             val drawH = (h - sep).coerceAtLeast(1f)
-            drawRoundRect(
-                color = PotionColors[band.colorIndex],
-                topLeft = Offset(inset, yBottom - drawH),
-                size = Size(innerWidth, drawH),
-                cornerRadius = corner,
+            val rectTop = yBottom - drawH
+            // La banda inferior se extiende más allá del alto del Canvas: el
+            // `clipPath(glass)` la recorta exactamente contra la base en U real,
+            // en vez de usar un radio propio desalineado del vidrio.
+            val rectBottom = if (isBottomBand) size.height + inset else yBottom
+            val rrect = RoundRect(
+                left = inset,
+                top = rectTop,
+                right = inset + innerWidth,
+                bottom = rectBottom,
+                topLeftCornerRadius = corner,
+                topRightCornerRadius = corner,
+                bottomLeftCornerRadius = if (isBottomBand) flat else corner,
+                bottomRightCornerRadius = if (isBottomBand) flat else corner,
             )
+            drawPath(Path().apply { addRoundRect(rrect) }, PotionColors[band.colorIndex])
             // Menisco: fina franja superior más clara → aspecto de superficie líquida.
             drawRoundRect(
                 color = Color.White.copy(alpha = 0.16f),
-                topLeft = Offset(inset, yBottom - drawH),
-                size = Size(innerWidth, 3.dp.toPx()),
+                topLeft = Offset(inset, rectTop),
+                size = Size(innerWidth, menWidth),
                 cornerRadius = corner,
             )
             yBottom -= h
