@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -61,6 +62,8 @@ import com.example.kortexgames.ui.components.LevelStripState
 import com.example.kortexgames.ui.components.NeonIcon
 import com.example.kortexgames.ui.components.bounceClick
 import com.example.kortexgames.ui.components.drawNeonTile
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.energyflow_intro
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -113,6 +116,7 @@ fun EnergyFlowScreen(graph: AppGraph, onExit: () -> Unit) {
             ),
             onStart = { vm.onIntent(EnergyFlowIntent.PlayLevel(selectedLevel)) },
             onExit = onExit,
+            heroImage = Res.drawable.energyflow_intro,
             background = {
                 CitySkylineBackground(modifier = Modifier.fillMaxSize(), accent = CategoryPalette.SpatialVision)
             },
@@ -311,6 +315,10 @@ private fun EnergyTileView(
         // neón de [drawNeonTile] (mismo lenguaje visual que Memoria y Crucigrama, §9.2)
         // en vez de un panel plano, y encima las chispas de conexión.
         Canvas(modifier = Modifier.fillMaxSize()) {
+            // Base opaca de la celda: sin esto el "tubo" de [drawNeonTile] es hueco
+            // (solo contorno + halo) y el skyline de fondo se colaba por dentro de
+            // cada pieza (pedido del usuario: la cuadrícula debe tapar la ciudad).
+            drawRoundRect(color = LogicColors.SurfaceDark, cornerRadius = CornerRadius(10.dp.toPx()))
             val activeAmt = if (powered) (0.55f + 0.45f * pulse) else 0f
             drawNeonTile(tileColor, activeAmt, cornerRadius = 10.dp, sparks = false, baseMargin = 4.dp)
             val sp = spark.value

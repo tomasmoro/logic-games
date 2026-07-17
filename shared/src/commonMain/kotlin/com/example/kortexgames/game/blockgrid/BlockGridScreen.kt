@@ -123,9 +123,9 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
     }
     val state by vm.state.collectAsStateWithLifecycle()
 
-    // Celebración de combo: par (nonce, líneas). El nonce fuerza a recomponer el
-    // burst aunque caigan dos combos iguales seguidos.
-    var combo by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    // Celebración de combo: nonce (fuerza recomponer aunque el combo se repita),
+    // líneas y si toca soltar guirnaldas (combo 5+ o vaciado total del tablero).
+    var combo by remember { mutableStateOf<ComboCelebration?>(null) }
 
     // Único punto donde los Effects se vuelven sonido/vibración/celebración.
     LaunchedEffect(Unit) {
@@ -134,7 +134,8 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
             when (effect) {
                 is BlockGridEffect.PlaySound -> graph.audio.playSound(effect.sound)
                 is BlockGridEffect.Vibrate -> graph.audio.hapticFeedback(effect.feedback)
-                is BlockGridEffect.ShowComboAnim -> combo = ++comboNonce to effect.lines
+                is BlockGridEffect.ShowComboAnim ->
+                    combo = ComboCelebration(++comboNonce, effect.lines, effect.showGarlands)
             }
         }
     }
@@ -279,9 +280,12 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
         }
 
         // Burst "¡COMBO!": one-shot dirigido por el efecto, no por el estado.
-        combo?.let { (nonce, lines) ->
-            key(nonce) {
-                ComboBurst(lines = lines, onDone = { combo = null })
+        // Los fuegos artificiales duran más que el rótulo de texto: son ellos
+        // quienes deciden cuándo se limpia `combo` (ver KDoc de FireworksCelebration).
+        combo?.let { c ->
+            key(c.nonce) {
+                FireworksCelebration(lines = c.lines, showGarlands = c.showGarlands, onDone = { combo = null })
+                ComboBurst(lines = c.lines, onDone = {})
             }
         }
 
@@ -600,6 +604,15 @@ private fun DraggedPieceOverlay(
 // --- Celebración de combo ---------------------------------------------------------
 
 /**
+ * Celebración de combo pendiente de mostrar. [nonce] fuerza a recomponer el
+ * burst aunque dos combos seguidos tengan el mismo [lines] (mismo esquema que
+ * el resto de celebraciones one-shot de la app). [showGarlands] llega ya
+ * decidido por el ViewModel ([BlockGridViewModel.GARLAND_COMBO_THRESHOLD] +
+ * vaciado total): la UI solo pinta, no decide cuándo un hito es "grande".
+ */
+private data class ComboCelebration(val nonce: Int, val lines: Int, val showGarlands: Boolean)
+
+/**
  * Rótulo one-shot al romper líneas: entra con resorte, respira un instante y se
  * desvanece; [onDone] lo retira. No usa emojis ni bloquea la interacción (§9.4).
  */
@@ -627,6 +640,216 @@ private fun ComboBurst(lines: Int, onDone: () -> Unit, modifier: Modifier = Modi
                 this.alpha = alpha.value
             },
         )
+    }
+}
+
+// --- Fuegos artificiales y guirnaldas (celebración de combo) -------------------------
+
+/** Duración total de la celebración: fuegos + guirnaldas cayendo. */
+private const val FIREWORKS_DURATION_MS = 1500
+
+/** Partículas por explosión de un fuego artificial individual. */
+private const val FIREWORK_PARTICLE_COUNT = 14
+
+/** Máximo de fuegos simultáneos: a partir de aquí más líneas no suman claridad, solo ruido. */
+private const val MAX_FIREWORKS = 6
+
+/** Guirnaldas cayendo por celebración: fijo, decoran cualquier limpieza (no escala con el combo). */
+private const val GARLAND_COUNT = 16
+
+/** Semilla del orden barajado de arranque de las guirnaldas (ver su generación). */
+private const val GARLAND_ORDER_SEED = 41
+
+/** Demora máxima (fracción del reloj) del arranque de la guirnalda que cae más tarde. */
+private const val GARLAND_MAX_DELAY_FRAC = 0.55f
+
+/** Fracción del reloj que tarda CADA guirnalda en cruzar toda la pantalla, caiga cuando caiga. */
+private const val GARLAND_FALL_FRAC = 0.45f
+
+/** Paleta neón compartida por fuegos y guirnaldas: los mismos acentos que ya usan los bloques. */
+private val CELEBRATION_COLORS = listOf(
+    LogicColors.NeonGreen, LogicColors.NeonCyan, LogicColors.Violet,
+    LogicColors.Magenta, LogicColors.Coral, LogicColors.Amber,
+)
+
+/** Un fuego artificial: origen (fracción del canvas), color y demora antes de estallar. */
+private data class FireworkSpec(val originFrac: Offset, val color: Color, val delayFrac: Float)
+
+/**
+ * Una guirnalda cayendo en espiral: columna base (fracción X), color, demora,
+ * largo y los parámetros de su corkscrew ([spiralTurns] vueltas completas
+ * durante toda la caída, [spiralRadiusFrac] qué tan ancho gira respecto al
+ * canvas).
+ */
+private data class GarlandSpec(
+    val xFrac: Float,
+    val color: Color,
+    val delayFrac: Float,
+    val spiralPhase: Float,
+    val spiralTurns: Float,
+    val spiralRadiusFrac: Float,
+    val lengthFrac: Float,
+)
+
+/**
+ * Celebración de combo: **N fuegos artificiales** (uno por línea rota, tope
+ * [MAX_FIREWORKS]) que estallan escalonados en la mitad superior del tablero.
+ * Si [showGarlands] es true (combo de 5+ líneas o vaciado total del tablero,
+ * ver [BlockGridViewModel]) se suma un puñado fijo de **guirnaldas neón**
+ * cayendo desde arriba con balanceo — reservadas a esos hitos grandes para que
+ * no pierdan impacto apareciendo en cualquier línea suelta.
+ *
+ * Un único reloj ([progress], 0→1 lineal) maneja ambos efectos: cada fuego y
+ * cada guirnalda tiene su propia `delayFrac` para escalonar el arranque, pero
+ * no hay temporizadores independientes por partícula — se recalculan todas cada
+ * frame en función de `progress` (mismo patrón que [drawClearSparks]: nada de
+ * estado por partícula, todo determinista a partir de una semilla + el tiempo).
+ * [onDone] llega al terminar el reloj: dura más que [ComboBurst] a propósito,
+ * es quien decide cuándo se retira la celebración entera del árbol.
+ */
+@Composable
+private fun FireworksCelebration(
+    lines: Int,
+    showGarlands: Boolean,
+    onDone: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val progress = remember { Animatable(0f) }
+    val onDoneCurrent by rememberUpdatedState(onDone)
+    LaunchedEffect(Unit) {
+        progress.animateTo(1f, tween(FIREWORKS_DURATION_MS, easing = LinearEasing))
+        onDoneCurrent()
+    }
+
+    val fireworkCount = lines.coerceIn(1, MAX_FIREWORKS)
+    val fireworks = remember(lines) {
+        List(fireworkCount) { i ->
+            val rnd = Random(lines * 97 + i * 131 + 11)
+            FireworkSpec(
+                originFrac = Offset(0.16f + rnd.nextFloat() * 0.68f, 0.14f + rnd.nextFloat() * 0.38f),
+                color = CELEBRATION_COLORS[rnd.nextInt(CELEBRATION_COLORS.size)],
+                // Escalonados en el primer 55% del reloj: si hay varios estallan
+                // en cadena en vez de todos a la vez (más "fuegos artificiales").
+                delayFrac = if (fireworkCount <= 1) 0f else i / (fireworkCount - 1).toFloat() * 0.55f,
+            )
+        }
+    }
+    val garlands = if (!showGarlands) {
+        emptyList()
+    } else {
+        remember(lines) {
+            // Orden barajado (semilla fija) para asignar la demora: si se usara
+            // el índice tal cual, las guirnaldas de un extremo del tablero
+            // caerían siempre juntas y las del otro también. Desacoplar el
+            // "cuándo cae" de "dónde cae" separa la cortina en el tiempo sin
+            // dejar un patrón visible.
+            val order = (0 until GARLAND_COUNT).shuffled(Random(GARLAND_ORDER_SEED))
+            List(GARLAND_COUNT) { i ->
+                val rnd = Random(i * 271 + 17)
+                GarlandSpec(
+                    xFrac = rnd.nextFloat(),
+                    color = CELEBRATION_COLORS[rnd.nextInt(CELEBRATION_COLORS.size)],
+                    // Rampa por orden barajado + jitter: reparte los arranques a
+                    // lo largo de casi toda la celebración en vez de agruparlos
+                    // en la primera fracción del reloj (separación vertical real,
+                    // no solo variación de fase de balanceo).
+                    delayFrac = order[i] / (GARLAND_COUNT - 1).toFloat() * GARLAND_MAX_DELAY_FRAC +
+                        rnd.nextFloat() * 0.06f,
+                    spiralPhase = rnd.nextFloat() * TAU,
+                    spiralTurns = 1.3f + rnd.nextFloat() * 1.4f,
+                    spiralRadiusFrac = 0.028f + rnd.nextFloat() * 0.03f,
+                    lengthFrac = 0.05f + rnd.nextFloat() * 0.035f,
+                )
+            }
+        }
+    }
+
+    Canvas(modifier = modifier.fillMaxSize()) {
+        garlands.forEach { drawGarland(it, progress.value, size) }
+        fireworks.forEach { drawFirework(it, progress.value, size) }
+    }
+}
+
+/**
+ * Guirnalda cayendo: un breve trazo neón (halo + núcleo, mismo lenguaje de capas
+ * que [drawBlock]) que desciende en **espiral** (corkscrew) en vez de un simple
+ * balanceo lateral — gira [GarlandSpec.spiralTurns] vueltas completas alrededor
+ * de su columna mientras cae. El grosor del trazo respira con el giro
+ * (`cos(spiralAngle)`): fino quie cuando gira "de canto" hacia la cámara,
+ * fino cuando gira "de canto", grueso cuando queda "de cara" — como una
+ * cinta real rotando sobre su eje.
+ *
+ * La duración de caída ([GARLAND_FALL_FRAC]) es **fija** para todas, sea cual
+ * sea su demora de arranque: así una guirnalda que empieza tarde no se ve
+ * "acelerada" para alcanzar a las demás, solo aparece más tarde y más abajo en
+ * el tiempo — es lo que separa la cortina verticalmente en vez de amontonarla
+ * al principio del reloj.
+ */
+private fun DrawScope.drawGarland(g: GarlandSpec, globalT: Float, canvasSize: Size) {
+    if (globalT < g.delayFrac) return
+    val t = ((globalT - g.delayFrac) / GARLAND_FALL_FRAC).coerceIn(0f, 1f)
+    val len = canvasSize.height * g.lengthFrac
+    val travel = canvasSize.height + len * 2f
+    val y = -len + t * travel
+
+    val spiralAngle = t * TAU * g.spiralTurns + g.spiralPhase
+    val radius = canvasSize.width * g.spiralRadiusFrac
+    val x = g.xFrac * canvasSize.width + cos(spiralAngle) * radius
+    // Ligero desplazamiento en X entre extremos del trazo, siguiendo la
+    // tangente del giro: da la torsión visual de una cinta enroscándose, no
+    // solo su centro moviéndose en espiral.
+    val tilt = -sin(spiralAngle) * radius * 0.9f
+
+    val fadeIn = (t / 0.08f).coerceIn(0f, 1f)
+    val fadeOut = ((1f - t) / 0.15f).coerceIn(0f, 1f)
+    val alpha = minOf(fadeIn, fadeOut)
+    if (alpha <= 0f) return
+
+    val twist = 0.35f + 0.65f * kotlin.math.abs(cos(spiralAngle))
+    val hot = lerp(g.color, Color.White, 0.3f)
+    val top = Offset(x - tilt / 2f, y - len / 2f)
+    val bottom = Offset(x + tilt / 2f, y + len / 2f)
+    drawLine(
+        g.color.copy(alpha = alpha * 0.35f), top, bottom,
+        strokeWidth = 7.dp.toPx() * twist, cap = StrokeCap.Round,
+    )
+    drawLine(
+        hot.copy(alpha = alpha), top, bottom,
+        strokeWidth = 2.5.dp.toPx() * twist, cap = StrokeCap.Round,
+    )
+}
+
+/**
+ * Un fuego artificial: destello blanco al estallar + partículas que salen
+ * radialmente del centro, frenan (ease-out) y caen un poco por gravedad mientras
+ * se desvanecen. El ángulo/velocidad de cada partícula sale de un [Random]
+ * sembrado con el centro del estallido: mismo fuego siempre se ve igual, pero
+ * cada uno (posición distinta) se ve único.
+ */
+private fun DrawScope.drawFirework(f: FireworkSpec, globalT: Float, canvasSize: Size) {
+    if (globalT < f.delayFrac) return
+    val t = ((globalT - f.delayFrac) / (1f - f.delayFrac)).coerceIn(0f, 1f)
+    val center = Offset(f.originFrac.x * canvasSize.width, f.originFrac.y * canvasSize.height)
+    val ease = 1f - (1f - t) * (1f - t)
+    val maxRadius = canvasSize.width * 0.16f
+    val alpha = 1f - t
+
+    // Destello inicial del estallido: un breve fogonazo blanco en el centro.
+    if (t < 0.18f) {
+        val flashAlpha = 1f - t / 0.18f
+        drawCircle(Color.White.copy(alpha = flashAlpha * 0.8f), radius = maxRadius * (0.22f + 0.2f * t), center = center)
+    }
+
+    val rnd = Random((center.x * 13f + center.y * 7f + f.delayFrac * 1000f).toInt())
+    val hot = lerp(f.color, Color.White, 0.4f)
+    repeat(FIREWORK_PARTICLE_COUNT) { i ->
+        val angle = (i / FIREWORK_PARTICLE_COUNT.toFloat()) * TAU + (rnd.nextFloat() - 0.5f) * 0.35f
+        val speed = 0.75f + rnd.nextFloat() * 0.5f
+        val dist = ease * maxRadius * speed
+        val fall = t * t * canvasSize.height * 0.05f
+        val pos = center + Offset(cos(angle) * dist, sin(angle) * dist + fall)
+        drawCircle(f.color.copy(alpha = alpha * 0.35f), radius = 5.dp.toPx(), center = pos)
+        drawCircle(hot.copy(alpha = alpha), radius = 2.dp.toPx(), center = pos)
     }
 }
 

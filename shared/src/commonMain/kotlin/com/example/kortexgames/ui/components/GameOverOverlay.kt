@@ -145,6 +145,14 @@ fun GameOverOverlay(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            // Cerrar rápido (X): la partida ya terminó, así que "cerrar" equivale a
+            // salir (no hay estado al que "reanudar"), igual criterio que el resto
+            // de la tarjeta: mismo destino que el CTA "SALIR"/"REPETIR NIVEL" de abajo.
+            CloseButton(
+                onClick = onExit,
+                modifier = Modifier.align(Alignment.End),
+            )
+
             // Badge de nuevo récord: aparece con un "pop" por encima del trofeo.
             if (info.isNewRecord) {
                 NewRecordBadge(visible = visible)

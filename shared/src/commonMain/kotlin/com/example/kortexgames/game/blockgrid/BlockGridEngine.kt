@@ -138,6 +138,10 @@ class BlockGridEngine(
 
         // 4. Puntuar y 5. reponer mano si se agotó.
         val lineCount = fullLines.count
+        // Vaciado total: tras romper, no queda ni un bloque asentado en todo el
+        // tablero. Es un logro mucho más raro que un combo grande y la UI lo
+        // celebra distinto (guirnaldas), así que viaja como dato aparte del conteo.
+        val isPerfectClear = lineCount > 0 && board.cells.all { row -> row.none { it is BoardCell.Filled } }
         val newHand = current.hand.filterNot { it.id == pieceId }
             .ifEmpty { dealHand().also { _events.trySend(BlockGridEvent.HandRefilled) } }
 
@@ -151,7 +155,7 @@ class BlockGridEngine(
         }
 
         _events.trySend(BlockGridEvent.PiecePlaced)
-        if (lineCount > 0) _events.trySend(BlockGridEvent.LinesCleared(lineCount))
+        if (lineCount > 0) _events.trySend(BlockGridEvent.LinesCleared(lineCount, isPerfectClear))
 
         // 6. Game Over contra la mano repuesta.
         if (newHand.none { _state.value.board.canPlaceAnywhere(it.shape) }) {
@@ -243,8 +247,13 @@ sealed interface BlockGridEvent {
     /** El jugador soltó en un hueco inválido; la pieza vuelve a la mano. */
     data object PlacementRejected : BlockGridEvent
 
-    /** Se completaron [count] líneas a la vez (≥2 = combo). */
-    data class LinesCleared(val count: Int) : BlockGridEvent
+    /**
+     * Se completaron [count] líneas a la vez (≥2 = combo).
+     *
+     * @property isPerfectClear true si tras romperlas no queda ningún bloque
+     *           asentado en el tablero (vaciado total, no solo la línea).
+     */
+    data class LinesCleared(val count: Int, val isPerfectClear: Boolean) : BlockGridEvent
 
     /** La mano se agotó y se repartieron piezas nuevas. */
     data object HandRefilled : BlockGridEvent

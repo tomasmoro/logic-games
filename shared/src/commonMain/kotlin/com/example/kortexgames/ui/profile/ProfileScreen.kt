@@ -93,16 +93,16 @@ fun ProfileScreen(graph: AppGraph, onOpenAuth: () -> Unit) {
             StreakCard(streakDays = streak, totalGames = history.size)
 
             // --- Estadísticas ----------------------------------------------------
-            Text("Estadísticas", style = MaterialTheme.typography.titleLarge, color = LogicColors.OnDark)
-            SectionCard(title = "Efectividad") {
-                LineChart(
-                    points = remember(history) { effectivenessPoints(history) },
-                    lineColor = LogicColors.NeonCyan,
-                )
-            }
-            SectionCard(title = "Tiempo de finalización") {
-                ChartPlaceholder("Próximamente: evolución de tus tiempos")
-            }
+//            Text("Estadísticas", style = MaterialTheme.typography.titleLarge, color = LogicColors.OnDark)
+//            SectionCard(title = "Efectividad") {
+//                LineChart(
+//                    points = remember(history) { effectivenessPoints(history) },
+//                    lineColor = LogicColors.NeonCyan,
+//                )
+//            }
+//            SectionCard(title = "Tiempo de finalización") {
+//                ChartPlaceholder("Próximamente: evolución de tus tiempos")
+//            }
 
             // --- Ajustes ---------------------------------------------------------
             Text("Ajustes", style = MaterialTheme.typography.titleLarge, color = LogicColors.OnDark)

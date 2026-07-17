@@ -35,14 +35,20 @@ package com.example.kortexgames.game.starport
  *     la que acota el intervalo. No existe estado alcanzable con solape.
  */
 
-/** Lado del hangar cuadrado. 6×6 es el tablero canónico del género Rush Hour. */
+/** Lado del hangar cuadrado BASE (primeros niveles). 6×6 es el tablero canónico del género Rush Hour. */
 const val HANGAR_SIZE: Int = 6
+
+/** Lado máximo al que crece el hangar con la progresión de niveles. */
+const val MAX_HANGAR_SIZE: Int = 10
 
 /** Longitud de las naves cortas (cazas). */
 const val SHIP_LENGTH_SHORT: Int = 2
 
 /** Longitud de las naves largas (cargueros). */
 const val SHIP_LENGTH_LONG: Int = 3
+
+/** Longitud de los meteoritos extra-largos (4×1); solo obstáculos, nunca la VIP. */
+const val SHIP_LENGTH_XLONG: Int = 4
 
 /**
  * Eje longitudinal de una nave: define su ÚNICA dirección de movimiento
@@ -65,9 +71,8 @@ enum class Orientation {
  */
 data class CellPos(val row: Int, val col: Int) {
 
-    /** ¿La celda cae dentro del hangar? */
-    val isInsideHangar: Boolean
-        get() = row in 0 until HANGAR_SIZE && col in 0 until HANGAR_SIZE
+    /** ¿La celda cae dentro de un hangar de lado [size]? */
+    fun isInside(size: Int): Boolean = row in 0 until size && col in 0 until size
 }
 
 /**
@@ -106,7 +111,8 @@ data class HangarExit(
 }
 
 /**
- * Una nave del hangar (caza 1×2 o carguero 1×3).
+ * Una nave u obstáculo del hangar (caza 1×2, carguero 1×3, meteorito 1×4,
+ * 2×2 o 3×2).
  *
  * La posición se ancla en la **celda de origen** ([row], [col]): la más
  * arriba/izquierda de las que ocupa. Convención idéntica al bounding box de
@@ -116,11 +122,15 @@ data class HangarExit(
  * @property id identificador estable dentro del nivel. La UI lo usa como key
  *           de composición para animar la MISMA nave entre estados.
  * @property orientation eje longitudinal = única dirección de movimiento.
- * @property length celdas que ocupa ([SHIP_LENGTH_SHORT] o [SHIP_LENGTH_LONG]).
+ * @property length celdas que ocupa A LO LARGO de su eje de movimiento.
  * @property row fila de la celda de origen.
  * @property col columna de la celda de origen.
  * @property isVip true solo para la nave que debe escapar. Decide el acento
  *           visual (verde neón + glow) y la condición de victoria.
+ * @property width celdas que ocupa PERPENDICULARES al eje (1 = nave clásica de
+ *           Rush Hour; 2 = meteorito "gordo" 2×2/3×2). El movimiento sigue
+ *           siendo estrictamente 1-D a lo largo de [orientation]: el ancho solo
+ *           multiplica los carriles que estorba, no añade grados de libertad.
  */
 data class Ship(
     val id: Int,
@@ -129,6 +139,7 @@ data class Ship(
     val row: Int,
     val col: Int,
     val isVip: Boolean = false,
+    val width: Int = 1,
 ) {
 
     /**
@@ -145,7 +156,8 @@ data class Ship(
 
     /**
      * Coordenada perpendicular al eje (fija durante toda la partida): la fila
-     * de una nave horizontal, la columna de una vertical.
+     * de una nave horizontal, la columna de una vertical. Para piezas anchas
+     * ([width] > 1) es el carril de ORIGEN; el resto son [lanes].
      */
     val lanePosition: Int
         get() = when (orientation) {
@@ -154,15 +166,27 @@ data class Ship(
         }
 
     /**
-     * Celdas del hangar que ocupa la nave, de origen a popa. Es la proyección
-     * canónica que usan tanto la validación de niveles como el motor para
-     * construir el mapa de ocupación.
+     * Todos los carriles que la pieza estorba (perpendiculares al eje). Una
+     * nave clásica ocupa uno solo; un meteorito 3×2 ocupa dos. Es el rango que
+     * el motor consulta para saber si una celda ajena bloquea el deslizamiento.
+     */
+    val lanes: IntRange
+        get() = lanePosition until lanePosition + width
+
+    /**
+     * Celdas del hangar que ocupa la pieza (length × width), de origen a popa.
+     * Es la proyección canónica que usan tanto la validación de niveles como
+     * el motor para construir el mapa de ocupación.
      */
     val occupiedCells: List<CellPos>
-        get() = (0 until length).map { i ->
-            when (orientation) {
-                Orientation.HORIZONTAL -> CellPos(row, col + i)
-                Orientation.VERTICAL -> CellPos(row + i, col)
+        get() = buildList {
+            for (i in 0 until length) {
+                for (w in 0 until width) {
+                    when (orientation) {
+                        Orientation.HORIZONTAL -> add(CellPos(row + w, col + i))
+                        Orientation.VERTICAL -> add(CellPos(row + i, col + w))
+                    }
+                }
             }
         }
 
@@ -209,6 +233,9 @@ data class ShipDrag(
  *           misma celda donde empezó NO cuenta). Es la métrica de puntuación.
  * @property vipEscaped true cuando la VIP ya cruzó la esclusa: la UI lanza la
  *           animación de salida y, al terminar, confirma el nivel superado.
+ * @property hangarSize lado del hangar del nivel en juego (crece con la
+ *           progresión, [HANGAR_SIZE]..[MAX_HANGAR_SIZE]). Vive en el estado
+ *           para que la UI dimensione rejilla y celdas sin conocer el nivel.
  */
 data class StarportGameState(
     val exit: HangarExit = HangarExit(ExitSide.RIGHT, 2),
@@ -216,6 +243,7 @@ data class StarportGameState(
     val drag: ShipDrag? = null,
     val moves: Int = 0,
     val vipEscaped: Boolean = false,
+    val hangarSize: Int = HANGAR_SIZE,
 ) {
 
     /** Nave por id, o null si no existe (p. ej. la VIP ya retirada del hangar). */
@@ -239,18 +267,27 @@ data class StarportGameState(
  * @property ships disposición inicial de las naves. Exactamente una es VIP.
  * @property optimalMoves mínimo de movimientos conocido para resolverlo; el
  *           motor lo usará como "par" para puntuar con estrellas (FASE 2).
+ * @property hangarSize lado del hangar de este nivel
+ *           ([HANGAR_SIZE]..[MAX_HANGAR_SIZE]); crece con la progresión.
  */
 data class StarportLevel(
     val number: Int,
     val exit: HangarExit,
     val ships: List<Ship>,
     val optimalMoves: Int,
+    val hangarSize: Int = HANGAR_SIZE,
 ) {
 
     init {
+        require(hangarSize in HANGAR_SIZE..MAX_HANGAR_SIZE) {
+            "Nivel $number: lado de hangar $hangarSize fuera de $HANGAR_SIZE..$MAX_HANGAR_SIZE"
+        }
+        require(exit.index in 0 until hangarSize) {
+            "Nivel $number: la esclusa apunta fuera del hangar"
+        }
         val cells = ships.flatMap { it.occupiedCells }
-        require(cells.all { it.isInsideHangar }) {
-            "Nivel $number: hay naves fuera del hangar ${HANGAR_SIZE}x$HANGAR_SIZE"
+        require(cells.all { it.isInside(hangarSize) }) {
+            "Nivel $number: hay naves fuera del hangar ${hangarSize}x$hangarSize"
         }
         require(cells.size == cells.toSet().size) {
             "Nivel $number: hay naves superpuestas en la disposición inicial"
@@ -258,14 +295,64 @@ data class StarportLevel(
         require(ships.count { it.isVip } == 1) {
             "Nivel $number: debe haber exactamente una nave VIP"
         }
-        require(ships.all { it.length == SHIP_LENGTH_SHORT || it.length == SHIP_LENGTH_LONG }) {
-            "Nivel $number: las naves miden $SHIP_LENGTH_SHORT (caza) o $SHIP_LENGTH_LONG (carguero)"
+        // Huellas permitidas: 2/3/4×1 (naves-meteorito lineales) y 2/3×2 (los
+        // meteoritos "gordos"). Un 4×2 taparía media fila del hangar base y un
+        // 1×1 podría quedar encajonado sin jugada posible: fuera de catálogo.
+        require(
+            ships.all {
+                (it.width == 1 && it.length in SHIP_LENGTH_SHORT..SHIP_LENGTH_XLONG) ||
+                    (it.width == 2 && it.length in SHIP_LENGTH_SHORT..SHIP_LENGTH_LONG)
+            },
+        ) {
+            "Nivel $number: huella de nave fuera del catálogo (2..4×1 o 2..3×2)"
         }
         val vip = ships.first { it.isVip }
+        // La VIP siempre es la cápsula clásica 1 de ancho: es la que debe caber
+        // por la esclusa (una pieza de 2 carriles no cruza una apertura de 1).
+        require(vip.width == 1 && vip.length in SHIP_LENGTH_SHORT..SHIP_LENGTH_LONG) {
+            "Nivel $number: la VIP debe ser 1×2 o 1×3"
+        }
         // La VIP debe poder cruzar la esclusa: mismo eje y mismo carril. Sin
         // esta validación un nivel podría ser irresoluble por diseño.
         require(vip.orientation == exit.requiredOrientation && vip.lanePosition == exit.index) {
             "Nivel $number: la nave VIP no está alineada con la esclusa"
         }
     }
+}
+
+/**
+ * Intervalo libre `[min, max]` de la coordenada de eje de [ship] dado el resto
+ * de piezas y el lado del hangar. Es LA regla de movimiento del juego —
+ * compartida por el motor (clamping del arrastre) y por el solver BFS del
+ * generador de niveles, para que ambos jueguen exactamente con la misma física.
+ *
+ * Solo estorban las celdas ajenas cuyo carril cae dentro de [Ship.lanes] (las
+ * demás son inalcanzables por construcción del movimiento 1-D); de esas, la
+ * más cercana por detrás fija `min` y la más cercana por delante fija `max`.
+ *
+ * O(piezas × celdas) por llamada — trivial para ≤ 15 piezas de ≤ 6 celdas.
+ */
+fun freeAxisRange(ship: Ship, ships: List<Ship>, hangarSize: Int): IntRange {
+    var min = 0
+    var max = hangarSize - ship.length
+    for (other in ships) {
+        if (other.id == ship.id) continue
+        for (cell in other.occupiedCells) {
+            val inLane = when (ship.orientation) {
+                Orientation.HORIZONTAL -> cell.row in ship.lanes
+                Orientation.VERTICAL -> cell.col in ship.lanes
+            }
+            if (!inLane) continue
+            val obstacle = when (ship.orientation) {
+                Orientation.HORIZONTAL -> cell.col
+                Orientation.VERTICAL -> cell.row
+            }
+            if (obstacle < ship.axisPosition) {
+                min = maxOf(min, obstacle + 1)
+            } else {
+                max = minOf(max, obstacle - ship.length)
+            }
+        }
+    }
+    return min..max
 }

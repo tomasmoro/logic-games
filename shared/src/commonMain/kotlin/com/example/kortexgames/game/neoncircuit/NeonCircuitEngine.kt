@@ -144,6 +144,11 @@ class NeonCircuitEngine(
             _events.trySend(NeonCircuitEvent.PathRetracted)
             return
         }
+        // Caso 2b: la punta YA es el nodo gemelo (par cerrado) → el arrastre no
+        // sigue "de largo" más allá del objetivo. Sin esto, un dedo rápido que no
+        // se detiene justo en el nodo seguía añadiendo celdas al cable ya conectado,
+        // dejando un tramo de cable colgando sin ningún terminal al final.
+        if (s.isColorConnected(color)) return
         if (cell in path.cells) return                             // caso 3: auto-cruce
 
         // Caso 4: no se atraviesa el nodo de otro canal (incluye el gemelo ajeno).

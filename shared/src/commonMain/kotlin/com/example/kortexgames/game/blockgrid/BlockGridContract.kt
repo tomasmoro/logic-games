@@ -149,6 +149,10 @@ sealed interface BlockGridEffect : UiEffect {
      * Se rompieron [lines] líneas a la vez (≥ 2 = combo): la UI muestra la
      * animación de celebración proporcional. Es efecto y no estado porque es
      * un destello puntual que no debe reaparecer al recomponer.
+     *
+     * @property showGarlands true si además hay que soltar guirnaldas cayendo
+     *           (combo de 5+ líneas o vaciado total del tablero) — reservadas a
+     *           esos hitos para que no pierdan impacto apareciendo siempre.
      */
-    data class ShowComboAnim(val lines: Int) : BlockGridEffect
+    data class ShowComboAnim(val lines: Int, val showGarlands: Boolean) : BlockGridEffect
 }

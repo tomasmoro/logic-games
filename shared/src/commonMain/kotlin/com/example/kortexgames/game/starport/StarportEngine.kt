@@ -92,7 +92,11 @@ class StarportEngine(
     override fun onStart() {
         val level = StarportLevels.forNumber(currentLevel)
         levelOptimalMoves = level.optimalMoves
-        _state.value = StarportGameState(exit = level.exit, ships = level.ships)
+        _state.value = StarportGameState(
+            exit = level.exit,
+            ships = level.ships,
+            hangarSize = level.hangarSize,
+        )
     }
 
     /** Reinicia el MISMO nivel desde su disposición inicial (movimientos a 0). */
@@ -111,7 +115,7 @@ class StarportEngine(
         if (status.value != GameStatus.RUNNING || s.vipEscaped || s.drag != null) return
         val ship = s.shipById(shipId) ?: return
 
-        val range = freeAxisRange(ship, s.ships)
+        val range = freeAxisRange(ship, s.ships, s.hangarSize)
         dragRange = (range.first - ship.axisPosition).toFloat()..
             (range.last - ship.axisPosition).toFloat()
         bumpNotified = false
@@ -172,7 +176,7 @@ class StarportEngine(
             )
         val moved = snapped != ship.axisPosition
         val newShip = ship.movedTo(snapped)
-        val escaped = newShip.isVip && isFlushAgainstExit(newShip, s.exit)
+        val escaped = newShip.isVip && isFlushAgainstExit(newShip, s.exit, s.hangarSize)
 
         _state.value = s.copy(
             ships = s.ships.map { if (it.id == shipId) newShip else it },
@@ -198,52 +202,22 @@ class StarportEngine(
 
     // ----------------------------------------------------------------- reglas
 
-    /**
-     * Intervalo libre `[min, max]` de la coordenada de eje de [ship] dado el
-     * resto de naves. Ver el encabezado de la clase para la garantía formal de
-     * no-superposición que se apoya en este cálculo.
-     *
-     * O(naves × longitud) por gesto — trivial para ≤ 9 naves de ≤ 3 celdas.
-     */
-    private fun freeAxisRange(ship: Ship, ships: List<Ship>): IntRange {
-        var min = 0
-        var max = HANGAR_SIZE - ship.length
-        for (other in ships) {
-            if (other.id == ship.id) continue
-            for (cell in other.occupiedCells) {
-                // Solo estorban las celdas del MISMO carril (fila de una
-                // horizontal / columna de una vertical); el resto son
-                // inalcanzables por construcción del movimiento 1-D.
-                val inLane = when (ship.orientation) {
-                    Orientation.HORIZONTAL -> cell.row == ship.lanePosition
-                    Orientation.VERTICAL -> cell.col == ship.lanePosition
-                }
-                if (!inLane) continue
-                val obstacle = when (ship.orientation) {
-                    Orientation.HORIZONTAL -> cell.col
-                    Orientation.VERTICAL -> cell.row
-                }
-                if (obstacle < ship.axisPosition) {
-                    min = maxOf(min, obstacle + 1)
-                } else {
-                    max = minOf(max, obstacle - ship.length)
-                }
-            }
-        }
-        return min..max
-    }
+    // El cálculo del intervalo libre vive en el dominio ([freeAxisRange] en
+    // StarportModel.kt): es la MISMA regla de física que usa el solver BFS del
+    // generador de niveles, y compartirla garantiza que "resoluble para el
+    // generador" y "jugable para el motor" signifiquen exactamente lo mismo.
 
     /**
      * ¿La nave quedó pegada al borde de su esclusa? Es la condición de
      * victoria de Rush Hour: llegar al borde con vía libre (el intervalo ya
      * garantizó que no hay nada entre medias) equivale a poder salir.
      */
-    private fun isFlushAgainstExit(ship: Ship, exit: HangarExit): Boolean {
+    private fun isFlushAgainstExit(ship: Ship, exit: HangarExit, hangarSize: Int): Boolean {
         if (ship.orientation != exit.requiredOrientation) return false
         if (ship.lanePosition != exit.index) return false
         return when (exit.side) {
             ExitSide.LEFT, ExitSide.TOP -> ship.axisPosition == 0
-            ExitSide.RIGHT, ExitSide.BOTTOM -> ship.axisPosition == HANGAR_SIZE - ship.length
+            ExitSide.RIGHT, ExitSide.BOTTOM -> ship.axisPosition == hangarSize - ship.length
         }
     }
 

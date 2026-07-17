@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,10 +45,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.jetbrains.compose.resources.painterResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.kortexgames.core.ads.AdEvent
 import com.example.kortexgames.core.theme.LogicColors
@@ -115,11 +121,10 @@ fun HomeScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         containerColor = MaterialTheme.colorScheme.background,
-    ) { padding ->
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(22.dp),
@@ -153,12 +158,16 @@ fun HomeScreen(
                 )
             }
 
-            // Juego estrella: el más jugado con mejor precisión media. Se calcula a partir
-            val starGame = remember(history) { findStarGame(history) }
+            // Juego estrella: el más jugado. Los siguientes más jugados (excluido el
+            // estrella) alimentan "Otros juegos que te gustan" en la misma tarjeta.
+            val rankedGames = remember(history) { rankedPlayedGames(history) }
+            val starGame = rankedGames.firstOrNull()
             if (starGame != null) {
                 StarGameCard(
                     star = starGame,
+                    others = rankedGames.drop(1).take(3),
                     onPlay = { Routes.gameRoute(starGame.game.id)?.let(onOpenGame) },
+                    onPlayOther = { other -> Routes.gameRoute(other.game.id)?.let(onOpenGame) },
                 )
             }
             CategoryRow(
@@ -275,8 +284,8 @@ private fun StreakPill(streakDays: Int) {
 /**
  * Tarjeta del objetivo diario con [CircularProgressRing] que se llena al entrar, la
  * fila **"Tu misión de hoy"** con los juegos del día ([DailyMissionRow]) y el botón
- * circular de jugar ([PlayNowFab]) anclado a la esquina inferior derecha, que
- * **sobresale** del borde de la tarjeta para destacar la acción (acento escaso).
+ * circular de jugar ([PlayNowFab]) anclado a la esquina superior derecha del anillo,
+ * **sobresaliendo** de su borde para destacar la acción (acento escaso).
  *
  * @param goal estado del objetivo (progreso + misión del día).
  * @param onPlay abre una partida rápida (botón circular).
@@ -305,30 +314,36 @@ private fun DailyGoalCard(
             Text("Potencia tu mente hoy", style = MaterialTheme.typography.bodyMedium, color = LogicColors.OnDarkMuted)
         }
 
-        CircularProgressRing(
-            progress = goal.progress,
-            size = 168.dp,
-            strokeWidth = 15.dp,
-            progressColors = LogicGradients.ring,
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("$percent%", style = MaterialTheme.typography.displayLarge, color = LogicColors.OnDark)
-                Text(
-                    "${goal.completed} / ${goal.target} juegos",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = LogicColors.OnDarkMuted,
-                )
+        // El botón "jugar ahora" se ancla a la esquina superior derecha del anillo,
+        // sobresaliendo de su borde: el CTA nace visualmente del propio progreso.
+        Box(contentAlignment = Alignment.Center) {
+            CircularProgressRing(
+                progress = goal.progress,
+                size = 168.dp,
+                strokeWidth = 15.dp,
+                progressColors = LogicGradients.ring,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("$percent%", style = MaterialTheme.typography.displayLarge, color = LogicColors.OnDark)
+                    Text(
+                        "${goal.completed} / ${goal.target} juegos",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = LogicColors.OnDarkMuted,
+                    )
+                }
             }
+            PlayNowFab(
+                onClick = onPlay,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .offset(x = 16.dp, y = 16.dp),
+            )
         }
 
         // "Tu misión de hoy": los juegos del día con su estado (hecho/pendiente).
         if (goal.mission.isNotEmpty()) {
             DailyMissionRow(mission = goal.mission, onOpenGame = onOpenGame)
         }
-
-        // Botón circular "jugar ahora": centrado dentro de la tarjeta como CTA claro,
-        // un poco separado de la misión para respirar. Único acento animado (§9.4).
-        PlayNowFab(onClick = onPlay, modifier = Modifier.padding(top = 4.dp))
     }
 }
 
@@ -539,16 +554,18 @@ private data class StarGame(
 )
 
 /**
- * Elige el "juego estrella" a partir del historial local: aquel **juego jugable del
- * catálogo** con mayor precisión media. Ante empate, gana el más jugado y luego el
- * de mejor score, para que la elección sea estable y refleje dominio real.
+ * Ordena los **juegos jugables del catálogo** presentes en el historial local por
+ * afinidad: primero el más jugado (nº de partidas) y, ante empate, el de mayor
+ * precisión media y luego el de mejor score, para que el ranking sea estable y
+ * refleje gusto real. El primero es el "juego estrella"; los siguientes alimentan
+ * "Otros juegos que te gustan" en la misma tarjeta.
  *
  * Se ignoran las filas de juegos no catalogados o aún no jugables (roadmap), que no
  * tendrían pantalla a la que enviar al usuario.
  *
- * @return el juego destacado, o null si el historial no tiene partidas jugables.
+ * @return ranking descendente, vacío si el historial no tiene partidas jugables.
  */
-private fun findStarGame(history: List<GameProgress>): StarGame? =
+private fun rankedPlayedGames(history: List<GameProgress>): List<StarGame> =
     history
         .groupBy { it.gameId }
         .mapNotNull { (gameId, runs) ->
@@ -561,7 +578,11 @@ private fun findStarGame(history: List<GameProgress>): StarGame? =
                 playCount = runs.size,
             )
         }
-        .maxWithOrNull(compareBy({ it.avgAccuracy }, { it.playCount }, { it.bestScore }))
+        .sortedWith(
+            compareByDescending<StarGame> { it.playCount }
+                .thenByDescending { it.avgAccuracy }
+                .thenByDescending { it.bestScore },
+        )
 
 /**
  * Tarjeta **"Tu juego estrella"**: rellena la Home cuando el objetivo diario ya está
@@ -569,11 +590,18 @@ private fun findStarGame(history: List<GameProgress>): StarGame? =
  * identidad de la categoría del juego ([GameCategory.accent]) para el halo del icono,
  * el borde y el CTA, manteniendo la coherencia visual del catálogo.
  *
- * @param star datos del juego destacado (ver [findStarGame]).
- * @param onPlay abre de nuevo ese juego.
+ * @param star datos del juego destacado (primer puesto de [rankedPlayedGames]).
+ * @param others siguientes juegos más jugados (hasta 3), para "Otros juegos que te gustan".
+ * @param onPlay abre de nuevo el juego estrella.
+ * @param onPlayOther abre uno de los otros juegos favoritos.
  */
 @Composable
-private fun StarGameCard(star: StarGame, onPlay: () -> Unit) {
+private fun StarGameCard(
+    star: StarGame,
+    others: List<StarGame>,
+    onPlay: () -> Unit,
+    onPlayOther: (StarGame) -> Unit,
+) {
     val accent = star.game.category.accent
     val shape = RoundedCornerShape(28.dp)
 
@@ -624,16 +652,9 @@ private fun StarGameCard(star: StarGame, onPlay: () -> Unit) {
         }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Icono de la categoría sobre un chip tenue de su propio color.
-            Box(
-                modifier = Modifier
-                    .size(52.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(accent.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                NeonIcon(icon = star.game.category.icon, tint = accent, size = 28.dp)
-            }
+            // Arte "héroe" del juego (mismo que su pantalla de intro); si aún no tiene,
+            // cae al icono de la categoría sobre un chip tenue de su propio color.
+            GameThumbnail(game = star.game, accent = accent, size = 56.dp, cornerRadius = 16.dp)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
@@ -643,7 +664,7 @@ private fun StarGameCard(star: StarGame, onPlay: () -> Unit) {
                     maxLines = 1,
                 )
                 Text(
-                    "${star.avgAccuracy.roundToInt()}% precisión · mejor ${star.bestScore}",
+                    "${star.playCount} partidas · ${star.avgAccuracy.roundToInt()}% precisión",
                     style = MaterialTheme.typography.bodyMedium,
                     color = LogicColors.OnDarkMuted,
                     maxLines = 1,
@@ -671,6 +692,89 @@ private fun StarGameCard(star: StarGame, onPlay: () -> Unit) {
             Spacer(Modifier.width(8.dp))
             NeonIcon(icon = KortexIcons.Play, tint = LogicColors.BackgroundDark, size = 18.dp, glow = false)
         }
+
+        // "Otros juegos que te gustan": los siguientes más jugados, dentro de la
+        // misma tarjeta para invitar a variar sin salir del contexto "tus favoritos".
+        if (others.isNotEmpty()) {
+            OtherGamesRow(games = others, onPlay = onPlayOther)
+        }
+    }
+}
+
+/**
+ * Miniatura cuadrada de un juego para las tarjetas de la Home. Reutiliza el **arte
+ * héroe** ([GameInfo.heroImage]) —el mismo que su pantalla de intro— recortado a la
+ * forma; si el juego aún no tiene arte, cae al icono de su categoría sobre un chip
+ * tenue del color de acento, manteniendo la coherencia visual del catálogo.
+ */
+@Composable
+private fun GameThumbnail(game: GameInfo, accent: Color, size: Dp, cornerRadius: Dp) {
+    val shape = RoundedCornerShape(cornerRadius)
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(shape)
+            .background(accent.copy(alpha = 0.15f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        val hero = game.heroImage
+        if (hero != null) {
+            Image(
+                painter = painterResource(hero),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            NeonIcon(icon = game.category.icon, tint = accent, size = size * 0.5f)
+        }
+    }
+}
+
+/** Fila de hasta 3 mini-tarjetas con los siguientes juegos más jugados. */
+@Composable
+private fun OtherGamesRow(games: List<StarGame>, onPlay: (StarGame) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            "Otros juegos que te gustan",
+            style = MaterialTheme.typography.titleMedium,
+            color = LogicColors.OnDark,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            games.forEach { other ->
+                OtherGameMiniCard(star = other, onClick = { onPlay(other) }, modifier = Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+/** Mini-tarjeta de un "otro juego": arte héroe + título + nº de partidas, teñida con el color de su categoría. */
+@Composable
+private fun OtherGameMiniCard(star: StarGame, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val accent = star.game.category.accent
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(accent.copy(alpha = 0.12f))
+            .bounceClick(onClick = onClick)
+            .padding(vertical = 12.dp, horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        GameThumbnail(game = star.game, accent = accent, size = 44.dp, cornerRadius = 12.dp)
+        Text(
+            star.game.title,
+            style = MaterialTheme.typography.labelMedium,
+            color = LogicColors.OnDark,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            "${star.playCount}x",
+            style = MaterialTheme.typography.labelMedium,
+            color = LogicColors.OnDarkMuted,
+        )
     }
 }
 

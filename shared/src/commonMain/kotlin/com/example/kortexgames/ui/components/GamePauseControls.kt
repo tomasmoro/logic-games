@@ -150,6 +150,28 @@ private fun PauseButton(
 }
 
 /**
+ * Botón "X" de cierre rápido, en la esquina de una tarjeta modal (pausa o fin de
+ * partida). Alternativa compacta al CTA principal de abajo, sin su peso visual;
+ * el color se mantiene neutro (no de acento) para no competir con el CTA.
+ */
+@Composable
+internal fun CloseButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .background(LogicColors.SurfaceVariantDark)
+            .bounceClick(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        NeonIcon(icon = KortexIcons.Close, tint = LogicColors.OnDarkMuted, size = 18.dp, glow = false)
+    }
+}
+
+/**
  * Menú modal de pausa: Reanudar, opciones de audio, ayuda y Salir. Se autogestiona la
  * aparición con la misma "física de juego" que [GameOverOverlay] (scrim en fundido +
  * tarjeta que entra con resorte y rebote), de modo que las pantallas no orquestan
@@ -221,6 +243,12 @@ private fun BoxScope.PauseMenu(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            // Cerrar rápido (X): mismo efecto que "REANUDAR" pero como salida discreta
+            // en la esquina, sin competir con el CTA principal.
+            CloseButton(
+                onClick = onResume,
+                modifier = Modifier.align(Alignment.End),
+            )
             NeonIcon(icon = KortexIcons.Pause, tint = accent, size = 42.dp)
             Text(
                 "En pausa",

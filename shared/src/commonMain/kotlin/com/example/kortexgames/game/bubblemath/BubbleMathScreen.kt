@@ -62,6 +62,8 @@ import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.ReviveAdOverlay
 import com.example.kortexgames.ui.components.bounceClick
 import com.example.kortexgames.ui.components.drawNeonBubble
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.bubblemath_intro
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
@@ -113,6 +115,7 @@ fun BubbleMathScreen(graph: AppGraph, onExit: () -> Unit) {
             title = "Burbujas de Cálculo",
             description = "Revienta las burbujas con el resultado correcto antes de que toquen el suelo; encadena aciertos para subir el combo.",
             accent = CategoryPalette.MentalMath,
+            heroImage = Res.drawable.bubblemath_intro,
             onStart = { vm.onIntent(BubbleMathIntent.Start) },
             onExit = onExit,
             background = {

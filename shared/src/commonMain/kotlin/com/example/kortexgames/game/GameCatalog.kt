@@ -15,6 +15,13 @@ import androidx.compose.material.icons.rounded.ViewModule
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.example.kortexgames.core.theme.CategoryPalette
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.bubblemath_intro
+import kortexgames.shared.generated.resources.crucigrama_intro
+import kortexgames.shared.generated.resources.energyflow_intro
+import kortexgames.shared.generated.resources.memory_intro
+import kortexgames.shared.generated.resources.potionsorting_intro
+import org.jetbrains.compose.resources.DrawableResource
 
 /**
  * IDs estables de los juegos de ejemplo. Deben coincidir con las filas sembradas
@@ -102,12 +109,16 @@ enum class GameCategory(
  *
  * @property id UUID estable ([GameIds]); null en placeholders "próximamente".
  * @property playable false = tarjeta visible pero deshabilitada (roadmap).
+ * @property heroImage arte "héroe" del juego (el mismo de su pantalla de intro);
+ *           **fuente única de verdad** reutilizada por la intro y por las tarjetas de
+ *           la Home. null = aún sin arte → se cae al icono de la categoría.
  */
 data class GameInfo(
     val id: String?,
     val title: String,
     val category: GameCategory,
     val playable: Boolean,
+    val heroImage: DrawableResource? = null,
 )
 
 /**
@@ -119,12 +130,12 @@ data class GameInfo(
  */
 object GameCatalog {
     val games: List<GameInfo> = listOf(
-        GameInfo(GameIds.SEQUENCE_MEMORY, "Memoria de Secuencias", GameCategory.MEMORY, playable = true),
-        GameInfo(GameIds.WATER_SORT, "Ordena las Pociones", GameCategory.LOGIC, playable = true),
-        GameInfo(GameIds.BUBBLE_MATH, "Burbujas de Cálculo", GameCategory.MENTAL_MATH, playable = true),
-        GameInfo(GameIds.ENERGY_FLOW, "Flujo de Energía", GameCategory.SPATIAL, playable = true),
+        GameInfo(GameIds.SEQUENCE_MEMORY, "Memoria de Secuencias", GameCategory.MEMORY, playable = true, heroImage = Res.drawable.memory_intro),
+        GameInfo(GameIds.WATER_SORT, "Ordena las Pociones", GameCategory.LOGIC, playable = true, heroImage = Res.drawable.potionsorting_intro),
+        GameInfo(GameIds.BUBBLE_MATH, "Burbujas de Cálculo", GameCategory.MENTAL_MATH, playable = true, heroImage = Res.drawable.bubblemath_intro),
+        GameInfo(GameIds.ENERGY_FLOW, "Flujo de Energía", GameCategory.SPATIAL, playable = true, heroImage = Res.drawable.energyflow_intro),
         GameInfo(GameIds.POLARITY_COLLISION, "Atracción Geométrica", GameCategory.SPATIAL, playable = true),
-        GameInfo(GameIds.CRUCIGRAMA_NEON, "Crucigrama Neón", GameCategory.LANGUAGE, playable = true),
+        GameInfo(GameIds.CRUCIGRAMA_NEON, "Crucigrama Neón", GameCategory.LANGUAGE, playable = true, heroImage = Res.drawable.crucigrama_intro),
         GameInfo(GameIds.WORD_CONNECT, "Palabras Conectadas", GameCategory.LANGUAGE, playable = true),
         GameInfo(GameIds.NEON_SCREWS, "Tornillos Neón", GameCategory.SPATIAL, playable = true),
         GameInfo(GameIds.NEON_BLOCK_GRID, "Tetris Neón", GameCategory.SPATIAL, playable = true),

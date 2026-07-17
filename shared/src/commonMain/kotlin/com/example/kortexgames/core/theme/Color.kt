@@ -40,11 +40,6 @@ object LogicColors {
     val SurfaceVariantDark = Color(0xFF1E2740)
     val OnDark = Color(0xFFF2F5FF)
     val OnDarkMuted = Color(0xFF9AA3BE)
-
-    // --- Superficies (tema claro) -------------------------------------------
-    val BackgroundLight = Color(0xFFF4F6FF)
-    val SurfaceLight = Color(0xFFFFFFFF)
-    val OnLight = Color(0xFF141B2E)
 }
 
 /**

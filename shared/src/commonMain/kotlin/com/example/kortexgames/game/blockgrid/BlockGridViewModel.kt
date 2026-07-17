@@ -106,7 +106,10 @@ class BlockGridViewModel(
             is BlockGridEvent.LinesCleared -> {
                 sendEffect(BlockGridEffect.PlaySound(SoundEffect.SUCCESS))
                 sendEffect(BlockGridEffect.Vibrate(HapticFeedback.HEAVY))
-                sendEffect(BlockGridEffect.ShowComboAnim(event.count))
+                // Guirnaldas solo en combos de línea (5+) o vaciado total: si
+                // cayeran en cada línea suelta, perderían su peso de "gran hito".
+                val showGarlands = event.isPerfectClear || event.count >= GARLAND_COMBO_THRESHOLD
+                sendEffect(BlockGridEffect.ShowComboAnim(event.count, showGarlands))
             }
             // La reposición es consecuencia natural de colocar la 3.ª pieza; un
             // SFX propio competiría con el de la colocación que la causó.
@@ -115,6 +118,11 @@ class BlockGridViewModel(
             // así acompaña a la aparición del overlay de resultados.
             BlockGridEvent.GameOverReached -> Unit
         }
+    }
+
+    private companion object {
+        /** Nº de líneas simultáneas a partir del cual el combo "gana" guirnaldas. */
+        const val GARLAND_COMBO_THRESHOLD = 5
     }
 
     /** Guarda el resultado (local-first) y expone el game-over con percentil. */

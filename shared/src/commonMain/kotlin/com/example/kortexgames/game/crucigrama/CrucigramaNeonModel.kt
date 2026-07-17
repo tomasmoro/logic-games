@@ -292,16 +292,6 @@ object CrucigramaNeonGenerator {
 
         LevelDef(
             listOf(
-                "RATA" to "Roedor",
-                "ARAR" to "Labrar la tierra",
-                "TARTA" to "Pastel",
-                "TRATAR" to "Intentar",
-                "ATAR" to "Amarrar",
-            ),
-            extras = listOf("RARA", "TARAR"),
-        ),
-        LevelDef(
-            listOf(
                 "AMOR" to "Sentimiento de afecto",
                 "RAMO" to "Conjunto de flores",
                 "MORA" to "Fruta del moral",
@@ -322,6 +312,16 @@ object CrucigramaNeonGenerator {
         ),
         LevelDef(
             listOf(
+                "RATA" to "Roedor",
+                "ARAR" to "Labrar la tierra",
+                "TARTA" to "Pastel",
+                "TRATAR" to "Intentar",
+                "ATAR" to "Amarrar",
+            ),
+            extras = listOf("RARA", "TARAR"),
+        ),
+        LevelDef(
+            listOf(
                 "CASA" to "Vivienda",
                 "COSA" to "Objeto o asunto",
                 "SACO" to "Bolsa grande",
@@ -330,55 +330,53 @@ object CrucigramaNeonGenerator {
             ),
             extras = listOf("ASCO", "CASO", "SACA", "OSO"),
         ),
-        // --- 5 palabras -----------------------------------------------------
         LevelDef(
             listOf(
                 "ROMERO" to "Planta aromática",
                 "ERROR" to "Fallo",
-                "REMO" to "Pala para impulsar una embarcación en el agua",
-                "MERO" to "Pez marino comestible, o algo que es simple y puro",
+                "REMO" to "Pala para impulsar una embarcación",
+                "OREO" to "Galleta de chocolate con relleno",
                 "REO" to "Prisionero"
             ),
-            extras = listOf("REMERO", "MORRO", "ROER", "MEMO", "OREO", "ORO"),
+            extras = listOf("REMERO", "MORRO", "ROER", "MEMO", "ORO", "MERO"),
         ),
         LevelDef(
             listOf(
-                "CAPO" to "Jefe de una organización o persona con mucho poder",
-                "COPA" to "Vaso con pie para beber, o trofeo deportivo",
-                "CAPA" to "Prenda de vestir larga y suelta, o estrato de algo",
+                "CAPO" to "Jefe de una organización",
+                "COPA" to "Vaso con pie para beber",
+                "CAPA" to "Prenda de vestir larga y suelta",
                 "POCO" to "Que es escaso o existe en pequeña cantidad",
                 "OPACO" to "Que no deja pasar la luz",
-                "CACAO" to "Ladrón que roba con destreza y astucia"
+                "CACAO" to "Materia prima del chocolate"
             ),
             extras = listOf("COCO", "COPO", "POPA", "ACA", "PACO", "COCA", "OCA", "PAPA"),
         ),
         LevelDef(
             listOf(
-                "MOLINO" to "Máquina para moler grano o producir energía con el viento",
-                "LIMON" to "Fruto cítrico de color amarillo y sabor muy ácido",
+                "MOLINO" to "Maquina que produce energía con el viento",
+                "LIMON" to "Fruto cítrico",
                 "MIO" to "Que pertenece a mí",
-                "MONO" to "Animal primate, o prenda de vestir de una sola pieza",
+                "MONO" to "Animal primate",
                 "LINO" to "Planta textil de la que se obtienen hilos y telas frescas",
-                "MILLON" to "100 x 100 x 100" // La palabra rara
+                "MILLON" to "100 x 100 x 100"
             ),
             extras = listOf("MIMO", "LILO", "ION", "LIO", "OLMO"),
         ),
-        // --- 6 palabras -----------------------------------------------------
         LevelDef(
             listOf(
-                "PUEDE" to "Tiene la capacidad, facultad o medios para realizar una acción",
-                "DUQUE" to "Título nobiliario de la más alta categoría, inmediatamente superior al de marqués",
-                "QUEDE" to "Permanezca en un lugar, o se mantenga en una situación o estado",
-                "DUDE" to "Tenga dudas, vacile o no esté completamente seguro de algo",
+                "PUEDE" to "Tiene la capacidad, facultad",
+                "DUQUE" to "Título nobiliario de la más alta categoría",
+                "QUEDE" to "Se mantenga en una situación o estado",
+                "DUDE" to "Tenga dudas, vacile",
                 "QUE" to "Pronombre o conjunción que introduce una idea o una oración subordinada",
             ),
             extras = listOf("PUDU", "DE"),
         ),
         LevelDef(
             listOf(
-                "SALON" to "Habitación principal de una casa destinada a recibir visitas o descansar",
-                "SOLA" to "Que no tiene compañía o carece de ayuda en una situación",
-                "SANO" to "Que goza de buena salud o es beneficioso para el organismo",
+                "SALON" to "Habitación principal de una casa destinada a recibir visitas",
+                "SOLA" to "Que no tiene compañía (fem)",
+                "SANO" to "Que goza de buena salud",
                 "LONA" to "Tela fuerte, gruesa e impermeable que sirve para cubrir o proteger objetos",
                 "ASNO" to "Similar al burro",
                 "SOL" to "Estrella que ilumina el cielo",

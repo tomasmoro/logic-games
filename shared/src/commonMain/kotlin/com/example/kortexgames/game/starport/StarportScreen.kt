@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -44,6 +46,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -64,8 +67,13 @@ import com.example.kortexgames.ui.components.LevelStripState
 import com.example.kortexgames.ui.components.SpaceBackdrop
 import com.example.kortexgames.ui.components.bounceClick
 import com.example.kortexgames.ui.components.softGlow
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.starport_meteor_2
+import kortexgames.shared.generated.resources.starport_meteor_3
+import kortexgames.shared.generated.resources.starport_vip_ship
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import org.jetbrains.compose.resources.painterResource
 
 // --- Constantes de composición del hangar -------------------------------------
 
@@ -247,9 +255,10 @@ private fun HudPill(label: String, value: String, modifier: Modifier = Modifier)
 }
 
 /**
- * El hangar 6×6: rejilla + esclusa dibujadas en un Canvas de fondo, y una capa
- * de naves-composable encima. `BoxWithConstraints` fija la equivalencia
- * celda↔px que comparten dibujo, posicionamiento y traducción de gestos.
+ * El hangar (de 6×6 a 10×10 según el nivel): rejilla + esclusa dibujadas en un
+ * Canvas de fondo, y una capa de naves-composable encima. `BoxWithConstraints`
+ * fija la equivalencia celda↔px que comparten dibujo, posicionamiento y
+ * traducción de gestos.
  */
 @Composable
 private fun StarportBoard(
@@ -258,10 +267,10 @@ private fun StarportBoard(
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier = modifier) {
-        val cellDp: Dp = maxWidth / HANGAR_SIZE
+        val cellDp: Dp = maxWidth / game.hangarSize
         val cellPx: Float = with(LocalDensity.current) { cellDp.toPx() }
 
-        HangarBackdrop(exit = game.exit, modifier = Modifier.fillMaxSize())
+        HangarBackdrop(exit = game.exit, hangarSize = game.hangarSize, modifier = Modifier.fillMaxSize())
 
         // key(id): la identidad de composición sigue a la nave, no a su índice,
         // para que los Animatable no "salten" de una nave a otra entre niveles.
@@ -287,16 +296,16 @@ private fun StarportBoard(
  * regla de "acento escaso" de §9.1).
  */
 @Composable
-private fun HangarBackdrop(exit: HangarExit, modifier: Modifier = Modifier) {
+private fun HangarBackdrop(exit: HangarExit, hangarSize: Int, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
-        val cell = size.width / HANGAR_SIZE
+        val cell = size.width / hangarSize
         val corner = CornerRadius(24.dp.toPx())
 
         drawRoundRect(color = LogicColors.SurfaceDark.copy(alpha = 0.62f), cornerRadius = corner)
 
         // Rejilla interior: guía la lectura de celdas sin competir con las naves.
         val gridColor = LogicColors.SurfaceVariantDark.copy(alpha = 0.55f)
-        for (i in 1 until HANGAR_SIZE) {
+        for (i in 1 until hangarSize) {
             drawLine(gridColor, Offset(i * cell, 0f), Offset(i * cell, size.height), strokeWidth = 1.5f)
             drawLine(gridColor, Offset(0f, i * cell), Offset(size.width, i * cell), strokeWidth = 1.5f)
         }
@@ -423,12 +432,42 @@ private fun ShipCapsule(
     val shape = RoundedCornerShape(percent = 50) // cápsula: extremos totalmente curvos
     val inset = cellDp * SHIP_INSET_FRACTION
 
+    // Arte de la VIP: el sprite nace con la proa hacia arriba, así que se rota
+    // hasta apuntar al lado de la esclusa por la que escapa (§9.4: coherencia
+    // física del gesto — la nave "mira" hacia donde va a salir). Cuando la
+    // rotación es de 90/270° el eje visual se intercambia, así que el tamaño
+    // pre-rotación también se intercambia para que, tras rotar, encaje exacto
+    // en el hueco de la celda (sin recorte ni deformación).
+    val vipRotation = when (exit.side) {
+        ExitSide.TOP -> 0f
+        ExitSide.BOTTOM -> 180f
+        ExitSide.RIGHT -> 90f
+        ExitSide.LEFT -> -90f
+    }
+    // Mismo cálculo de caja para la VIP y los meteoritos-obstáculo: ambos son
+    // sprites que nacen en vertical y deben caer exactos en el hueco de la
+    // celda tras rotar (si la nave/obstáculo es horizontal, ancho y alto se
+    // intercambian pre-rotación). `width` cubre los meteoritos anchos (2×2,
+    // 3×2), que ocupan más de un carril perpendicular al eje de movimiento.
+    val shipBoxWidth = cellDp * (if (horizontal) ship.length else ship.width) - inset * 2
+    val shipBoxHeight = cellDp * (if (horizontal) ship.width else ship.length) - inset * 2
+    val imageWidth = if (horizontal) shipBoxHeight else shipBoxWidth
+    val imageHeight = if (horizontal) shipBoxWidth else shipBoxHeight
+    // Los obstáculos no tienen un "frente" que deba mirar a ningún lado (a
+    // diferencia de la VIP): solo se rotan 90° para que su eje largo, nacido
+    // vertical, se acueste sobre el eje horizontal cuando la nave es H.
+    val meteorRotation = if (horizontal) 90f else 0f
+    // Sprite según la huella: la roca corta para piezas de 2 de largo, la
+    // grande para 3 y 4 (FillBounds la estira ese pelín extra sin despeinarse:
+    // es roca amorfa, no hay proporciones "correctas" que respetar).
+    val meteorRes = if (ship.length == SHIP_LENGTH_SHORT) Res.drawable.starport_meteor_2 else Res.drawable.starport_meteor_3
+
     Box(
         modifier = Modifier
             .offset { IntOffset((xCells * cellPx).roundToInt(), (yCells * cellPx).roundToInt()) }
             .size(
-                width = cellDp * (if (horizontal) ship.length else 1),
-                height = cellDp * (if (horizontal) 1 else ship.length),
+                width = cellDp * (if (horizontal) ship.length else ship.width),
+                height = cellDp * (if (horizontal) ship.width else ship.length),
             )
             .padding(inset)
             .graphicsLayer {
@@ -468,32 +507,10 @@ private fun ShipCapsule(
             // El glow continuo queda RESERVADO a la VIP: es el "premio" visual
             // que guía el objetivo (§9.4: un solo foco de atención en bucle).
             .then(if (ship.isVip) Modifier.softGlow(accent, shape) else Modifier)
-            .background(
-                brush = if (ship.isVip) {
-                    Brush.linearGradient(listOf(LogicColors.NeonGreen, LogicColors.NeonGreenDeep))
-                } else {
-                    Brush.linearGradient(
-                        listOf(LogicColors.SurfaceVariantDark, LogicColors.SurfaceDark),
-                    )
-                },
-                shape = shape,
-            )
-            .drawBehind {
-                // Borde + "ventanilla": detalles fríos en las naves normales,
-                // cálidos/oscuros en la VIP (contraste sobre verde saturado).
-                drawRoundRect(
-                    color = if (ship.isVip) Color.White.copy(alpha = 0.35f) else accent.copy(alpha = 0.55f),
-                    cornerRadius = CornerRadius(size.minDimension / 2f),
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5.dp.toPx()),
-                )
-                val cockpit = size.minDimension * 0.30f
-                drawCircle(
-                    color = if (ship.isVip) LogicColors.BackgroundDark.copy(alpha = 0.45f)
-                    else accent.copy(alpha = 0.8f),
-                    radius = cockpit / 2f,
-                    center = Offset(size.width / 2f, size.height / 2f),
-                )
-            }
+            // Tanto la VIP como los obstáculos son ahora sprites con su propio
+            // arte (casco+ventanilla / roca fracturada): ninguno necesita ya
+            // la cápsula procedural (relleno + borde + "ventanilla") que se
+            // dibujaba antes para las naves normales — se vería duplicado.
             .pointerInput(ship.id, cellPx, horizontal) {
                 detectDragGestures(
                     onDragStart = { onIntent(StarportIntent.SelectShip(ship.id)) },
@@ -515,5 +532,21 @@ private fun ShipCapsule(
                     },
                 )
             },
-    )
+    ) {
+        Image(
+            painter = painterResource(if (ship.isVip) Res.drawable.starport_vip_ship else meteorRes),
+            contentDescription = null,
+            contentScale = ContentScale.FillBounds,
+            modifier = Modifier
+                .align(Alignment.Center)
+                // requiredSize (no size): el tamaño pre-rotación es PORTRAIT
+                // (más alto que ancho) y excede el máximo que el padre le
+                // pasa como constraint (su alto es de 1 celda); size() lo
+                // recortaría a ese máximo antes de rotar. requiredSize
+                // ignora el constraint del padre y fuerza el tamaño real;
+                // tras rotar 90°, el resultado SÍ encaja en el padre.
+                .requiredSize(width = imageWidth, height = imageHeight)
+                .graphicsLayer { rotationZ = if (ship.isVip) vipRotation else meteorRotation },
+        )
+    }
 }

@@ -29,8 +29,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
@@ -164,6 +166,15 @@ fun PolarityCollisionScreen(graph: AppGraph, onExit: () -> Unit) {
                     glowBoost = if (particle.magnetic) 1.18f else 1f,
                 )
             }
+
+            // Chispas de colisión: verdes/color de sector en acierto, rojas en fallo, para
+            // que el jugador lea el resultado del impacto sin mirar el HUD.
+            for (impact in game.impacts) {
+                drawImpactBurst(
+                    impact = impact,
+                    sectorColor = sectorPalette[impact.colorIndex % sectorPalette.size],
+                )
+            }
         }
 
         Column(
@@ -228,6 +239,14 @@ private fun HudPill(label: String, value: String, modifier: Modifier = Modifier)
     }
 }
 
+/**
+ * Disco de 4 sectores con lenguaje de "tubo de neón" (misma familia visual que
+ * [com.example.kortexgames.ui.components.drawNeonTile]): relleno de cristal con
+ * degradado radial (brillante al centro, se apaga hacia el borde) en vez de color
+ * plano —lo que antes leía como una pelota de playa— y un aro de neón por sector
+ * (halo ancho → halo medio → trazo nítido) que remata el borde exterior. Las
+ * costuras entre sectores son una fibra de luz blanca fina, no un corte gris.
+ */
 private fun DrawScope.drawRingSectors(
     center: Offset,
     radius: Float,
@@ -239,9 +258,21 @@ private fun DrawScope.drawRingSectors(
     val diameter = radius * 2f
     val topLeft = Offset(center.x - radius, center.y - radius)
     val arcSize = Size(diameter, diameter)
+
+    // Relleno "cristal": degradado radial por sector, no color plano. Da volumen y
+    // rompe la lectura de "pelota de playa" de un pie chart de colores sólidos.
     repeat(4) { index ->
+        val base = colors[index % colors.size]
         drawArc(
-            color = colors[index % colors.size],
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    lerp(base, Color.White, 0.16f),
+                    base,
+                    lerp(base, LogicColors.BackgroundDark, 0.5f),
+                ),
+                center = center,
+                radius = radius * 1.08f,
+            ),
             startAngle = startAngleDeg + sectorAngle * index,
             sweepAngle = sectorAngle,
             useCenter = true,
@@ -250,14 +281,63 @@ private fun DrawScope.drawRingSectors(
         )
     }
 
-    // Separadores finos: ayudan a leer los cuatro colores sin meter un aro gris.
+    // Reflejo especular arriba-izquierda: sugiere superficie de cristal/vidrio en vez
+    // de plástico mate, sin tapar el color de los sectores.
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(Color.White.copy(alpha = 0.22f), Color.Transparent),
+            center = center - Offset(radius * 0.32f, radius * 0.34f),
+            radius = radius * 0.75f,
+        ),
+        radius = radius,
+        center = center,
+    )
+
+    // Aro de neón por sector: mismo apilado halo-ancho → halo-medio → nítido que
+    // [com.example.kortexgames.ui.components.drawNeonTile], pero siguiendo el arco.
+    val rimInsetDeg = 3f
+    repeat(4) { index ->
+        val base = colors[index % colors.size]
+        val start = startAngleDeg + sectorAngle * index + rimInsetDeg
+        val sweep = sectorAngle - rimInsetDeg * 2f
+        drawArc(
+            color = base.copy(alpha = 0.30f),
+            startAngle = start, sweepAngle = sweep, useCenter = false,
+            topLeft = topLeft, size = arcSize,
+            style = Stroke(width = radius * 0.14f, cap = StrokeCap.Round),
+        )
+        drawArc(
+            color = base.copy(alpha = 0.62f),
+            startAngle = start, sweepAngle = sweep, useCenter = false,
+            topLeft = topLeft, size = arcSize,
+            style = Stroke(width = radius * 0.065f, cap = StrokeCap.Round),
+        )
+        drawArc(
+            color = lerp(base, Color.White, 0.35f),
+            startAngle = start, sweepAngle = sweep, useCenter = false,
+            topLeft = topLeft, size = arcSize,
+            style = Stroke(width = radius * 0.024f, cap = StrokeCap.Round),
+        )
+    }
+
+    // Costuras entre sectores: fibra de luz blanca (halo + núcleo), no un corte gris.
     repeat(4) { index ->
         val angle = rotationRad + (PI.toFloat() / 2f) * index
+        val outer = Offset(center.x + cos(angle) * radius, center.y + sin(angle) * radius)
         drawLine(
-            color = LogicColors.BackgroundDark.copy(alpha = 0.62f),
-            start = center,
-            end = Offset(center.x + cos(angle) * radius, center.y + sin(angle) * radius),
-            strokeWidth = radius * 0.035f,
+            color = Color.White.copy(alpha = 0.20f),
+            start = center, end = outer,
+            strokeWidth = radius * 0.05f, cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = LogicColors.BackgroundDark.copy(alpha = 0.55f),
+            start = center, end = outer,
+            strokeWidth = radius * 0.022f, cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = Color.White.copy(alpha = 0.55f),
+            start = center, end = outer,
+            strokeWidth = radius * 0.008f, cap = StrokeCap.Round,
         )
     }
 }
@@ -282,11 +362,81 @@ private fun DrawScope.drawRingFrame(center: Offset, radius: Float, glowPulse: Fl
         center = center,
         style = Stroke(width = radius * 0.026f),
     )
+    // Núcleo del eje: mismo apilado halo → nítido que los tiles, para que el centro
+    // se sienta "encendido" en vez de un simple recorte oscuro.
     drawCircle(
-        color = LogicColors.BackgroundDark.copy(alpha = 0.88f),
-        radius = radius * 0.22f,
+        brush = Brush.radialGradient(
+            colors = listOf(
+                LogicColors.NeonCyan.copy(alpha = 0.30f * glowPulse),
+                Color.Transparent,
+            ),
+            center = center,
+            radius = radius * 0.42f,
+        ),
+        radius = radius * 0.30f,
         center = center,
     )
+    drawCircle(
+        color = LogicColors.BackgroundDark.copy(alpha = 0.92f),
+        radius = radius * 0.20f,
+        center = center,
+    )
+    drawCircle(
+        color = LogicColors.NeonCyan.copy(alpha = 0.55f * glowPulse),
+        radius = radius * 0.20f,
+        center = center,
+        style = Stroke(width = radius * 0.012f),
+    )
+}
+
+/**
+ * Estallido de chispas de un impacto: núcleo blanco que destella, onda expansiva
+ * semántica (verde [LogicColors.Success] en acierto, roja [LogicColors.Error] en
+ * fallo, igual que el resto de la app) y rayos radiales en el color del sector para
+ * que se lea a la vez QUÉ color impactó y SI fue correcto. Todo se desvanece según
+ * [PolarityImpact.ageMs] sobre [IMPACT_LIFETIME_MS], sin animación propia: el motor
+ * hace avanzar la edad frame a frame, así que solo interpolamos aquí.
+ */
+private fun DrawScope.drawImpactBurst(impact: PolarityImpact, sectorColor: Color) {
+    val progress = (impact.ageMs.toFloat() / IMPACT_LIFETIME_MS.toFloat()).coerceIn(0f, 1f)
+    val fade = 1f - progress
+    if (fade <= 0f) return
+    val center = Offset(impact.x, impact.y)
+    val semanticColor = if (impact.success) LogicColors.Success else LogicColors.Error
+
+    // Flash: pop blanco breve en el instante del impacto.
+    drawCircle(
+        color = Color.White.copy(alpha = 0.85f * fade * fade),
+        radius = 5.dp.toPx() + 4.dp.toPx() * progress,
+        center = center,
+    )
+
+    // Onda expansiva semántica: crece y se apaga; comunica acierto/fallo de un vistazo.
+    drawCircle(
+        color = semanticColor.copy(alpha = 0.6f * fade),
+        radius = 6.dp.toPx() + 26.dp.toPx() * progress,
+        center = center,
+        style = Stroke(width = 2.5.dp.toPx() * fade + 0.6.dp.toPx()),
+    )
+
+    // Rayos radiales en el color del sector impactado: en fallo son irregulares
+    // (longitud desigual por rayo, semilla estable en [impact.id]) para leer "caos";
+    // en acierto son simétricos, lectura limpia.
+    val rayCount = if (impact.success) 8 else 10
+    val baseLen = 8.dp.toPx() + 24.dp.toPx() * progress
+    repeat(rayCount) { i ->
+        val jitter = if (impact.success) 1f else 0.55f + (((impact.id * 31 + i * 17) % 9) / 9f) * 0.9f
+        val angle = (2.0 * PI / rayCount * i + impact.id * 0.7).toFloat()
+        val dir = Offset(cos(angle), sin(angle))
+        val len = baseLen * jitter
+        drawLine(
+            color = sectorColor.copy(alpha = 0.9f * fade),
+            start = center + dir * 3.dp.toPx(),
+            end = center + dir * len,
+            strokeWidth = 2.dp.toPx() * fade + 0.4.dp.toPx(),
+            cap = StrokeCap.Round,
+        )
+    }
 }
 
 /**

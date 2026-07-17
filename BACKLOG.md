@@ -176,12 +176,6 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
 - [ ] **Mejorar niveles de crucigrama y Word Connect** (HACERLO MANUAL) Menos letras igual cantidad de 
       palabras.
 - [ ] **Crear torneos de juegos y rankings**
-
-- [ ] **Neon Circuit Flow — catálogo de niveles + solver.** Hoy solo hay
-      `test5x5` (hardcoded) y "Siguiente nivel" cicla sobre él. Falta diseñar
-      niveles 5×5→8×8 de dificultad creciente y verificarlos con un solver
-      (resolubilidad + unicidad/teselado), como se hizo con Starport. Ref:
-      `game/neoncircuit/NeonCircuitLevels.kt`.
 - [ ] **Neon Circuit Flow — SFX de "estática" por celda.** El avance de cable
       (`CellAdvanced`) solo da háptica; el catálogo `SoundEffect` no tiene aún un
       sonido de estática suave. Añadir el asset y cablearlo en
@@ -189,3 +183,9 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
 - [ ] **Neon Circuit Flow — seed en Supabase.** Falta la migración que inserta el
       juego (`GameIds.NEON_CIRCUIT`) en la tabla `games` para que persista score y
       percentiles, como las `0013/0014/0015` de los últimos juegos.
+- [ ] **Starport — pre-generar el siguiente nivel en background.** La generación
+      procedural (BFS del solver) corre síncrona en `onStart`: los niveles 10×10
+      más densos tardan ~300 ms en JVM de escritorio (más en móvil) la primera
+      vez (después quedan en caché de sesión). Lanzar `StarportLevels.forNumber
+      (n+1)` en `Dispatchers.Default` al completar el nivel `n` para que "Siguiente
+      nivel" abra instantáneo.

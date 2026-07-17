@@ -46,10 +46,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -64,15 +69,20 @@ import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.LevelStripState
 import com.example.kortexgames.ui.components.NeonIcon
+import com.example.kortexgames.ui.components.SpaceBackdrop
 import com.example.kortexgames.ui.components.bounceClick
 import com.example.kortexgames.ui.components.drawNeonTile
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.crucigrama_intro
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-private val CellSize = 60.dp
+// +10% respecto al tamaño original (60dp) para compensar el hueco entre celdas
+// más ajustado sin que el tubo de neón se vea apretado.
+private val CellSize = 66.dp
 private val BankLetterSize = 60.dp
 
 /**
@@ -121,9 +131,11 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
                 selected = selectedLevel,
                 onSelect = { selectedLevel = it },
             ),
+            heroImage = Res.drawable.crucigrama_intro,
             startLabel = "Empezar",
             onStart = { vm.onIntent(CrucigramaNeonIntent.PlayLevel(selectedLevel)) },
             onExit = onExit,
+            background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },
         )
         return
     }
@@ -136,6 +148,8 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
     var showHintAd by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize().background(LogicColors.BackgroundDark)) {
+        SpaceBackdrop(modifier = Modifier.fillMaxSize())
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -412,7 +426,9 @@ private fun CrosswordGrid(
     // Tamaño de celda adaptativo: crece hasta [CellSize] pero se encoge para que la
     // rejilla completa quepa (los niveles avanzados tienen más columnas/filas).
     BoxWithConstraints(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        val gap = 4.dp
+        // Hueco entre celdas un 10% más ajustado (4 -> 3.6dp) para que las letras
+        // de una misma palabra se lean más "juntas" en la rejilla.
+        val gap = 3.6.dp
         val byWidth = (maxWidth - gap * (cols - 1)) / cols
         val byHeight = if (maxHeight.value.isFinite()) (maxHeight - gap * (rows - 1)) / rows else CellSize
         val cell = minOf(CellSize, byWidth, byHeight)
@@ -635,6 +651,15 @@ private fun LetterKey(letter: Char, accent: Color, onClick: () -> Unit) {
  * despliega debajo la lista de palabras. Las encontradas se revelan en ámbar; las
  * pendientes se enmascaran con puntos. Ámbar = recompensa (§9.2).
  *
+ * **Flota por encima, no empuja layout**: la lista desplegable se pinta en un
+ * [Popup] anclado bajo la píldora, en vez de vivir dentro del `Column` de la
+ * pantalla. Antes ocupaba espacio real ahí: al abrirse, achicaba el `Box` con
+ * `weight(1f)` del tablero y con él el tamaño de celda/letra del crucigrama
+ * (pedido del usuario: "debería verse por encima y no ocupar lugar del
+ * tablero"). El `Popup` se dibuja en su propia capa —no participa en la
+ * medición del `Column` padre— así que el tablero nunca se resize al abrir o
+ * cerrar el cartel.
+ *
  * **Animación de entrada y salida** ([AnimatedVisibility]): la lista aparece con un
  * fundido + expansión vertical con resorte (orgánico, §9.4) y se retira con fundido +
  * colapso. Al descubrir una extra ([foundTick] cambia) el cartel se **abre solo 3 s**,
@@ -655,6 +680,8 @@ private fun ExtrasPanel(
     val pillShape = RoundedCornerShape(14.dp)
     val cardShape = RoundedCornerShape(16.dp)
     val spark = remember { Animatable(0f) }
+    var pillHeightPx by remember { mutableStateOf(0) }
+    val gapPx = with(LocalDensity.current) { 6.dp.roundToPx() }
 
     // Al encontrar una extra: chispas + auto-abrir 3 s (salvo que el usuario lo haya fijado).
     LaunchedEffect(foundTick) {
@@ -668,14 +695,13 @@ private fun ExtrasPanel(
         if (!pinned) open = false
     }
 
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.Start,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
+    // Box (no Column): su tamaño lo fija solo la píldora, ya que el Popup vive
+    // en una capa aparte y no aporta altura al padre.
+    Box(modifier = modifier) {
         // Píldora-contador siempre visible, con las chispas del hallazgo detrás.
         Row(
             modifier = Modifier
+                .onGloballyPositioned { pillHeightPx = it.size.height }
                 .drawBehind {
                     val sp = spark.value
                     if (sp > 0f && sp < 1f) {
@@ -708,31 +734,41 @@ private fun ExtrasPanel(
             Text("EXTRAS", style = MaterialTheme.typography.labelLarge, color = accent, fontWeight = FontWeight.Bold)
             Text("${found.size}/${words.size}", style = MaterialTheme.typography.labelLarge, color = accent, fontWeight = FontWeight.Bold)
         }
-        AnimatedVisibility(
-            visible = open,
-            enter = fadeIn(tween(200)) + expandVertically(
-                animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow),
-            ),
-            exit = fadeOut(tween(160)) + shrinkVertically(tween(200)),
+
+        // Siempre montado (para poder reproducir la animación de salida): con la
+        // lista cerrada se colapsa a tamaño 0 dentro del Popup, invisible y sin
+        // coste de layout para el resto de la pantalla.
+        Popup(
+            alignment = Alignment.TopStart,
+            offset = IntOffset(0, pillHeightPx + gapPx),
+            properties = PopupProperties(focusable = false),
         ) {
-            Column(
-                modifier = Modifier
-                    .widthIn(max = 180.dp)
-                    .clip(cardShape)
-                    .background(LogicColors.SurfaceDark.copy(alpha = 0.96f))
-                    .border(BorderStroke(1.dp, accent.copy(alpha = 0.5f)), cardShape)
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+            AnimatedVisibility(
+                visible = open,
+                enter = fadeIn(tween(200)) + expandVertically(
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow),
+                ),
+                exit = fadeOut(tween(160)) + shrinkVertically(tween(200)),
             ) {
-                words.forEach { w ->
-                    val f = w in found
-                    Text(
-                        text = if (f) w else "•".repeat(w.length),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (f) accent else LogicColors.OnDarkMuted,
-                        fontWeight = if (f) FontWeight.Black else FontWeight.Normal,
-                        letterSpacing = if (f) 1.sp else 3.sp,
-                    )
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 180.dp)
+                        .clip(cardShape)
+                        .background(LogicColors.SurfaceDark.copy(alpha = 0.96f))
+                        .border(BorderStroke(1.dp, accent.copy(alpha = 0.5f)), cardShape)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    words.forEach { w ->
+                        val f = w in found
+                        Text(
+                            text = if (f) w else "•".repeat(w.length),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (f) accent else LogicColors.OnDarkMuted,
+                            fontWeight = if (f) FontWeight.Black else FontWeight.Normal,
+                            letterSpacing = if (f) 1.sp else 3.sp,
+                        )
+                    }
                 }
             }
         }

@@ -1,8 +1,13 @@
 package com.example.kortexgames.game.wordconnect
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -38,16 +43,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -62,14 +72,77 @@ import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.LevelStripState
+import com.example.kortexgames.ui.components.drawNeonBubble
+import com.example.kortexgames.ui.components.drawNeonTile
+import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-private val WheelSize = 300.dp
-private val NodeSize = 66.dp
+/**
+ * Tamaño del anillo y de cada ficha en función de la cantidad de letras del nivel.
+ * Con pocas letras (4) el círculo queda compacto; con más letras crece lo justo para
+ * que los nodos no se amontonen. Siempre queda más pequeño que el tamaño fijo anterior
+ * y proporcional a [letterCount] (pedido del usuario).
+ */
+private fun wheelSizeFor(letterCount: Int): Dp {
+    val n = letterCount.coerceIn(3, 9)
+    return 186.dp + 11.dp * (n - 3)
+}
+
+private fun nodeSizeFor(letterCount: Int): Dp = when {
+    letterCount <= 4 -> 56.dp
+    letterCount <= 6 -> 50.dp
+    else -> 44.dp
+}
+
+/**
+ * Fondo de **pared de ladrillos** para la pantalla (pedido del usuario), en tonos del
+ * tema en vez de un marrón que rompería la identidad "azul noche" (§9.1): ladrillos
+ * alternos en [LogicColors.SurfaceDark]/[LogicColors.SurfaceVariantDark] con junta en
+ * [LogicColors.BackgroundDark], hiladas a soga con traba (offset de media pieza por
+ * fila). Un viñeteado radial oscurece los bordes para que la rejilla nunca compita con
+ * las ranuras de palabras ni la rueda de letras (§9.1: superficie oscura, acento escaso).
+ */
+private fun DrawScope.drawBrickWall() {
+    drawRect(LogicColors.BackgroundDark)
+
+    val brickW = 84.dp.toPx()
+    val brickH = 32.dp.toPx()
+    val mortar = 3.dp.toPx()
+    val corner = CornerRadius(2.dp.toPx())
+
+    val rows = (size.height / brickH).toInt() + 2
+    val cols = (size.width / brickW).toInt() + 3
+    for (row in -1..rows) {
+        val rowOffset = if (row % 2 == 0) 0f else -brickW / 2f
+        val y = row * brickH
+        for (col in -1..cols) {
+            val x = rowOffset + col * brickW
+            // Ligera variación de tono por ladrillo (patrón determinista, sin random
+            // por frame) para que la pared no se vea como una textura repetida plana.
+            val shade = ((row * 31 + col * 17) % 5) / 5f
+            val brickColor = lerp(LogicColors.SurfaceVariantDark, LogicColors.SurfaceDark, shade)
+            drawRoundRect(
+                color = brickColor,
+                topLeft = Offset(x + mortar / 2f, y + mortar / 2f),
+                size = Size(brickW - mortar, brickH - mortar),
+                cornerRadius = corner,
+            )
+        }
+    }
+
+    // Viñeteado: mantiene el centro (donde vive la UI) más oscuro que los bordes.
+    drawRect(
+        brush = Brush.radialGradient(
+            colors = listOf(Color.Transparent, LogicColors.BackgroundDark.copy(alpha = 0.6f)),
+            center = Offset(size.width / 2f, size.height * 0.42f),
+            radius = size.maxDimension * 0.8f,
+        ),
+    )
+}
 
 /**
  * Pantalla de **Palabras Conectadas**.
@@ -112,7 +185,7 @@ fun WordConnectScreen(graph: AppGraph, onExit: () -> Unit) {
         onPauseOrDispose { vm.onIntent(WordConnectIntent.Pause) }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(LogicColors.BackgroundDark)) {
+    Box(modifier = Modifier.fillMaxSize().drawBehind { drawBrickWall() }) {
         Column(
             modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -228,64 +301,92 @@ private fun WordConnectHud(
 }
 
 /**
- * Una fila de casillas para una palabra objetivo. Oculta hasta resolverse (casillas
- * vacías); al resolverse revela las letras con un destello neón (flicker) y brillo.
+ * Una fila de casillas para una palabra objetivo, con la **misma estética de tubo
+ * neón que el Crucigrama** ([drawNeonTile]): oculta y hueca mientras no se resuelve;
+ * al acertarla, un parpadeo irregular la "engancha" encendida (igual que
+ * [com.example.kortexgames.game.crucigrama.CrucigramaNeonScreen]'s `GridCell`), con
+ * una respiración sutil continua y una ráfaga de chispas que salen del centro.
  */
 @Composable
 private fun WordSlotRow(slot: WordSlotState, accent: Color) {
-    val flicker = remember { Animatable(0f) }
-    LaunchedEffect(slot.solvedAtTick) {
-        if (slot.solvedAtTick == null) {
-            flicker.snapTo(0f)
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        slot.answer.forEachIndexed { i, letter ->
+            WordSlotCell(letter = letter, solved = slot.solved, solvedAtTick = slot.solvedAtTick, accent = accent, seed = i)
+        }
+    }
+}
+
+@Composable
+private fun WordSlotCell(letter: Char, solved: Boolean, solvedAtTick: Long?, accent: Color, seed: Int) {
+    val shape = RoundedCornerShape(12.dp)
+    val ignition = remember { Animatable(0f) }
+    val spark = remember { Animatable(0f) }
+    LaunchedEffect(solvedAtTick) {
+        if (solvedAtTick == null) {
+            ignition.snapTo(if (solved) 1f else 0f)
+            spark.snapTo(0f)
             return@LaunchedEffect
         }
-        // Destello de encendido de neón al revelar la palabra.
-        flicker.snapTo(0f)
-        flicker.animateTo(1f, tween(90))
-        flicker.animateTo(0.4f, tween(60))
-        flicker.animateTo(1f, tween(130))
-    }
-    val glow = if (slot.solved) 0.35f + flicker.value * 0.65f else 0f
-
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        slot.answer.forEachIndexed { i, letter ->
-            val shape = RoundedCornerShape(10.dp)
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .then(
-                        if (slot.solved) Modifier.shadow(
-                            elevation = (10.dp.value * glow).dp,
-                            shape = shape,
-                            clip = false,
-                            ambientColor = accent,
-                            spotColor = accent,
-                        ) else Modifier,
-                    )
-                    .clip(shape)
-                    .background(
-                        if (slot.solved) accent.copy(alpha = 0.22f * glow.coerceAtLeast(0.5f))
-                        else LogicColors.SurfaceVariantDark.copy(alpha = 0.6f),
-                    )
-                    .border(
-                        BorderStroke(
-                            if (slot.solved) 1.5.dp else 1.dp,
-                            if (slot.solved) accent.copy(alpha = glow.coerceAtLeast(0.7f))
-                            else LogicColors.SurfaceVariantDark,
-                        ),
-                        shape,
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = if (slot.solved) letter.toString() else "",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = LogicColors.OnDark,
-                    fontWeight = FontWeight.Black,
-                    textAlign = TextAlign.Center,
-                )
-            }
+        // Chispas en paralelo al parpadeo de encendido.
+        launch {
+            spark.snapTo(0f)
+            spark.animateTo(1f, tween(560, easing = LinearEasing))
         }
+        // Parpadeo tipo tubo de neón que titila y "engancha" (mismo lenguaje que el
+        // Crucigrama): apaga y prende de forma irregular hasta quedar encendido.
+        ignition.snapTo(0f)
+        ignition.animateTo(0.85f, tween(55))
+        ignition.animateTo(0.08f, tween(45))
+        ignition.animateTo(0.7f, tween(35))
+        ignition.animateTo(0.05f, tween(60))
+        ignition.animateTo(1f, tween(150))
+    }
+
+    // Respiración lenta y de baja amplitud una vez encendida (§9.4: bucles sutiles).
+    val breath by rememberInfiniteTransition(label = "slotBreath").animateFloat(
+        initialValue = 0.85f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1600), RepeatMode.Reverse),
+        label = "slotBreathValue",
+    )
+    val activeAmt = if (solved) (ignition.value * (0.6f + 0.4f * breath)).coerceIn(0f, 1f) else 0f
+    val tileColor = if (solved) accent else LogicColors.SurfaceVariantDark
+
+    Box(
+        modifier = Modifier
+            .size(42.dp)
+            .drawBehind {
+                drawNeonTile(tileColor, activeAmt, cornerRadius = 12.dp, sparks = false, baseMargin = 7.dp, strokeScale = 0.6f)
+
+                // Chispas propias de la casilla: partículas radiales desde el centro
+                // que se apagan según avanza [spark] (idéntico patrón al Crucigrama).
+                val sp = spark.value
+                if (sp > 0f && sp < 1f) {
+                    val count = 6
+                    val angleSeed = seed * 1.7f
+                    val dist = size.minDimension * (0.3f + 0.75f * sp)
+                    val fade = 1f - sp
+                    val dot = (2.2f * (1f - sp * 0.4f)).dp.toPx()
+                    for (i in 0 until count) {
+                        val ang = angleSeed + i * (2f * PI.toFloat() / count)
+                        drawCircle(
+                            color = accent.copy(alpha = fade),
+                            radius = dot,
+                            center = Offset(center.x + cos(ang) * dist, center.y + sin(ang) * dist),
+                        )
+                    }
+                }
+            }
+            .clip(shape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = if (solved) letter.toString() else "",
+            style = MaterialTheme.typography.titleMedium,
+            color = LogicColors.OnDark,
+            fontWeight = FontWeight.Black,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 
@@ -358,8 +459,12 @@ private fun LetterWheel(
     onEnd: () -> Unit,
 ) {
     val density = LocalDensity.current
-    val wheelPx = with(density) { WheelSize.toPx() }
-    val nodePx = with(density) { NodeSize.toPx() }
+    // El anillo y las fichas se dimensionan según la cantidad de letras del nivel
+    // (más pequeño y proporcional que el tamaño fijo anterior).
+    val wheelSize = remember(letters.size) { wheelSizeFor(letters.size) }
+    val nodeSize = remember(letters.size) { nodeSizeFor(letters.size) }
+    val wheelPx = with(density) { wheelSize.toPx() }
+    val nodePx = with(density) { nodeSize.toPx() }
     // Radio del anillo: deja medio nodo + margen respecto al borde de la rueda.
     val ringPx = wheelPx / 2f - nodePx / 2f - with(density) { 6.dp.toPx() }
     val hitRadius = nodePx * 0.62f
@@ -382,7 +487,7 @@ private fun LetterWheel(
 
     Box(
         modifier = Modifier
-            .size(WheelSize)
+            .size(wheelSize)
             .pointerInput(centers) {
                 awaitEachGesture {
                     val down = awaitFirstDown()
@@ -405,14 +510,14 @@ private fun LetterWheel(
         // Base circular sutil de la rueda (superficie elevada, no compite por atención).
         Box(
             modifier = Modifier
-                .size(WheelSize)
+                .size(wheelSize)
                 .clip(CircleShape)
                 .background(LogicColors.SurfaceDark.copy(alpha = 0.55f))
                 .border(BorderStroke(1.dp, accent.copy(alpha = 0.25f)), CircleShape),
         )
 
         // Línea neón que conecta el trazo. Se dibuja bajo los nodos.
-        Canvas(modifier = Modifier.size(WheelSize)) {
+        Canvas(modifier = Modifier.size(wheelSize)) {
             if (selection.isEmpty()) return@Canvas
             val points = selection.map { centers[it] }
             // Halo ancho translúcido + trazo brillante fino encima (efecto neón).
@@ -431,6 +536,7 @@ private fun LetterWheel(
                 letter = letter.char,
                 selected = selected,
                 accent = accent,
+                nodeSize = nodeSize,
                 modifier = Modifier.offset {
                     IntOffset(
                         x = (centers[i].x - nodePx / 2f).roundToInt(),
@@ -442,46 +548,49 @@ private fun LetterWheel(
     }
 }
 
+/**
+ * Ficha de letra con la estética de **globo de neón** ([drawNeonBubble], la misma
+ * fuente de bordes neón que usan las burbujas de Cálculo Mental): un aro de tubo
+ * encendido con relleno de cristal, en vez del degradado/borde ad-hoc anterior. Al
+ * seleccionarse, un resorte la agranda y el halo se intensifica ([glow]) para dar la
+ * sensación táctil "con peso" (§9.4); un relleno adicional refuerza el look "prendido".
+ */
 @Composable
 private fun WheelNode(
     letter: Char,
     selected: Boolean,
     accent: Color,
+    nodeSize: Dp,
     modifier: Modifier = Modifier,
 ) {
-    // Resorte al seleccionar: crece y se ilumina; da la sensación táctil "con peso".
     val scale by animateFloatAsState(
         targetValue = if (selected) 1.14f else 1f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
         label = "nodeScale",
     )
-    val glowElevation by animateFloatAsState(
-        targetValue = if (selected) 16f else 3f,
+    val glow by animateFloatAsState(
+        targetValue = if (selected) 1.7f else 1f,
         animationSpec = spring(),
         label = "nodeGlow",
     )
     Box(
         modifier = modifier
-            .size(NodeSize)
+            .size(nodeSize)
             .scale(scale)
-            .shadow(glowElevation.dp, CircleShape, clip = false, ambientColor = accent, spotColor = accent)
-            .clip(CircleShape)
-            .background(
-                Brush.verticalGradient(
-                    if (selected) listOf(accent, accent.copy(alpha = 0.85f))
-                    else listOf(accent.copy(alpha = 0.9f), LogicColors.SurfaceDark),
-                ),
-            )
-            .border(
-                BorderStroke(if (selected) 2.dp else 1.2.dp, accent.copy(alpha = if (selected) 1f else 0.6f)),
-                CircleShape,
-            ),
+            .drawBehind {
+                drawNeonBubble(accent, glow = glow)
+                // Relleno extra al seleccionar: refuerza el "encendido" del globo.
+                if (selected) {
+                    drawCircle(accent.copy(alpha = 0.4f), radius = size.minDimension / 2f - 6.dp.toPx())
+                }
+            }
+            .clip(CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = letter.toString(),
             style = MaterialTheme.typography.headlineSmall,
-            color = if (selected) LogicColors.BackgroundDark else LogicColors.OnDark,
+            color = LogicColors.OnDark,
             fontWeight = FontWeight.Black,
         )
     }

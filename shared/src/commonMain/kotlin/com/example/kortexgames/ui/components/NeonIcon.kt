@@ -9,6 +9,7 @@ import androidx.compose.material.icons.automirrored.rounded.ExitToApp
 import androidx.compose.material.icons.rounded.Casino
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.automirrored.rounded.HelpOutline
@@ -95,6 +96,9 @@ object KortexIcons {
 
     /** Salir de la partida: abandona el juego y vuelve a la lista (menú de pausa). */
     val Exit: ImageVector = Icons.AutoMirrored.Rounded.ExitToApp
+
+    /** Cerrar: descarta el menú de pausa y reanuda (botón "X" de la tarjeta de pausa). */
+    val Close: ImageVector = Icons.Rounded.Close
 
     /** Efectos de sonido activados (toggle de audio del menú de pausa/ajustes). */
     val SfxOn: ImageVector = Icons.AutoMirrored.Rounded.VolumeUp

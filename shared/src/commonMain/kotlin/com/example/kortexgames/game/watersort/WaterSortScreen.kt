@@ -79,6 +79,8 @@ import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.LevelStripState
 import com.example.kortexgames.ui.components.NeonIcon
 import com.example.kortexgames.ui.components.bounceClick
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.potionsorting_intro
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -181,6 +183,7 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
                 selected = selectedLevel,
                 onSelect = { selectedLevel = it },
             ),
+            heroImage = Res.drawable.potionsorting_intro,
             onStart = { vm.onIntent(WaterSortIntent.PlayLevel(selectedLevel)) },
             onExit = onExit,
             background = {

@@ -41,6 +41,26 @@ data class PolarityParticle(
 )
 
 /**
+ * Efecto transitorio de impacto (chispas) en el borde de captura.
+ *
+ * Vive fuera de [PolarityParticle] porque sobrevive a la partícula que lo originó: una
+ * vez que hay acierto/fallo, la partícula desaparece del frame pero el destello de
+ * chispas debe seguir animándose unos cientos de ms más. [ageMs] se incrementa cada
+ * frame en el motor y la pantalla lo usa para interpolar tamaño/alfa del estallido.
+ *
+ * @property success true = acierto (color coincide, chispas del color del sector),
+ *   false = fallo (chispas rojas de error).
+ */
+data class PolarityImpact(
+    val id: Long,
+    val x: Float,
+    val y: Float,
+    val colorIndex: Int,
+    val success: Boolean,
+    val ageMs: Long = 0L,
+)
+
+/**
  * Estado de UI del juego Atracción Geométrica.
  *
  * El estado conserva geometría de viewport para mantener el motor desacoplado del
@@ -50,6 +70,7 @@ data class PolarityParticle(
 data class PolarityCollisionState(
     val rotationRad: Float = 0f,
     val particles: List<PolarityParticle> = emptyList(),
+    val impacts: List<PolarityImpact> = emptyList(),
     val viewportWidthPx: Float = 0f,
     val viewportHeightPx: Float = 0f,
     val score: Int = 0,
@@ -92,11 +113,13 @@ class PolarityCollisionEngine(
     private val frameClock = FrameClock(maxDtSec = MAX_DT_SEC)
     private var spawnAccumulatorSec = 0f
     private var nextParticleId = 1L
+    private var nextImpactId = 1L
 
     override fun onStart() {
         frameClock.reset()
         spawnAccumulatorSec = 0f
         nextParticleId = 1L
+        nextImpactId = 1L
         _state.value = PolarityCollisionState()
     }
 
@@ -183,6 +206,7 @@ class PolarityCollisionEngine(
         var caughtDelta = 0
         var missedDelta = 0
         val nextParticles = ArrayList<PolarityParticle>(particles.size)
+        val newImpacts = ArrayList<PolarityImpact>()
 
         for (particle in particles) {
             var ax = 0f
@@ -232,7 +256,8 @@ class PolarityCollisionEngine(
                     radius = catchRadius,
                 )
                 val impactAngle = atan2(impactY - centerY, impactX - centerX)
-                if (isColorMatch(impactAngle, state.rotationRad, particle.colorIndex)) {
+                val isMatch = isColorMatch(impactAngle, state.rotationRad, particle.colorIndex)
+                if (isMatch) {
                     caughtDelta++
                     val speed = hypot(vx, vy)
                     scoreDelta += (80f * particle.mass + speed * 0.14f).toInt() + if (particle.magnetic) 35 else 0
@@ -244,6 +269,15 @@ class PolarityCollisionEngine(
                     audio.playSound(SoundEffect.ERROR)
                     audio.hapticFeedback(HapticFeedback.ERROR)
                 }
+                // Chispa en el punto de cruce exacto (no en la posición final ya hundida
+                // en el disco), para que el estallido quede pegado al borde del anillo.
+                newImpacts += PolarityImpact(
+                    id = nextImpactId++,
+                    x = impactX,
+                    y = impactY,
+                    colorIndex = particle.colorIndex,
+                    success = isMatch,
+                )
                 continue
             }
 
@@ -255,12 +289,20 @@ class PolarityCollisionEngine(
             }
         }
 
+        val dtMs = (dtSec * 1_000f).toLong()
+        val agedImpacts = state.impacts.mapNotNull { impact ->
+            val aged = impact.ageMs + dtMs
+            if (aged >= IMPACT_LIFETIME_MS) null else impact.copy(ageMs = aged)
+        }
+
+
         return state.copy(
             particles = nextParticles,
+            impacts = agedImpacts + newImpacts,
             score = (state.score + scoreDelta).coerceAtLeast(0),
             caught = state.caught + caughtDelta,
             missed = state.missed + missedDelta,
-            remainingMs = (state.remainingMs - (dtSec * 1_000f).toLong()).coerceAtLeast(0L),
+            remainingMs = (state.remainingMs - dtMs).coerceAtLeast(0L),
         )
     }
 
@@ -346,12 +388,18 @@ class PolarityCollisionEngine(
 
     /**
      * Ángulo [angleRad] llevado al sistema de la rejilla de sectores: se le resta la
-     * rotación del círculo y se desplaza medio sector para que `[0, sectorSize)` sea el
-     * sector 0. Resultado en `[0, 2π)`. Base común de [sectorFromAngle] e [isColorMatch].
+     * rotación del círculo para que `[0, sectorSize)` sea el sector 0. Resultado en
+     * `[0, 2π)`. Base común de [sectorFromAngle] e [isColorMatch].
+     *
+     * IMPORTANTE: sin desplazamiento de medio sector. El sector 0 dibujado en pantalla
+     * ([drawRingSectors][com.example.kortexgames.game.polarity.PolarityCollisionScreenKt])
+     * arranca justo en `rotationRad` (no está centrado ahí) y las costuras/separadores
+     * caen en `rotationRad + sectorSize·i`; esta función tiene que reproducir esas MISMAS
+     * fronteras o el hit-test queda desfasado medio sector (~45°) respecto al color que
+     * el jugador ve, que es justo el bug que esto corrige.
      */
     private fun alignedAngle(angleRad: Float, rotationRad: Float): Float {
-        val sectorSize = (2.0 * PI / COLOR_SECTORS).toFloat()
-        return normalizeAnglePositive(angleRad - rotationRad + sectorSize * 0.5f)
+        return normalizeAnglePositive(angleRad - rotationRad)
     }
 
     private fun sectorFromAngle(angleRad: Float, rotationRad: Float): Int {
@@ -457,6 +505,13 @@ class PolarityCollisionEngine(
 }
 
 private const val DEFAULT_ROUND_DURATION_MS = 30_000L
+
+/**
+ * Duración del estallido de chispas de un impacto (ver [PolarityImpact.ageMs]) antes de
+ * descartarlo del estado. Pública (no en el `companion object` privado del motor) porque
+ * la pantalla la necesita para interpolar la misma animación que hace avanzar el motor.
+ */
+const val IMPACT_LIFETIME_MS = 420L
 
 
 

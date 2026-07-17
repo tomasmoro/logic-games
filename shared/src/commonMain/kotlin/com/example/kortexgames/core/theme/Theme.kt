@@ -1,14 +1,15 @@
 package com.example.kortexgames.core.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 
+// Tema único, siempre oscuro (CLAUDE.md §9.1): la identidad "azul noche + neón"
+// no tiene variante clara; ignorar el tema del sistema evita que la app se vea
+// rota (colores calculados para fondo oscuro) si el usuario tiene modo claro activo.
 private val DarkScheme = darkColorScheme(
     primary = LogicColors.NeonCyan,        // foco/navegación
     secondary = LogicColors.NeonGreen,     // acción principal
@@ -23,18 +24,6 @@ private val DarkScheme = darkColorScheme(
     onSurfaceVariant = LogicColors.OnDarkMuted,
 )
 
-private val LightScheme = lightColorScheme(
-    primary = LogicColors.NeonCyan,
-    secondary = LogicColors.NeonGreen,
-    tertiary = LogicColors.Violet,
-    background = LogicColors.BackgroundLight,
-    surface = LogicColors.SurfaceLight,
-    error = LogicColors.Error,
-    onPrimary = LogicColors.BackgroundDark,
-    onBackground = LogicColors.OnLight,
-    onSurface = LogicColors.OnLight,
-)
-
 private val LogicShapes = Shapes(
     small = RoundedCornerShape(12.dp),
     medium = RoundedCornerShape(20.dp),
@@ -43,11 +32,10 @@ private val LogicShapes = Shapes(
 
 @Composable
 fun LogicGamesTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
     MaterialTheme(
-        colorScheme = if (darkTheme) DarkScheme else LightScheme,
+        colorScheme = DarkScheme,
         shapes = LogicShapes,
         typography = LogicTypography,
         content = content,
