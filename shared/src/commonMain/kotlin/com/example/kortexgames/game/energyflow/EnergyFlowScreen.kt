@@ -113,6 +113,7 @@ fun EnergyFlowScreen(graph: AppGraph, onExit: () -> Unit) {
                 maxUnlocked = state.maxUnlocked,
                 selected = selectedLevel,
                 onSelect = { selectedLevel = it },
+                bestTimes = state.levelTimes,
             ),
             onStart = { vm.onIntent(EnergyFlowIntent.PlayLevel(selectedLevel)) },
             onExit = onExit,

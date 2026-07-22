@@ -79,7 +79,13 @@ class BlockGridViewModel(
                 engine.onDrop(intent.pieceId, intent.row, intent.col)
             }
 
-            BlockGridIntent.DragCancelled -> setState { copy(drag = null) }
+            BlockGridIntent.DragCancelled -> {
+                // El dedo se soltó fuera del tablero: la pieza vuelve a su hueco.
+                // Se avisa a la UI con el id ANTES de limpiar el drag, para que
+                // anime el "vuelo de vuelta" (la pieza nunca salió de la mano).
+                currentState.drag?.pieceId?.let { sendEffect(BlockGridEffect.AnimatePieceReturn(it)) }
+                setState { copy(drag = null) }
+            }
 
             BlockGridIntent.LineClearFinished -> engine.onLineClearFinished()
 
@@ -99,9 +105,12 @@ class BlockGridViewModel(
                 sendEffect(BlockGridEffect.PlaySound(SoundEffect.TAP))
                 sendEffect(BlockGridEffect.Vibrate(HapticFeedback.MEDIUM))
             }
-            BlockGridEvent.PlacementRejected -> {
+            is BlockGridEvent.PlacementRejected -> {
                 sendEffect(BlockGridEffect.PlaySound(SoundEffect.ERROR))
                 sendEffect(BlockGridEffect.Vibrate(HapticFeedback.ERROR))
+                // El drag ya se limpió al soltar; la pieza sigue en la mano. La
+                // UI la hace "volar de vuelta" a su hueco en lugar de un salto seco.
+                sendEffect(BlockGridEffect.AnimatePieceReturn(event.pieceId))
             }
             is BlockGridEvent.LinesCleared -> {
                 sendEffect(BlockGridEffect.PlaySound(SoundEffect.SUCCESS))

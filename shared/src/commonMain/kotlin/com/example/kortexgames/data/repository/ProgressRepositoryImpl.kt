@@ -53,12 +53,20 @@ class ProgressRepositoryImpl(
         val isNewRecord = runCatching { playerProgress.recordResult(result) }.getOrDefault(false)
 
         // 2) ¿Podemos ir al backend?
-        if (authState() !is AuthState.Authenticated) return SaveOutcome(percentile = null, isNewRecord = isNewRecord)
+        val auth = authState()
+        // DIAGNÓSTICO: distingue "la app me ve como invitado" de "la RPC falló".
+        println("KORTEX saveResult authState=${auth::class.simpleName}")
+        if (auth !is AuthState.Authenticated) return SaveOutcome(percentile = null, isNewRecord = isNewRecord)
 
         val percentile = runCatching {
             val (remoteId, percentile) = remote.submit(result)
             local.markSynced(localId, remoteId)
             percentile
+        }.onFailure {
+            // DIAGNÓSTICO: el fallo de red/RPC se traga con getOrNull(), así que sin
+            // esto el percentil vuelve null en silencio y la UI cae al cartel de
+            // "inicia sesión" aunque el usuario SÍ esté autenticado.
+            println("KORTEX submit_game_result FALLÓ: ${it::class.simpleName}: ${it.message}")
         }.getOrNull() // fallo de red → queda pendiente, se subirá en syncPending()
         return SaveOutcome(percentile = percentile, isNewRecord = isNewRecord)
     }

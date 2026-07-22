@@ -38,12 +38,22 @@ enum class MetricUnit { LEVEL, COUNT, MILLIS, POINTS }
  * @property direction si mayor o menor es mejor (define el récord).
  * @property recordLabel prefijo del récord en la UI ("Nivel máx", "Mejor").
  * @property unit unidad para formatear el número.
+ * @property tracksLevelTime si además del récord (nivel máx) se guarda el **mejor
+ *   tiempo por nivel** (menor = mejor). Solo tiene sentido en juegos [ProgressionKind.LEVELED]
+ *   cuyos niveles se **completan** (no se "fallan"), donde el tiempo por nivel es una
+ *   stat comparable partida a partida. Es un mecanismo genérico (ver
+ *   [com.example.kortexgames.domain.model.LevelBestTime]): cualquier juego LEVELED
+ *   puede activarlo sin lógica propia; hoy lo usa Flujo de Energía. Requisito para que
+ *   el tiempo sea significativo: `GameResult.completionTimeMs` corresponde a la partida
+ *   del nivel que devuelve `reachedMetric()` (se cumple si el motor solo llama a
+ *   `finish()` al resolver el nivel).
  */
 data class GameProgression(
     val kind: ProgressionKind,
     val direction: MetricDirection,
     val recordLabel: String,
     val unit: MetricUnit,
+    val tracksLevelTime: Boolean = false,
 ) {
     /**
      * ¿[candidate] supera a [current] según la [direction]? Núcleo del récord:
@@ -83,8 +93,12 @@ object GameProgressions {
         GameIds.WATER_SORT to GameProgression(
             ProgressionKind.LEVELED, MetricDirection.HIGHER_IS_BETTER, "Nivel máx", MetricUnit.LEVEL,
         ),
+        // El récord sigue siendo el nivel máx (progresión + selector), pero además
+        // guardamos el MEJOR TIEMPO POR NIVEL (tracksLevelTime): así "medir por tiempo"
+        // (BACKLOG) convive con los niveles en vez de sustituirlos. Ver [LevelBestTime].
         GameIds.ENERGY_FLOW to GameProgression(
             ProgressionKind.LEVELED, MetricDirection.HIGHER_IS_BETTER, "Nivel máx", MetricUnit.LEVEL,
+            tracksLevelTime = true,
         ),
         GameIds.BUBBLE_MATH to GameProgression(
             ProgressionKind.ENDLESS, MetricDirection.HIGHER_IS_BETTER, "Mejor ronda", MetricUnit.COUNT,

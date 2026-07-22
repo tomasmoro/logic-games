@@ -31,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -72,6 +73,7 @@ import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlin.random.Random
 
 // --- Constantes de interacción/dibujo -----------------------------------------
@@ -82,8 +84,20 @@ private val DRAG_LIFT = 56.dp
 /** Lado del mini-bloque con el que se dibujan las piezas en la mano. */
 private val HAND_CELL = 13.dp
 
-/** Duración del fade+shrink de las líneas al romperse. */
-private const val CLEAR_ANIM_MS = 340
+/**
+ * Duración total de la limpieza (reloj único). Algo más larga que un fade simple
+ * porque incluye el "reparto" de la onda escalonada ([CLEAR_STAGGER_SPAN]): el
+ * fade real de cada celda ocupa la fracción restante, ~55 % de este tiempo.
+ */
+private const val CLEAR_ANIM_MS = 460
+
+/**
+ * Fracción del reloj de limpieza dedicada a escalonar el arranque por distancia
+ * al epicentro: la celda más lejana empieza a romperse cuando el reloj llega
+ * aquí. El resto (1 − esto) es lo que dura el fade+shrink de cada celda. Subirlo
+ * hace la onda más marcada; bajarlo la acerca a una limpieza simultánea.
+ */
+private const val CLEAR_STAGGER_SPAN = 0.5f
 
 /**
  * Mapa acento semántico → token de [LogicColors]. Vive en la UI (el dominio no
@@ -123,19 +137,58 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
     }
     val state by vm.state.collectAsStateWithLifecycle()
 
+    // --- Estado local de UI (declarado ANTES del colector de efectos, que lo lee
+    // en sus closures; en Kotlin un lambda no puede referenciar variables aún no
+    // declaradas). Los rects en coordenadas de raíz: el del contenedor (para
+    // posicionar overlays) y el de la rejilla (para traducir dedo → celda).
+    var containerRect by remember { mutableStateOf(Rect.Zero) }
+    var boardRect by remember { mutableStateOf(Rect.Zero) }
+
+    // Posición del dedo (raíz) durante el arrastre. Solo-UI, ver KDoc de la clase.
+    var fingerRoot by remember { mutableStateOf(Offset.Zero) }
+
+    // Centro (raíz) del hueco de cada pieza de la mano, por id: destino del "vuelo
+    // de vuelta" cuando un drop se rechaza o se cancela el gesto.
+    val slotCenters = remember { mutableStateMapOf<Int, Offset>() }
+
     // Celebración de combo: nonce (fuerza recomponer aunque el combo se repita),
     // líneas y si toca soltar guirnaldas (combo 5+ o vaciado total del tablero).
     var combo by remember { mutableStateOf<ComboCelebration?>(null) }
 
+    // Pieza que vuela de vuelta a la mano (drop rechazado/cancelado), o null en
+    // reposo. Dirigido por el efecto AnimatePieceReturn, no por el estado.
+    var returnFlight by remember { mutableStateOf<ReturnFlight?>(null) }
+
+    // Centro (en celdas) de la última pieza colocada: origen de la onda de
+    // limpieza escalonada (las celdas más lejanas se rompen algo más tarde).
+    var lastPlacedCenter by remember { mutableStateOf<Offset?>(null) }
+
     // Único punto donde los Effects se vuelven sonido/vibración/celebración.
     LaunchedEffect(Unit) {
         var comboNonce = 0
+        var returnNonce = 0
         vm.effect.collect { effect ->
             when (effect) {
                 is BlockGridEffect.PlaySound -> graph.audio.playSound(effect.sound)
                 is BlockGridEffect.Vibrate -> graph.audio.hapticFeedback(effect.feedback)
                 is BlockGridEffect.ShowComboAnim ->
                     combo = ComboCelebration(++comboNonce, effect.lines, effect.showGarlands)
+                is BlockGridEffect.AnimatePieceReturn -> {
+                    // La pieza sigue en la mano (nunca se colocó); se anima su
+                    // regreso desde donde se soltó hasta el centro de su hueco.
+                    val piece = vm.state.value.hand.firstOrNull { it.id == effect.pieceId }
+                    val target = slotCenters[effect.pieceId]
+                    if (piece != null && target != null &&
+                        boardRect != Rect.Zero && containerRect != Rect.Zero
+                    ) {
+                        returnFlight = ReturnFlight(
+                            nonce = ++returnNonce,
+                            piece = piece,
+                            startFinger = fingerRoot - containerRect.topLeft,
+                            targetCenter = target - containerRect.topLeft,
+                        )
+                    }
+                }
             }
         }
     }
@@ -152,14 +205,6 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
         )
         return
     }
-
-    // Rects en coordenadas de raíz: el del contenedor (para posicionar el
-    // overlay de arrastre) y el de la rejilla (para traducir dedo → celda).
-    var containerRect by remember { mutableStateOf(Rect.Zero) }
-    var boardRect by remember { mutableStateOf(Rect.Zero) }
-
-    // Posición del dedo (raíz) durante el arrastre. Solo-UI, ver KDoc de la clase.
-    var fingerRoot by remember { mutableStateOf(Offset.Zero) }
 
     val currentState by rememberUpdatedState(state)
 
@@ -207,6 +252,7 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
                     preview = state.drag?.preview,
                     previewAccent = state.drag?.let { d -> state.hand.firstOrNull { it.id == d.pieceId } }
                         ?.accent?.color(),
+                    clearOrigin = lastPlacedCenter,
                     onClearFinished = { vm.onIntent(BlockGridIntent.LineClearFinished) },
                     modifier = Modifier
                         .padding(horizontal = 18.dp)
@@ -231,8 +277,12 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
                     key(piece.id) {
                         HandSlot(
                             piece = piece,
-                            hidden = state.drag?.pieceId == piece.id,
+                            // Oculta el slot mientras la pieza se arrastra O mientras
+                            // vuela de vuelta: así el "vuelo de vuelta" aterriza sobre
+                            // un hueco vacío y no sobre una copia ya visible.
+                            hidden = state.drag?.pieceId == piece.id || returnFlight?.piece?.id == piece.id,
                             modifier = Modifier.weight(1f),
+                            onCenter = { center -> slotCenters[piece.id] = center },
                             onDragStart = { finger ->
                                 fingerRoot = finger
                                 vm.onIntent(BlockGridIntent.DragStarted(piece.id))
@@ -253,6 +303,12 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
                             onDragEnd = { finger, liftPx ->
                                 val cell = originCellFor(piece, finger, liftPx)
                                 if (cell != null) {
+                                    // Centro (en celdas) del bounding box: origen de la
+                                    // onda de limpieza si esta jugada rompe líneas.
+                                    lastPlacedCenter = Offset(
+                                        cell.col + piece.shape.width / 2f,
+                                        cell.row + piece.shape.height / 2f,
+                                    )
                                     vm.onIntent(BlockGridIntent.DropPiece(piece.id, cell.row, cell.col))
                                 } else {
                                     vm.onIntent(BlockGridIntent.DragCancelled)
@@ -276,6 +332,23 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
                     cellPx = boardRect.width / BOARD_SIZE,
                     position = fingerRoot - containerRect.topLeft,
                 )
+            }
+        }
+
+        // Vuelo de vuelta de una pieza rechazada/cancelada: overlay one-shot que
+        // la lleva desde donde se soltó hasta su hueco, encogiéndose al tamaño de
+        // la mano. Se rekeya con el nonce para reiniciar si vuelve a rechazarse.
+        returnFlight?.let { rf ->
+            if (boardRect != Rect.Zero) {
+                key(rf.nonce) {
+                    ReturningPieceOverlay(
+                        piece = rf.piece,
+                        boardCellPx = boardRect.width / BOARD_SIZE,
+                        startFinger = rf.startFinger,
+                        targetCenter = rf.targetCenter,
+                        onDone = { returnFlight = null },
+                    )
+                }
             }
         }
 
@@ -387,22 +460,30 @@ private fun HudPill(label: String, value: String, modifier: Modifier = Modifier)
  * (con halo neón), el fantasma del arrastre, el glow de líneas a punto de
  * romperse y la animación de limpieza con sus chispas.
  *
- * La limpieza es **fade + shrink dirigido por estado**: cuando el tablero trae
- * celdas [BoardCell.Clearing], un [Animatable] va de 0→1 y al llegar notifica
- * [onClearFinished] para que el dominio las vacíe (dos tiempos, ver el motor).
- * Se rekeya con el set de celdas: si un combo nuevo cae en plena animación, el
- * ciclo arranca de cero para el conjunto ampliado — un único reloj, sin estados
- * a medias por celda.
+ * La limpieza es **fade + shrink dirigido por estado, en onda**: cuando el
+ * tablero trae celdas [BoardCell.Clearing], un [Animatable] va de 0→1 y al
+ * llegar notifica [onClearFinished] para que el dominio las vacíe (dos tiempos,
+ * ver el motor). Sobre ese reloj único, cada celda arranca su propio fade+shrink
+ * con una **demora proporcional a su distancia a [clearOrigin]** (la pieza recién
+ * colocada): la ruptura se propaga como una onda desde donde el jugador soltó, en
+ * vez de que todas las celdas se apaguen a la vez — más "juice" sin temporizadores
+ * por celda (todo se recalcula por frame a partir del reloj + la distancia). Se
+ * rekeya con el set de celdas: si un combo nuevo cae en plena animación, el ciclo
+ * arranca de cero para el conjunto ampliado.
  *
  * @param previewAccent acento de la pieza que se arrastra, usado para teñir el
  *        glow de [PlacementPreview.clearingLines]; null en reposo (no hay nada
  *        que iluminar).
+ * @param clearOrigin centro (en celdas) de la última pieza colocada, epicentro de
+ *        la onda de limpieza; si es null (no debería con líneas rotas) la onda
+ *        emana del centro del tablero.
  */
 @Composable
 private fun BoardCanvas(
     board: BoardGrid,
     preview: PlacementPreview?,
     previewAccent: Color?,
+    clearOrigin: Offset?,
     onClearFinished: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -411,6 +492,23 @@ private fun BoardCanvas(
             for (r in 0 until BOARD_SIZE) for (c in 0 until BOARD_SIZE) {
                 if (board.cells[r][c] is BoardCell.Clearing) add(GridPos(r, c))
             }
+        }
+    }
+    // Demora (fracción del reloj) de cada celda según su distancia al epicentro,
+    // normalizada al alcance máximo del conjunto → la celda más lejana arranca en
+    // STAGGER_SPAN y aún así termina justo al cerrar el reloj (ver progreso local).
+    val clearDelays = remember(clearingCells, clearOrigin) {
+        if (clearingCells.isEmpty()) {
+            emptyMap()
+        } else {
+            val origin = clearOrigin ?: Offset(BOARD_SIZE / 2f, BOARD_SIZE / 2f)
+            val distances = clearingCells.associateWith { pos ->
+                val dc = pos.col + 0.5f - origin.x
+                val dr = pos.row + 0.5f - origin.y
+                sqrt(dc * dc + dr * dr)
+            }
+            val maxDist = distances.values.maxOrNull()?.takeIf { it > 0f } ?: 1f
+            distances.mapValues { (_, d) -> d / maxDist * CLEAR_STAGGER_SPAN }
         }
     }
     val clearProgress = remember { Animatable(0f) }
@@ -452,7 +550,12 @@ private fun BoardCanvas(
                         drawBlock(topLeft, cellPx, cell.accent.color())
 
                     is BoardCell.Clearing -> {
-                        val p = clearProgress.value
+                        // Progreso LOCAL de esta celda: descuenta su demora y
+                        // reescala el resto del reloj a 0..1, de modo que las
+                        // celdas cercanas al epicentro rompen antes que las lejanas.
+                        val delay = clearDelays[GridPos(r, c)] ?: 0f
+                        val p = ((clearProgress.value - delay) / (1f - CLEAR_STAGGER_SPAN))
+                            .coerceIn(0f, 1f)
                         // El hueco se ve debajo mientras el bloque se encoge.
                         drawEmptyCell(topLeft, cellPx)
                         drawBlock(
@@ -487,12 +590,14 @@ private fun BoardCanvas(
  *
  * Los callbacks entregan la posición del dedo **en coordenadas de raíz**
  * (origen del slot + posición local) y el lift en px, ya resueltos aquí para
- * que la pantalla no repita conversiones.
+ * que la pantalla no repita conversiones. [onCenter] reporta el centro del slot
+ * (raíz) para que el "vuelo de vuelta" de una pieza rechazada sepa a dónde ir.
  */
 @Composable
 private fun HandSlot(
     piece: Polyomino,
     hidden: Boolean,
+    onCenter: (Offset) -> Unit,
     onDragStart: (Offset) -> Unit,
     onDragMove: (Offset, Float) -> Unit,
     onDragEnd: (Offset, Float) -> Unit,
@@ -504,7 +609,11 @@ private fun HandSlot(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .onGloballyPositioned { slotOrigin = it.boundsInRoot().topLeft }
+            .onGloballyPositioned {
+                val bounds = it.boundsInRoot()
+                slotOrigin = bounds.topLeft
+                onCenter(bounds.center)
+            }
             .pointerInput(piece.id) {
                 val liftPx = DRAG_LIFT.toPx()
                 var finger = Offset.Zero
@@ -596,6 +705,95 @@ private fun DraggedPieceOverlay(
                 cellPx = cellPx,
                 accent = piece.accent.color(),
                 glowBoost = true,
+            )
+        }
+    }
+}
+
+// --- Vuelo de vuelta de una pieza rechazada -----------------------------------------
+
+/** Duración del "vuelo de vuelta" de una pieza rechazada/cancelada a su hueco. */
+private const val RETURN_ANIM_MS = 260
+
+/**
+ * Pieza que vuela de vuelta a la mano tras un drop rechazado o un gesto
+ * cancelado. Guarda el [nonce] (rekey del overlay para reiniciar si vuelve a
+ * rechazarse en pleno vuelo), la [piece] a dibujar y los dos extremos del
+ * trayecto en **coordenadas del contenedor**: [startFinger] (posición del dedo
+ * al soltar) y [targetCenter] (centro del hueco destino en la mano).
+ */
+private data class ReturnFlight(
+    val nonce: Int,
+    val piece: Polyomino,
+    val startFinger: Offset,
+    val targetCenter: Offset,
+)
+
+/**
+ * Overlay one-shot del "vuelo de vuelta": lleva la pieza desde donde se soltó
+ * hasta su hueco de la mano mientras se encoge del tamaño de celda del tablero
+ * al de la mano ([HAND_CELL]). Da continuidad al gesto rechazado —la ficha
+ * "rebota" a su sitio— en vez de desaparecer de golpe (§9.4: lo táctil se anima).
+ *
+ * Un único reloj ([progress], 0→1 con `FastOutSlowIn`) interpola a la vez la
+ * posición del centro y la escala; al aterrizar coincide en tamaño y lugar con
+ * la miniatura en reposo del slot (que se revela justo cuando [onDone] retira el
+ * overlay), por lo que el relevo es imperceptible. El centro de partida se
+ * calcula igual que en [DraggedPieceOverlay] (la pieza va centrada en X sobre el
+ * dedo y elevada [DRAG_LIFT]) para que el vuelo arranque exactamente donde
+ * estaba la pieza arrastrada.
+ */
+@Composable
+private fun ReturningPieceOverlay(
+    piece: Polyomino,
+    boardCellPx: Float,
+    startFinger: Offset,
+    targetCenter: Offset,
+    onDone: () -> Unit,
+) {
+    val progress = remember { Animatable(0f) }
+    val onDoneCurrent by rememberUpdatedState(onDone)
+    LaunchedEffect(Unit) {
+        progress.animateTo(1f, tween(RETURN_ANIM_MS, easing = FastOutSlowInEasing))
+        onDoneCurrent()
+    }
+
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val liftPx = with(density) { DRAG_LIFT.toPx() }
+    val handCellPx = with(density) { HAND_CELL.toPx() }
+    val bboxW = piece.shape.width * boardCellPx
+    val bboxH = piece.shape.height * boardCellPx
+
+    // Centro de la pieza en el instante de soltar (mismo encuadre que el overlay
+    // de arrastre) y factor de escala hasta el tamaño de la miniatura de la mano.
+    val startCenter = startFinger - Offset(0f, bboxH / 2f + liftPx)
+    val endScale = handCellPx / boardCellPx
+
+    val e = progress.value
+    val cx = startCenter.x + (targetCenter.x - startCenter.x) * e
+    val cy = startCenter.y + (targetCenter.y - startCenter.y) * e
+    val scale = 1f + (endScale - 1f) * e
+
+    Canvas(
+        modifier = Modifier
+            .graphicsLayer {
+                // transformOrigin por defecto = centro del layer: escalar mantiene
+                // el centro visual en (cx, cy), que es lo que interpolamos.
+                translationX = cx - bboxW / 2f
+                translationY = cy - bboxH / 2f
+                scaleX = scale
+                scaleY = scale
+            }
+            .size(
+                with(density) { bboxW.toDp() },
+                with(density) { bboxH.toDp() },
+            ),
+    ) {
+        piece.shape.cells.forEach { offset ->
+            drawBlock(
+                topLeft = Offset(offset.dCol * boardCellPx, offset.dRow * boardCellPx),
+                cellPx = boardCellPx,
+                accent = piece.accent.color(),
             )
         }
     }

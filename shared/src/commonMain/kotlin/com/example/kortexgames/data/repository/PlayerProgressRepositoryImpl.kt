@@ -1,15 +1,19 @@
 package com.example.kortexgames.data.repository
 
+import com.example.kortexgames.data.local.LocalLevelTimeDataSource
 import com.example.kortexgames.data.local.LocalPlayerProgressDataSource
+import com.example.kortexgames.data.remote.RemoteLevelTimeDataSource
 import com.example.kortexgames.data.remote.RemotePlayerProgressDataSource
 import com.example.kortexgames.domain.model.AuthState
 import com.example.kortexgames.domain.model.GameResult
+import com.example.kortexgames.domain.model.LevelBestTime
 import com.example.kortexgames.domain.model.PlayerGameProgress
 import com.example.kortexgames.domain.repository.PlayerProgressRepository
 import com.example.kortexgames.game.GameProgressions
 import com.example.kortexgames.game.ProgressionKind
 import kotlin.time.Clock
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 /**
  * Implementación **local-first** de la progresión por juego.
@@ -24,11 +28,16 @@ import kotlinx.coroutines.flow.Flow
  *  reciente gana) y sube lo pendiente. Como el servidor no interpreta la métrica,
  *  toda la resolución de conflictos vive aquí.
  *
+ * Además del récord agregado, mantiene el **mejor tiempo por nivel** (localLevelTime /
+ * remoteLevelTime) para los juegos con `tracksLevelTime` (misma ruta local-first).
+ *
  * @param authState proveedor del estado de sesión actual (invitado/autenticado).
  */
 class PlayerProgressRepositoryImpl(
     private val local: LocalPlayerProgressDataSource,
     private val remote: RemotePlayerProgressDataSource,
+    private val localLevelTime: LocalLevelTimeDataSource,
+    private val remoteLevelTime: RemoteLevelTimeDataSource,
     private val authState: () -> AuthState,
     private val clock: Clock = Clock.System,
 ) : PlayerProgressRepository {
@@ -36,6 +45,9 @@ class PlayerProgressRepositoryImpl(
     override fun observe(gameId: String): Flow<PlayerGameProgress?> = local.observe(gameId)
 
     override fun observeAll(): Flow<List<PlayerGameProgress>> = local.observeAll()
+
+    override fun observeLevelTimes(gameId: String): Flow<Map<Int, Long>> =
+        localLevelTime.observeByGame(gameId).map { rows -> rows.associate { it.level to it.bestTimeMs } }
 
     override suspend fun recordResult(result: GameResult): Boolean {
         val progression = GameProgressions.forId(result.gameId) ?: return false
@@ -63,13 +75,40 @@ class PlayerProgressRepositoryImpl(
         )
         local.upsert(merged)
         pushIfPossible(merged)
+
+        // Mejor tiempo por nivel (genérico): solo en juegos LEVELED que lo activan y si
+        // la partida arrojó un tiempo válido. `reached` es el nivel completado y
+        // `completionTimeMs` su tiempo activo (excluye pausas), emparejados por finish().
+        if (progression.kind == ProgressionKind.LEVELED &&
+            progression.tracksLevelTime &&
+            result.completionTimeMs > 0
+        ) {
+            recordLevelTime(result.gameId, level = reached, timeMs = result.completionTimeMs)
+        }
         return isNewRecord
+    }
+
+    /** Guarda el tiempo [timeMs] como mejor marca del nivel si mejora la previa (menor gana). */
+    private suspend fun recordLevelTime(gameId: String, level: Int, timeMs: Long) {
+        val current = localLevelTime.getOne(gameId, level)
+        if (current != null && timeMs >= current.bestTimeMs) return // no mejora → nada que hacer
+        val best = LevelBestTime(
+            gameId = gameId,
+            level = level,
+            bestTimeMs = timeMs,
+            updatedAt = clock.now(),
+            isSynced = false,
+        )
+        localLevelTime.upsert(best)
+        pushLevelTimeIfPossible(best)
     }
 
     override suspend fun sync() {
         val userId = currentUserId() ?: return
         pullAndMerge()
         pushUnsynced(userId)
+        pullAndMergeLevelTimes()
+        pushUnsyncedLevelTimes(userId)
     }
 
     /** Sube una fila si hay sesión; al lograrlo la marca sincronizada. Silencia la red. */
@@ -78,6 +117,15 @@ class PlayerProgressRepositoryImpl(
         runCatching {
             remote.upsert(userId, progress)
             local.markSynced(progress.gameId)
+        } // fallo de red → queda pendiente, se subirá en sync()
+    }
+
+    /** Igual que [pushIfPossible] pero para un tiempo por nivel. */
+    private suspend fun pushLevelTimeIfPossible(time: LevelBestTime) {
+        val userId = currentUserId() ?: return
+        runCatching {
+            remoteLevelTime.upsert(userId, time)
+            localLevelTime.markSynced(time.gameId, time.level)
         } // fallo de red → queda pendiente, se subirá en sync()
     }
 
@@ -124,6 +172,37 @@ class PlayerProgressRepositoryImpl(
             runCatching {
                 remote.upsert(userId, row)
                 local.markSynced(row.gameId)
+            } // si una falla, seguimos; reintento en la próxima sync
+        }
+    }
+
+    /**
+     * Fusiona los tiempos por nivel de la nube con local. Regla única (más simple que
+     * el récord agregado): **gana el menor tiempo**; si local mejora lo remoto, la fila
+     * queda pendiente para volver a subir. `updatedAt` acompaña a la marca ganadora.
+     */
+    private suspend fun pullAndMergeLevelTimes() {
+        val remoteRows = runCatching { remoteLevelTime.fetchAll() }.getOrNull() ?: return
+        for (r in remoteRows) {
+            val localRow = localLevelTime.getOne(r.gameId, r.level)
+            if (localRow == null) {
+                localLevelTime.upsert(r) // r ya viene marcada como sincronizada
+                continue
+            }
+            val localWins = localRow.bestTimeMs < r.bestTimeMs
+            localLevelTime.upsert(
+                if (localWins) localRow.copy(isSynced = false) // hay que resubir la mejor local
+                else r, // remoto igual o mejor: adoptamos la fila remota (ya sincronizada)
+            )
+        }
+    }
+
+    /** Sube todos los tiempos por nivel locales pendientes. */
+    private suspend fun pushUnsyncedLevelTimes(userId: String) {
+        for (row in localLevelTime.getUnsynced()) {
+            runCatching {
+                remoteLevelTime.upsert(userId, row)
+                localLevelTime.markSynced(row.gameId, row.level)
             } // si una falla, seguimos; reintento en la próxima sync
         }
     }

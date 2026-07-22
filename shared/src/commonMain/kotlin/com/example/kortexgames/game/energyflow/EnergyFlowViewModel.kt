@@ -25,6 +25,7 @@ import kotlinx.coroutines.launch
  * @property phase selección de nivel o partida en curso.
  * @property maxUnlocked nivel máximo ya superado (récord); define lo desbloqueado.
  * @property currentLevel nivel que se está jugando (para "Siguiente nivel").
+ * @property levelTimes mejor tiempo por nivel (nivel → ms); lo muestra el selector.
  */
 data class EnergyFlowUiState(
     val phase: LeveledGamePhase = LeveledGamePhase.LEVEL_SELECT,
@@ -33,6 +34,7 @@ data class EnergyFlowUiState(
     val game: EnergyFlowState = EnergyFlowState(),
     val status: GameStatus = GameStatus.IDLE,
     val gameOver: GameOverInfo? = null,
+    val levelTimes: Map<Int, Long> = emptyMap(),
 ) : UiState
 
 /** Intents (único punto de entrada de la UI, patrón MVI). */
@@ -84,6 +86,9 @@ class EnergyFlowViewModel(
         engine.outcome.onEach { result -> result?.let(::onFinished) }.launchIn(viewModelScope)
         playerProgress.observe(GameIds.ENERGY_FLOW)
             .onEach { p -> setState { copy(maxUnlocked = p?.bestMetric ?: 0) } }
+            .launchIn(viewModelScope)
+        playerProgress.observeLevelTimes(GameIds.ENERGY_FLOW)
+            .onEach { times -> setState { copy(levelTimes = times) } }
             .launchIn(viewModelScope)
     }
 

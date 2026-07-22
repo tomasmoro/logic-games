@@ -29,6 +29,7 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
@@ -81,6 +82,9 @@ object KortexIcons {
 
     /** Candado: nivel aún bloqueado (selector de niveles). */
     val Lock: ImageVector = Icons.Rounded.Lock
+
+    /** Cronómetro: récord de tiempo (mejor tiempo por nivel en el selector). */
+    val Timer: ImageVector = Icons.Rounded.Timer
 
     /** Interrogación: botón de ayuda / cómo se juega (antesala de cada juego). */
     val Help: ImageVector = Icons.AutoMirrored.Rounded.HelpOutline

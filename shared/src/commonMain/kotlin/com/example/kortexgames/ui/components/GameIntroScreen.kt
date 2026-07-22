@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -37,6 +38,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.core.theme.LogicGradients
+import com.example.kortexgames.domain.model.formatDurationShort
 import androidx.compose.foundation.Image
 import androidx.compose.ui.layout.ContentScale
 import org.jetbrains.compose.resources.DrawableResource
@@ -55,12 +57,16 @@ import org.jetbrains.compose.resources.painterResource
  * @property selected nivel actualmente elegido (el que lanzará "Comenzar").
  * @property onSelect se invoca al tocar un nivel jugable (desbloqueado o la frontera).
  * @property lockedPreview cuántos niveles bloqueados mostrar por delante de la frontera.
+ * @property bestTimes mejor tiempo por nivel (nivel → ms, menor = mejor); vacío en
+ *   juegos que no lo miden. Se muestra bajo cada nivel superado como incentivo de
+ *   rejugar para mejorar la marca.
  */
 data class LevelStripState(
     val maxUnlocked: Int,
     val selected: Int,
     val onSelect: (Int) -> Unit,
     val lockedPreview: Int = 6,
+    val bestTimes: Map<Int, Long> = emptyMap(),
 )
 
 /**
@@ -289,6 +295,7 @@ private fun LevelStrip(state: LevelStripState, accent: Color) {
                     maxUnlocked = state.maxUnlocked,
                     selected = level == state.selected,
                     accent = accent,
+                    bestTimeMs = state.bestTimes[level],
                     onClick = { state.onSelect(level) },
                 )
             }
@@ -296,13 +303,19 @@ private fun LevelStrip(state: LevelStripState, accent: Color) {
     }
 }
 
-/** Una casilla circular del carril de niveles. Ver [LevelStrip] para el lenguaje visual. */
+/**
+ * Una casilla circular del carril de niveles. Ver [LevelStrip] para el lenguaje visual.
+ *
+ * @param bestTimeMs mejor tiempo del jugador en este nivel (ms), o null si no aplica /
+ *   aún no lo jugó. Cuando existe, se muestra bajo el número como récord de tiempo.
+ */
 @Composable
 private fun LevelDot(
     level: Int,
     maxUnlocked: Int,
     selected: Boolean,
     accent: Color,
+    bestTimeMs: Long?,
     onClick: () -> Unit,
 ) {
     val frontier = maxUnlocked + 1
@@ -371,6 +384,26 @@ private fun LevelDot(
             },
             fontWeight = FontWeight.Bold,
         )
+        // Récord de tiempo del nivel (si el juego lo mide y ya se completó): pequeño y
+        // atenuado para no competir con el número, con un cronómetro como pista visual.
+        if (bestTimeMs != null) {
+            Spacer(Modifier.height(2.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                NeonIcon(
+                    icon = KortexIcons.Timer,
+                    tint = LogicColors.OnDarkMuted,
+                    size = 11.dp,
+                    glow = false,
+                )
+                Spacer(Modifier.width(2.dp))
+                Text(
+                    formatDurationShort(bestTimeMs),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = LogicColors.OnDarkMuted,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
     }
 }
 

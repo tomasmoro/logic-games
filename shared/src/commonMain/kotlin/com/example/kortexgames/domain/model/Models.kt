@@ -63,6 +63,29 @@ data class PlayerGameProgress(
     val isSynced: Boolean = true,
 )
 
+/**
+ * Mejor tiempo del jugador en un nivel concreto de un juego LEVELED (menor = mejor).
+ * Complementa a [PlayerGameProgress] (una fila por juego: récord de nivel máx) con el
+ * detalle **por nivel**, que no cabe en el `bestMetric` único. Es un mecanismo genérico:
+ * cualquier juego con [com.example.kortexgames.game.GameProgression.tracksLevelTime]
+ * activo alimenta esta tabla sin lógica propia (hoy, Flujo de Energía).
+ *
+ * Mapea la fila de `player_level_time` (PK `user_id, game_id, level`) y su espejo local.
+ *
+ * @property gameId UUID del juego en el catálogo.
+ * @property level nivel (1-based) al que corresponde el tiempo.
+ * @property bestTimeMs mejor tiempo activo (excluye pausas) en milisegundos.
+ * @property updatedAt momento de la marca; desempata al fusionar entre dispositivos.
+ * @property isSynced false = pendiente de subir a Supabase (cola local-first).
+ */
+data class LevelBestTime(
+    val gameId: String,
+    val level: Int,
+    val bestTimeMs: Long,
+    val updatedAt: Instant,
+    val isSynced: Boolean = true,
+)
+
 /** Salida del RPC get_score_percentile / submit_game_result (FASE 2). */
 data class PercentileResult(
     val betterThanPct: Double,

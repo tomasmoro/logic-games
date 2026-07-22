@@ -109,6 +109,10 @@ enum class GameCategory(
  *
  * @property id UUID estable ([GameIds]); null en placeholders "próximamente".
  * @property playable false = tarjeta visible pero deshabilitada (roadmap).
+ * @property published false = juego terminado pero que **no publicamos** todavía:
+ *           su código sigue en el repo pero se oculta por completo del catálogo y
+ *           del dado aleatorio (ver [GameCatalog.games]). No confundir con
+ *           [playable] (roadmap "Próximamente", que sí se muestra atenuado).
  * @property heroImage arte "héroe" del juego (el mismo de su pantalla de intro);
  *           **fuente única de verdad** reutilizada por la intro y por las tarjetas de
  *           la Home. null = aún sin arte → se cae al icono de la categoría.
@@ -118,6 +122,7 @@ data class GameInfo(
     val title: String,
     val category: GameCategory,
     val playable: Boolean,
+    val published: Boolean = true,
     val heroImage: DrawableResource? = null,
 )
 
@@ -129,18 +134,24 @@ data class GameInfo(
  * sin engañar (aparecen como "Próximamente").
  */
 object GameCatalog {
-    val games: List<GameInfo> = listOf(
+    /**
+     * Todos los juegos definidos, incluidos los que aún **no publicamos**
+     * ([GameInfo.published] = false). Es privado a propósito: la UI y el dado
+     * aleatorio deben consumir [games], que ya filtra los no publicados en un
+     * único punto para que nunca se cuelen en dos sitios distintos.
+     */
+    private val allGames: List<GameInfo> = listOf(
         GameInfo(GameIds.SEQUENCE_MEMORY, "Memoria de Secuencias", GameCategory.MEMORY, playable = true, heroImage = Res.drawable.memory_intro),
         GameInfo(GameIds.WATER_SORT, "Ordena las Pociones", GameCategory.LOGIC, playable = true, heroImage = Res.drawable.potionsorting_intro),
         GameInfo(GameIds.BUBBLE_MATH, "Burbujas de Cálculo", GameCategory.MENTAL_MATH, playable = true, heroImage = Res.drawable.bubblemath_intro),
         GameInfo(GameIds.ENERGY_FLOW, "Flujo de Energía", GameCategory.SPATIAL, playable = true, heroImage = Res.drawable.energyflow_intro),
         GameInfo(GameIds.POLARITY_COLLISION, "Atracción Geométrica", GameCategory.SPATIAL, playable = true),
         GameInfo(GameIds.CRUCIGRAMA_NEON, "Crucigrama Neón", GameCategory.LANGUAGE, playable = true, heroImage = Res.drawable.crucigrama_intro),
-        GameInfo(GameIds.WORD_CONNECT, "Palabras Conectadas", GameCategory.LANGUAGE, playable = true),
-        GameInfo(GameIds.NEON_SCREWS, "Tornillos Neón", GameCategory.SPATIAL, playable = true),
+        GameInfo(GameIds.WORD_CONNECT, "Palabras Conectadas", GameCategory.LANGUAGE, playable = true, published = false),
+        GameInfo(GameIds.NEON_SCREWS, "Tornillos Neón", GameCategory.SPATIAL, playable = true, published = false),
         GameInfo(GameIds.NEON_BLOCK_GRID, "Tetris Neón", GameCategory.SPATIAL, playable = true),
         GameInfo(GameIds.NEON_LEXICON, "Sopa de Letras Neón", GameCategory.LANGUAGE, playable = true),
-        GameInfo(GameIds.STARPORT_ESCAPE, "Neon Starport Escape", GameCategory.LOGIC, playable = true),
+        GameInfo(GameIds.STARPORT_ESCAPE, "Neon Starport Escape", GameCategory.LOGIC, playable = true, published = false),
         GameInfo(GameIds.NEON_CIRCUIT, "Neon Circuit Flow", GameCategory.PROBLEM_SOLVING, playable = true),
         GameInfo(GameIds.HYPERGATE, "Hypergate", GameCategory.REFLEXES, playable = true),
         GameInfo(GameIds.NEON_PULSE, "Neon Pulse", GameCategory.REFLEXES, playable = true),
@@ -151,6 +162,14 @@ object GameCatalog {
         GameInfo(null, "Cambio de Regla", GameCategory.FLEXIBILITY, playable = false),
         GameInfo(null, "Patrón Oculto", GameCategory.PATTERNS, playable = false),
     )
+
+    /**
+     * Catálogo visible para la UI y el dado aleatorio: [allGames] sin los juegos
+     * marcados como no publicados ([GameInfo.published] = false). Filtrar aquí, en
+     * un solo sitio, garantiza que un juego oculto no reaparezca por accidente en
+     * la lista, la Home o la ruta aleatoria.
+     */
+    val games: List<GameInfo> = allGames.filter { it.published }
 
     /** Categorías destacadas en la Home (fila horizontal, como el mockup). */
     val featuredCategories: List<GameCategory> = listOf(

@@ -155,4 +155,15 @@ sealed interface BlockGridEffect : UiEffect {
      *           esos hitos para que no pierdan impacto apareciendo siempre.
      */
     data class ShowComboAnim(val lines: Int, val showGarlands: Boolean) : BlockGridEffect
+
+    /**
+     * La pieza [pieceId] no se colocó (drop en hueco inválido o gesto cancelado)
+     * y vuelve a la mano: la UI anima su "vuelo de vuelta" desde donde se soltó
+     * hasta su hueco, en vez de que reaparezca de golpe. Es efecto y no estado
+     * porque el `DragState` ya se limpió (la pieza sigue en la mano); la vuelta
+     * es un destello puntual de transición, no algo que deba persistir ni
+     * reaparecer al recomponer. El pieceId permite localizar el hueco destino y
+     * mantenerlo oculto mientras dura el vuelo.
+     */
+    data class AnimatePieceReturn(val pieceId: Int) : BlockGridEffect
 }

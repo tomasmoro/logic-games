@@ -288,8 +288,15 @@ object CrucigramaNeonGenerator {
     // Dificultad creciente: niveles 1-4 con 4 palabras, +1 cada 4 niveles hasta 7
     // (5 palabras 5-8, 6 palabras 9-12, 7 palabras 13-20). Longitudes variadas (3-6).
     private val levelDefs: List<LevelDef> = listOf(
-        // --- 4 palabras -----------------------------------------------------
-
+        LevelDef(
+            listOf(
+                "BANANA" to "Fruto alargado de cáscara amarilla, blando y muy rico en potasio",
+                "ANANA" to "Fruta tropical de pulpa amarilla y corona de hojas, también llamada piña",
+                "BABA" to "Líquido espeso y viscoso que se segrega en la boca o que sueltan algunos animales",
+                "NANA" to "Canto suave, lento y melodioso que se utiliza para arrullar y dormir a los bebés",
+            ),
+            extras = listOf("ABA"),
+        ),
         LevelDef(
             listOf(
                 "AMOR" to "Sentimiento de afecto",
@@ -312,10 +319,10 @@ object CrucigramaNeonGenerator {
         ),
         LevelDef(
             listOf(
+                "TRATAR" to "Intentar",
                 "RATA" to "Roedor",
                 "ARAR" to "Labrar la tierra",
                 "TARTA" to "Pastel",
-                "TRATAR" to "Intentar",
                 "ATAR" to "Amarrar",
             ),
             extras = listOf("RARA", "TARAR"),
@@ -342,6 +349,17 @@ object CrucigramaNeonGenerator {
         ),
         LevelDef(
             listOf(
+                "TODO" to "Que se considera por entero, sin excluir ninguna de sus partes",
+                "TORO" to "Mamífero rumiante macho, fuerte y con cuernos, de gran presencia",
+                "ROTO" to "Que está quebrado, estropeado o dividido en piezas",
+                "OTRO" to "Que es distinto, diferente o que se añade a lo ya mencionado",
+                "ROTOR" to "Pieza giratoria de una máquina, como el eje que mueve las hélices",
+                "TORDO" to "Ave negra y pequeña"
+            ),
+            extras = listOf("DOTO", "RODO", "ORO"),
+        ),
+        LevelDef(
+            listOf(
                 "CAPO" to "Jefe de una organización",
                 "COPA" to "Vaso con pie para beber",
                 "CAPA" to "Prenda de vestir larga y suelta",
@@ -364,6 +382,17 @@ object CrucigramaNeonGenerator {
         ),
         LevelDef(
             listOf(
+                "AGUA" to "Líquido vital, transparente e inodoro que forma la lluvia, los ríos y los mares",
+                "RUEGA" to "Pide algo con encarecimiento, mucha humildad o en forma de oración",
+                "GRUA" to "Máquina con un brazo móvil que sirve para levantar y mover cargas muy pesadas",
+                "AREA" to "Espacio de tierra comprendido dentro de ciertos límites, o medida de superficie",
+                "RUGE" to "Emite un sonido profundo y fuerte el león u otro animal salvaje",
+                "GUERRA" to "Conflicto armado entre dos o más países o grupos"
+            ),
+            extras = listOf("AGUAR", "GARUA", "GUERA", "ERRAR", "GUAU", "ERA", "REA","REGAR","RARA"),
+        ),
+        LevelDef(
+            listOf(
                 "PUEDE" to "Tiene la capacidad, facultad",
                 "DUQUE" to "Título nobiliario de la más alta categoría",
                 "QUEDE" to "Se mantenga en una situación o estado",
@@ -371,6 +400,17 @@ object CrucigramaNeonGenerator {
                 "QUE" to "Pronombre o conjunción que introduce una idea o una oración subordinada",
             ),
             extras = listOf("PUDU", "DE"),
+        ),
+        LevelDef(
+            listOf(
+                "AHORA" to "En este momento o en el tiempo presente",
+                "HORA" to "Medida de tiempo que equivale a exactamente sesenta minutos",
+                "AHORRO" to "Acción de guardar dinero o recursos económicos para el futuro",
+                "RARO" to "Que es poco común, extraordinario o diferente a lo habitual",
+                "ARO" to "Pieza circular de metal, plástico o madera que está hueca por dentro",
+                "HORROR" to "Sentimiento de miedo intenso"
+            ),
+            extras = listOf("ORAR"),
         ),
         LevelDef(
             listOf(
@@ -382,148 +422,64 @@ object CrucigramaNeonGenerator {
                 "SOL" to "Estrella que ilumina el cielo",
                 "SAL" to "Cloruro de sodio"
             ),
-            extras = listOf( "SON", "LOSA", "SOLO", "LANA", "SALA"),
+            extras = listOf("SON", "LOSA", "SOLO", "LANA", "SALA"),
         ),
         LevelDef(
             listOf(
-                "PARTE" to "Porción de algo",
-                "OPERA" to "Obra musical cantada",
-                "PERA" to "Fruta verde o amarilla",
-                "PATO" to "Ave de agua",
-                "RETO" to "Desafío",
-                "PARO" to "Detención del trabajo",
+                "TOMATE" to "Fruto rojo y jugoso",
+                "MATE" to "Infusión de yerba mate",
+                "TOTEM" to "Símbolo religioso o cultural",
+                "TEMA" to "Asunto o materia de que se trata",
+                "MOTO" to "Vehículo de dos ruedas",
+                "ATOMO" to "Partícula elemental"
             ),
-            extras = listOf("PERO", "ROPA", "PARE", "PATE", "TOPE", "RAPTO"),
+            extras = listOf("AMO", "MATEO", "MOTE", "META", "TEMO", "TOMO"),
         ),
         LevelDef(
             listOf(
-                "SALON" to "Sala grande de una casa",
-                "SANTO" to "Persona venerada",
-                "TALON" to "Parte trasera del pie",
-                "LATA" to "Envase metálico",
-                "LONA" to "Tela fuerte de toldos",
-                "NATA" to "Capa que se forma en la leche",
+                "ACERCA" to "Poner algo cerca de otra cosa o aproximar ideas o conceptos",
+                "CREAR" to "Producir algo de la nada",
+                "CERA" to "Sustancia sólida y blanda que fabrican las abejas para formar sus panales",
+                "ARCE" to "Árbol de madera dura cuya hoja lobulada es el símbolo nacional de Canadá",
+                "ACRE" to "Medida de superficie anglosajona, o un olor y gusto muy áspero y picante",
+                "CAER" to "Desplazarse un cuerpo de arriba hacia abajo por la acción de su propio peso",
+
             ),
-            extras = listOf("SALTO", "SANO", "LOSA", "ALTO", "SOLA", "NOTA"),
+            extras = listOf("RARA", "ARAR", "ERA", "RECAER", "RECREA", "CERCA"),
         ),
         LevelDef(
             listOf(
-                "RATON" to "Roedor pequeño",
-                "TANGO" to "Baile argentino",
-                "RANGO" to "Nivel o categoría",
-                "GATO" to "Felino doméstico",
-                "GOTA" to "Pequeña porción de líquido",
-                "TORO" to "Macho de la vaca",
+                "QUERER" to "Tener el deseo, la voluntad o el cariño por alguien o algo",
+                "ARQUEAR" to "Dar forma de arco a un objeto o encorvar una parte del cuerpo",
+                "AURA" to "Atmósfera ideológica o energía sutil que se dice que rodea a un ser vivo",
+                "ERA" to "Período histórico extenso que se computa a partir de un hecho importante",
+                "ARRE" to "Voz que se utiliza popularmente para hacer caminar a los animales de carga",
+                "ERRAR" to "Cometer un error o desviarse del camino correcto",
             ),
-            extras = listOf("NORA", "NATO", "GRANO", "TRAGO", "TORA", "ROTA"),
-        ),
-        // --- 7 palabras -----------------------------------------------------
-        LevelDef(
-            listOf(
-                "PLATO" to "Vajilla donde comes",
-                "SALTO" to "Brinco",
-                "PALO" to "Trozo de madera",
-                "SOPA" to "Plato con caldo",
-                "ALTO" to "De gran estatura",
-                "LAPSO" to "Periodo breve de tiempo",
-                "POSTA" to "Parada o relevo en un trayecto",
-            ),
-            extras = listOf("TOPA", "PATO", "PASO", "SOLA", "LATA"),
+            extras = listOf("REA", "ARAR", "RARA", "ARREAR")
         ),
         LevelDef(
             listOf(
-                "CARTON" to "Papel grueso y rígido",
-                "CANTO" to "Acción de cantar / borde",
-                "RATON" to "Roedor pequeño",
-                "CARO" to "De precio elevado",
-                "RATO" to "Momento breve",
-                "ARCO" to "Elemento curvo de una estructura",
-                "ROCA" to "Masa de piedra sólida",
+                "TISANA" to "Infusión de plantas medicinales en agua hirviendo",
+                "TINTA" to "Líquido coloreado que se utiliza para escribir, dibujar o imprimir",
+                "INSTA" to "Urge o exige la pronta ejecución o cumplimiento de algo",
+                "SANTA" to "Mujer de gran virtud y bondad, o declarada venerable por la Iglesia",
+                "SATAN" to "Figura del mal en varias religiones, especialmente en el cristianismo",
+                "SATIN" to "Tejido de textura densa y superficie bastante brillante, parecido al raso",
             ),
-            extras = listOf("ACTOR", "TRONCO", "CORTA", "RONCA"),
+            extras = listOf("ANIS", "NATA", "SANA", "SITIA", "ANTI", "TANTA", "TAN", "SIN"),
         ),
         LevelDef(
             listOf(
-                "PLATO" to "Vajilla donde comes",
-                "PATO" to "Ave de agua",
-                "PALO" to "Trozo de madera",
-                "ALA" to "Extremidad de un ave",
-                "ALTO" to "De gran estatura",
-                "PALTA" to "Verdura verde por dentro con una semilla grande",
+                "ROCA" to "Materia mineral sólida y dura que forma la corteza de la Tierra",
+                "RICO" to "Que posee una gran fortuna económica o tiene un sabor muy agradable",
+                "ARCO" to "Porción de una línea curva, o arma usada para disparar flechas",
+                "ORCA" to "Mamífero marino de gran tamaño, también llamado ballena asesina",
+                "CARO" to "Que tiene un precio elevado o que goza de un gran aprecio afectivo",
+                "CORO" to "Grupo de personas que cantan simultáneamente una pieza musical",
+                "CIRCO" to "Espectáculo público que combina acrobacias, payasos y animales adiestrados",
             ),
-            extras = listOf("LATA", "PALA", "TOPA", "OLA", "APTO", "TAL", "PAPA"),
-        ),
-        LevelDef(
-            listOf(
-                "MARINO" to "Relativo al mar",
-                "NORMA" to "Regla a seguir",
-                "MANO" to "Parte final del brazo",
-                "RAMO" to "Conjunto de flores",
-                "MINA" to "Excavación para extraer minerales",
-                "RIMA" to "Repetición de sonidos en un verso",
-                "AMOR" to "Sentimiento de afecto",
-            ),
-            extras = listOf("MORA", "ROMA", "NORIA", "MIRA", "ORO", "ARO"),
-        ),
-        LevelDef(
-            listOf(
-                "SARTEN" to "Utensilio para freír",
-                "RESTA" to "Operación de quitar",
-                "TENSA" to "En estado de tensión",
-                "ANTES" to "En un momento previo",
-                "ARNES" to "Equipo de sujeción para seguridad",
-                "SERA" to "verbo ser: él ___ (futuro)",
-                "RANA" to "Anfibio que croa",
-            ),
-            extras = listOf("TERNA", "SARNA", "ARTE", "RASA", "SETA"),
-        ),
-        LevelDef(
-            listOf(
-                "TROMPA" to "Nariz alargada del elefante",
-                "RAMPA" to "Plano inclinado",
-                "MAPA" to "Representación de un territorio",
-                "ROMA" to "Capital de Italia",
-                "PASO" to "Movimiento al andar",
-                "AMOR" to "Sentimiento de afecto",
-                "SOPA" to "Plato con caldo",
-            ),
-            extras = listOf("MORA", "RAMO", "ROPA", "TROPA", "PASTO", "PROSA"),
-        ),
-        LevelDef(
-            listOf(
-                "PALOMA" to "Ave símbolo de la paz",
-                "MORAL" to "Relativo a la ética",
-                "LORO" to "Ave que imita la voz",
-                "RAMO" to "Conjunto de flores",
-                "AMOR" to "Sentimiento de afecto",
-                "LOMA" to "Colina baja",
-                "MALO" to "Sin bondad o calidad",
-            ),
-            extras = listOf("ROMA", "PALMA", "PLOMO", "RAMPA", "MOLAR"),
-        ),
-        LevelDef(
-            listOf(
-                "MORAL" to "Relativo a la ética",
-                "LORO" to "Ave que imita la voz",
-                "RAMO" to "Conjunto de flores",
-                "AMOR" to "Sentimiento de afecto",
-                "LOMA" to "Colina baja",
-                "MALO" to "Sin bondad o calidad",
-                "ROMA" to "Capital de Italia",
-            ),
-            extras = listOf("AROMA", "MOLAR", "RAMAL", "ORAL", "LORA"),
-        ),
-        LevelDef(
-            listOf(
-                "CARTEL" to "Anuncio pegado en la pared",
-                "RECTA" to "Línea sin curvas",
-                "CARTA" to "Escrito que se envía",
-                "LETRA" to "Signo del alfabeto",
-                "CALLE" to "Vía urbana entre casas",
-                "TELAR" to "Máquina para tejer",
-                "ARTE" to "Expresión creativa",
-            ),
-            extras = listOf("LACRE", "CATRE", "CALAR", "REAL", "TRAE"),
+            extras = listOf( "CRIO", "ROCIO", "CRIA", "RICA", "RIO", "OIR"),
         ),
     )
 

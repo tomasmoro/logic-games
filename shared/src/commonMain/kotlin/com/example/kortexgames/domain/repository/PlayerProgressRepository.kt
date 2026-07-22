@@ -22,6 +22,14 @@ interface PlayerProgressRepository {
     fun observeAll(): Flow<List<PlayerGameProgress>>
 
     /**
+     * Mejor tiempo por nivel de un juego (nivel → ms, menor = mejor), reactivo. Solo
+     * trae datos en juegos con [com.example.kortexgames.game.GameProgression.tracksLevelTime]
+     * activo; en el resto emite un mapa vacío. Lo consume el selector de niveles para
+     * mostrar el récord de tiempo bajo cada nivel superado.
+     */
+    fun observeLevelTimes(gameId: String): Flow<Map<Int, Long>>
+
+    /**
      * Registra el resultado de una partida en la progresión: si [GameResult.reachedMetric]
      * supera el récord (según la dirección del juego) lo actualiza, y guarda el
      * nivel de reanudación en juegos LEVELED. No-op si el juego no tiene progresión

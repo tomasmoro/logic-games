@@ -7,10 +7,12 @@ import com.example.kortexgames.core.audio.PlatformContext
 import com.example.kortexgames.core.audio.createAudioAndHapticManager
 import com.example.kortexgames.data.local.DatabaseDriverFactory
 import com.example.kortexgames.data.local.SqlDelightLocalAchievementsDataSource
+import com.example.kortexgames.data.local.SqlDelightLocalLevelTimeDataSource
 import com.example.kortexgames.data.local.SqlDelightLocalPlayerProgressDataSource
 import com.example.kortexgames.data.local.SqlDelightLocalProgressDataSource
 import com.example.kortexgames.data.local.createDatabase
 import com.example.kortexgames.data.remote.RemoteAchievementsDataSource
+import com.example.kortexgames.data.remote.RemoteLevelTimeDataSource
 import com.example.kortexgames.data.remote.RemotePlayerProgressDataSource
 import com.example.kortexgames.data.remote.RemoteProgressDataSource
 import com.example.kortexgames.data.remote.auth.GoogleAuthClient
@@ -71,6 +73,8 @@ class AppGraph(context: PlatformContext) {
     private val localProgress = SqlDelightLocalProgressDataSource(database, Dispatchers.Default)
     private val localPlayerProgress =
         SqlDelightLocalPlayerProgressDataSource(database, Dispatchers.Default)
+    private val localLevelTime =
+        SqlDelightLocalLevelTimeDataSource(database, Dispatchers.Default)
     private val localAchievements =
         SqlDelightLocalAchievementsDataSource(database, Dispatchers.Default)
 
@@ -78,6 +82,7 @@ class AppGraph(context: PlatformContext) {
     val supabaseClient = buildSupabaseClient()
     private val remoteProgress = RemoteProgressDataSource(supabaseClient)
     private val remotePlayerProgress = RemotePlayerProgressDataSource(supabaseClient)
+    private val remoteLevelTime = RemoteLevelTimeDataSource(supabaseClient)
     private val remoteAchievements = RemoteAchievementsDataSource(supabaseClient)
 
     // --- Autenticación (email + Google) -------------------------------------
@@ -99,6 +104,8 @@ class AppGraph(context: PlatformContext) {
     val playerProgressRepository: PlayerProgressRepository = PlayerProgressRepositoryImpl(
         local = localPlayerProgress,
         remote = remotePlayerProgress,
+        localLevelTime = localLevelTime,
+        remoteLevelTime = remoteLevelTime,
         authState = { authState },
     )
 

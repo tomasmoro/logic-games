@@ -117,7 +117,7 @@ class BlockGridEngine(
 
         val origin = GridPos(row, col)
         if (!current.board.canPlace(piece.shape, origin)) {
-            _events.trySend(BlockGridEvent.PlacementRejected)
+            _events.trySend(BlockGridEvent.PlacementRejected(pieceId))
             return
         }
         dropsPlaced++
@@ -244,8 +244,11 @@ sealed interface BlockGridEvent {
     /** Una pieza quedó anclada al tablero. */
     data object PiecePlaced : BlockGridEvent
 
-    /** El jugador soltó en un hueco inválido; la pieza vuelve a la mano. */
-    data object PlacementRejected : BlockGridEvent
+    /**
+     * El jugador soltó la pieza [pieceId] en un hueco inválido; vuelve a la mano.
+     * Lleva el id para que la UI anime el "vuelo de vuelta" de esa pieza concreta.
+     */
+    data class PlacementRejected(val pieceId: Int) : BlockGridEvent
 
     /**
      * Se completaron [count] líneas a la vez (≥2 = combo).
