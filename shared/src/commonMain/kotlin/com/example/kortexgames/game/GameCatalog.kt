@@ -71,6 +71,38 @@ object GameIds {
 
     /** Neon Pulse / entrenador visomotor de nodos que se contraen (categoría "reflexes"). */
     const val NEON_PULSE = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+
+    /**
+     * Neon Grid 2048 / fusión de potencias de dos (categoría "calculation").
+     *
+     * Rompe el patrón de "nibble repetido" de los ids anteriores porque ya no
+     * quedaban libres (1..f están tomados, incluido el `2222…` del Reflex Tap
+     * retirado en la migración 0020, que NO se puede reciclar: sus filas de
+     * `user_progress` siguen apuntando ahí). Se usa un UUID v4 válido y
+     * mnemotécnico (`2048…`), igual de determinista.
+     */
+    const val NEON_2048 = "20482048-2048-4048-8048-204820482048"
+
+    /**
+     * Neon Sudoku Matrix / Sudoku 9x9 con panel holográfico neón (categoría
+     * "logic" / Pensamiento Lógico). UUID v4 aleatorio (ya no quedan nibbles
+     * libres para un mnemotécnico como en [NEON_2048]).
+     *
+     * Reservado desde la FASE 2 (ViewModel) del juego; se añade su [GameInfo] al
+     * catálogo cuando la pantalla Compose (FASE 3) esté lista para publicarse.
+     */
+    const val NEON_SUDOKU_MATRIX = "9c40ca31-4a69-4d6b-a903-355098c129ee"
+
+    /**
+     * Neon Defuser / Buscaminas con panel neón de desactivación (categoría
+     * "attention" / Atención y Concentración). UUID v4 aleatorio.
+     *
+     * El juego nació como malla hexagonal ("Hexa Mine") y se migró a celdas
+     * cuadradas con vecindad de 8. Se conserva **el mismo UUID** a propósito: ya
+     * hay filas de resultados y de progreso apuntando a él, y cambiarlo las
+     * huérfanaría sin ganar nada (el identificador no describe la geometría).
+     */
+    const val NEON_DEFUSER = "7b3f1e02-9d4c-4a8e-b1c6-2f5a9d0e4c37"
 }
 
 /**
@@ -155,6 +187,9 @@ object GameCatalog {
         GameInfo(GameIds.NEON_CIRCUIT, "Neon Circuit Flow", GameCategory.PROBLEM_SOLVING, playable = true),
         GameInfo(GameIds.HYPERGATE, "Hypergate", GameCategory.REFLEXES, playable = true),
         GameInfo(GameIds.NEON_PULSE, "Neon Pulse", GameCategory.REFLEXES, playable = true),
+        GameInfo(GameIds.NEON_2048, "Neon Grid 2048", GameCategory.MENTAL_MATH, playable = true),
+        GameInfo(GameIds.NEON_SUDOKU_MATRIX, "Neon Sudoku Matrix", GameCategory.LOGIC, playable = true),
+        GameInfo(GameIds.NEON_DEFUSER, "Neon Defuser", GameCategory.ATTENTION, playable = true),
         GameInfo(null, "Parejas Relámpago", GameCategory.MEMORY, playable = false),
         GameInfo(null, "Cadena Lógica", GameCategory.LOGIC, playable = false),
         GameInfo(null, "Encuentra el Intruso", GameCategory.ATTENTION, playable = false),

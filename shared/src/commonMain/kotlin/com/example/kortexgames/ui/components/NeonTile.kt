@@ -12,6 +12,9 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.kortexgames.core.theme.LogicColors
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.random.Random
 
 /**
  * Dibuja un tile/celda como **tubo de neón hueco**: apila varios trazos del mismo
@@ -179,6 +182,72 @@ fun DrawScope.drawNeonBubble(baseColor: Color, glow: Float = 1f) {
     drawCircle(Color.White.copy(alpha = 0.55f), radius, center, style = Stroke(stroke * 0.4f))
 
 }
+
+/** 2π: círculo completo, para repartir las chispas en toda dirección. */
+private const val TAU = 6.2831855f
+
+/**
+ * **Ráfaga de chispas** neón: esquirlas que nacen en [center] y salen disparadas
+ * radialmente mientras se desvanecen. Es el remate de celebración compartido de
+ * la app (romper una línea, resolver una palabra, completar una unidad…).
+ *
+ * Fuente única de este efecto, igual que [drawNeonTile] lo es del borde neón
+ * (CLAUDE.md §9.7): los juegos lo llaman en vez de derivar su propia versión, de
+ * modo que un ajuste del "look" se hace en un solo sitio.
+ *
+ * Las esquirlas salen rápido y frenan (ease-out cuadrático), como fragmentos
+ * reales; el color se aclara hacia blanco en la punta para que la chispa se lea
+ * como incandescente y no como una simple línea de color.
+ *
+ * @param center origen de la ráfaga.
+ * @param reach distancia máxima (px) que recorre la chispa más lejana.
+ * @param accent color base de las chispas.
+ * @param progress avance de la ráfaga: `0` recién nacida, `1` ya desvanecida.
+ *   Fuera de `(0,1)` no dibuja nada (evita restos al principio y al final).
+ * @param count número de esquirlas.
+ * @param seed semilla del reparto angular. **Determinista a propósito**: esta
+ *   función corre dentro de un `Canvas` (sin `remember` disponible), así que la
+ *   semilla debe venir de algo estable —la posición de la celda, por ejemplo—
+ *   para que cada ráfaga se dibuje igual en todos los frames de su animación en
+ *   vez de "hervir" con ángulos nuevos en cada recomposición.
+ */
+fun DrawScope.drawNeonSparks(
+    center: Offset,
+    reach: Float,
+    accent: Color,
+    progress: Float,
+    count: Int = 6,
+    seed: Int = 0,
+) {
+    if (progress <= 0f || progress >= 1f) return
+    val rnd = Random(seed)
+    val hot = lerp(accent, Color.White, 0.35f)
+    val ease = 1f - (1f - progress) * (1f - progress)
+    val alpha = 1f - progress
+    val unit = reach * SPARK_TAIL_FRACTION
+
+    repeat(count) {
+        val angle = rnd.nextFloat() * TAU
+        val spread = 0.5f + rnd.nextFloat() * 0.6f
+        val length = 0.6f + rnd.nextFloat() * 0.5f
+        val dist = ease * reach * spread
+        val dx = cos(angle)
+        val dy = sin(angle)
+        val head = center + Offset(dx * dist, dy * dist)
+        val tail = center + Offset(dx * (dist - unit * length), dy * (dist - unit * length))
+        drawLine(
+            color = hot.copy(alpha = alpha),
+            start = tail,
+            end = head,
+            strokeWidth = 2.dp.toPx(),
+            cap = StrokeCap.Round,
+        )
+        drawCircle(Color.White.copy(alpha = 0.9f * alpha), radius = 1.4.dp.toPx(), center = head)
+    }
+}
+
+/** Longitud de la estela de una chispa, como fracción de su alcance. */
+private const val SPARK_TAIL_FRACTION = 0.222f
 
 /**
  * Tres chispas sobre el borde superior del tile: una vertical al centro y dos

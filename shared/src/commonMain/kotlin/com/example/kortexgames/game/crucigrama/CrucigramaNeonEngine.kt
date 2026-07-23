@@ -5,14 +5,17 @@ import com.example.kortexgames.core.audio.HapticFeedback
 import com.example.kortexgames.core.audio.SoundEffect
 import com.example.kortexgames.game.BaseGameEngine
 import com.example.kortexgames.game.GameIds
+import com.example.kortexgames.game.ResumableGameEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.serialization.Serializable
 import kotlin.random.Random
 
 /** Resultado del último intento del jugador. */
+@Serializable
 enum class CrucigramaNeonOutcome { CORRECT, WRONG }
 
 /**
@@ -20,6 +23,7 @@ enum class CrucigramaNeonOutcome { CORRECT, WRONG }
  *
  * @property inputBuffer texto escrito actualmente con el teclado inferior.
  */
+@Serializable
 data class CrucigramaNeonState(
     val level: Int = 0,
     val rows: Int = 0,
@@ -57,20 +61,44 @@ class CrucigramaNeonEngine(
     audio: AudioAndHapticManager,
     difficulty: Int = 1,
     private val random: Random = Random.Default,
-) : BaseGameEngine<CrucigramaNeonState>(GameIds.CRUCIGRAMA_NEON, difficulty, scope, audio) {
+) : BaseGameEngine<CrucigramaNeonState>(GameIds.CRUCIGRAMA_NEON, difficulty, scope, audio),
+    ResumableGameEngine<CrucigramaNeonState> {
 
     private val _state = MutableStateFlow(CrucigramaNeonState())
     override val state: StateFlow<CrucigramaNeonState> = _state.asStateFlow()
 
     private var currentLevel: Int = 1
 
+    /** Estado a restaurar en el próximo [onStart]; lo consume [resumeFrom]. */
+    private var pendingResume: CrucigramaNeonState? = null
+
     override fun onStart() {
-        loadLevel(currentLevel)
+        val resume = pendingResume
+        if (resume != null) {
+            _state.value = resume
+            pendingResume = null
+        } else {
+            loadLevel(currentLevel)
+        }
     }
 
     /** Arranca un nivel concreto del selector. */
     fun startAtLevel(level: Int) {
         currentLevel = level.coerceAtLeast(1)
+        start()
+    }
+
+    /**
+     * Reanuda una partida guardada al salir en vez de generar el nivel de nuevo:
+     * deja el estado listo para que [onStart] lo adopte tal cual y delega en
+     * [start] para que el ciclo de vida (cronómetro, `finish()`, etc.) sea idéntico
+     * al de una partida arrancada normalmente. El cronómetro se reinicia (mismo
+     * comportamiento que cualquier [start]); no afecta el récord porque
+     * `completionTimeMs` solo importa si el nivel se completa en esta sesión.
+     */
+    override fun resumeFrom(saved: CrucigramaNeonState) {
+        pendingResume = saved
+        currentLevel = saved.level
         start()
     }
 

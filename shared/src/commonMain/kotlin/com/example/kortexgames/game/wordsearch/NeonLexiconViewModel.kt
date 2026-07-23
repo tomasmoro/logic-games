@@ -8,12 +8,16 @@ import com.example.kortexgames.core.mvi.MviViewModel
 import com.example.kortexgames.domain.model.GameResult
 import com.example.kortexgames.domain.repository.PlayerProgressRepository
 import com.example.kortexgames.domain.repository.ProgressRepository
+import com.example.kortexgames.domain.repository.SavedGameStateRepository
 import com.example.kortexgames.game.GameIds
 import com.example.kortexgames.game.GameOverInfo
 import com.example.kortexgames.game.LeveledGamePhase
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 /**
  * ViewModel MVI de "Neon Lexicon" (Sopa de Letras Neón).
@@ -29,6 +33,7 @@ import kotlinx.coroutines.launch
 class NeonLexiconViewModel(
     private val progress: ProgressRepository,
     playerProgress: PlayerProgressRepository,
+    private val savedGameState: SavedGameStateRepository,
     private val audio: AudioAndHapticManager,
 ) : MviViewModel<NeonLexiconIntent, NeonLexiconUiState, NeonLexiconEffect>(NeonLexiconUiState()) {
 
@@ -46,6 +51,11 @@ class NeonLexiconViewModel(
         playerProgress.observe(GameIds.NEON_LEXICON)
             .onEach { p -> setState { copy(maxUnlocked = p?.bestMetric ?: 0) } }
             .launchIn(viewModelScope)
+        // Partida guardada al salir: la antesala la ofrece como "Continuar" (se
+        // observa para que el botón desaparezca solo al reanudar o completar nivel).
+        savedGameState.observe(GameIds.NEON_LEXICON)
+            .onEach { json -> setState { copy(savedLevel = json?.let(::decodeSaved)?.level) } }
+            .launchIn(viewModelScope)
     }
 
     override fun onIntent(intent: NeonLexiconIntent) {
@@ -53,6 +63,7 @@ class NeonLexiconViewModel(
             NeonLexiconIntent.Start,
             NeonLexiconIntent.PlayAgain -> playLevel(currentState.currentLevel)
             is NeonLexiconIntent.PlayLevel -> playLevel(intent.level)
+            NeonLexiconIntent.ResumeSaved -> resumeSaved()
             NeonLexiconIntent.NextLevel -> playLevel(currentState.currentLevel + 1)
 
             is NeonLexiconIntent.StartDrag -> engine.beginSelection(intent.row, intent.col)
@@ -69,6 +80,12 @@ class NeonLexiconViewModel(
         }
     }
 
+    /**
+     * Arranca [level] **desde cero**, descartando cualquier partida guardada:
+     * llegar aquí es una decisión explícita ("Empezar de nuevo", rejugar o pasar de
+     * nivel), y dejar el guardado vivo lo reofrecería como "Continuar". Para
+     * retomarlo está [resumeSaved].
+     */
     private fun playLevel(level: Int) {
         setState {
             copy(
@@ -78,8 +95,53 @@ class NeonLexiconViewModel(
                 selection = null,
             )
         }
+        viewModelScope.launch { savedGameState.clear(GameIds.NEON_LEXICON) }
         engine.startAtLevel(level)
     }
+
+    /**
+     * Retoma la partida guardada al salir, en su nivel original. El guardado se
+     * consume al reanudar. No-op si no hay ninguna.
+     */
+    private fun resumeSaved() {
+        viewModelScope.launch {
+            val saved = savedGameState.load(GameIds.NEON_LEXICON)?.let(::decodeSaved) ?: return@launch
+            savedGameState.clear(GameIds.NEON_LEXICON)
+            setState {
+                copy(
+                    phase = LeveledGamePhase.PLAYING,
+                    currentLevel = saved.level,
+                    gameOver = null,
+                    selection = null,
+                )
+            }
+            engine.resumeFrom(saved)
+        }
+    }
+
+    /**
+     * Punto único de salida "en juego" (back del sistema vía
+     * [com.example.kortexgames.ui.components.GameExitGuard] o "SALIR" del menú de
+     * pausa): si hay partida en curso la guarda antes de navegar atrás. Fuera de
+     * [LeveledGamePhase.PLAYING] (antesala, fin de nivel) no hay progreso que perder.
+     */
+    fun requestExit(onExit: () -> Unit) {
+        if (currentState.phase != LeveledGamePhase.PLAYING) {
+            onExit()
+            return
+        }
+        viewModelScope.launch {
+            // El trazo en curso (selection) no debe persistirse: al reanudar no hay
+            // dedo sobre la pantalla, así que se guarda el tablero sin selección.
+            val snapshot = engine.state.value.copy(selection = null)
+            savedGameState.save(GameIds.NEON_LEXICON, Json.encodeToString(snapshot))
+            onExit()
+        }
+    }
+
+    /** Decodifica un guardado; tolerante a fallos (versión previa ⇒ "no hay partida"). */
+    private fun decodeSaved(json: String): NeonLexiconGameState? =
+        runCatching { Json.decodeFromString<NeonLexiconGameState>(json) }.getOrNull()
 
     /**
      * Tabla única evento de dominio → feedback sensorial "ASMR". Mantenerla junta
@@ -112,6 +174,8 @@ class NeonLexiconViewModel(
     /** Guarda el resultado (local-first) y expone el game-over con percentil. */
     private fun onFinished(result: GameResult) {
         viewModelScope.launch {
+            // Nivel completado: no debe quedar un guardado "fantasma" de esta partida.
+            savedGameState.clear(GameIds.NEON_LEXICON)
             val outcome = progress.saveResult(result)
             sendEffect(NeonLexiconEffect.PlaySound(SoundEffect.LEVEL_UP))
             sendEffect(NeonLexiconEffect.Vibrate(HapticFeedback.SUCCESS))

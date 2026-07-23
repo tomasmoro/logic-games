@@ -7,10 +7,16 @@ import com.example.kortexgames.core.audio.SoundEffect
 import com.example.kortexgames.core.mvi.MviViewModel
 import com.example.kortexgames.domain.model.GameResult
 import com.example.kortexgames.domain.repository.ProgressRepository
+import com.example.kortexgames.domain.repository.SavedGameStateRepository
+import com.example.kortexgames.game.GameIds
 import com.example.kortexgames.game.GameOverInfo
+import com.example.kortexgames.game.GameStatus
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 /**
  * ViewModel MVI de "Neon Block Grid". Juego **ENDLESS por puntaje**: arranca en
@@ -27,6 +33,7 @@ import kotlinx.coroutines.launch
  */
 class BlockGridViewModel(
     private val progress: ProgressRepository,
+    private val savedGameState: SavedGameStateRepository,
     audio: AudioAndHapticManager,
 ) : MviViewModel<BlockGridIntent, BlockGridUiState, BlockGridEffect>(BlockGridUiState()) {
 
@@ -43,17 +50,28 @@ class BlockGridViewModel(
         engine.status.onEach { st -> setState { copy(status = st) } }.launchIn(viewModelScope)
         engine.outcome.onEach { result -> result?.let(::onFinished) }.launchIn(viewModelScope)
         engine.events.onEach(::onEngineEvent).launchIn(viewModelScope)
+        // Corrida guardada al salir: la antesala la ofrece como "Continuar" (se
+        // observa para que el botón desaparezca solo al reanudar o al terminar).
+        savedGameState.observe(GameIds.NEON_BLOCK_GRID)
+            .onEach { json -> setState { copy(savedScore = json?.let(::decodeSaved)?.score) } }
+            .launchIn(viewModelScope)
         // No se arranca aquí: se queda en IDLE mostrando la antesala y la
-        // partida empieza con el intent StartGame (botón "Comenzar").
+        // partida empieza con StartGame / ResumeSaved (patrón del resto de juegos).
     }
 
     override fun onIntent(intent: BlockGridIntent) {
         when (intent) {
+            // StartGame ("Empezar de nuevo") y PlayAgain arrancan de cero y descartan
+            // el guardado; ResumeSaved retoma la corrida guardada. La elección es
+            // siempre explícita del jugador (antesala Continuar vs. Empezar de nuevo).
             BlockGridIntent.StartGame,
             BlockGridIntent.PlayAgain -> {
                 setState { copy(gameOver = null, drag = null) }
+                viewModelScope.launch { savedGameState.clear(GameIds.NEON_BLOCK_GRID) }
                 engine.start()
             }
+
+            BlockGridIntent.ResumeSaved -> resumeSaved()
 
             is BlockGridIntent.DragStarted -> {
                 setState { copy(drag = DragState(pieceId = intent.pieceId)) }
@@ -134,9 +152,55 @@ class BlockGridViewModel(
         const val GARLAND_COMBO_THRESHOLD = 5
     }
 
+    /**
+     * Retoma la corrida guardada al salir. El guardado se consume (se borra) al
+     * reanudar. No-op si no hay ninguna.
+     */
+    private fun resumeSaved() {
+        viewModelScope.launch {
+            val saved = savedGameState.load(GameIds.NEON_BLOCK_GRID)?.let(::decodeSaved) ?: return@launch
+            savedGameState.clear(GameIds.NEON_BLOCK_GRID)
+            setState { copy(gameOver = null, drag = null) }
+            engine.resumeFrom(saved)
+        }
+    }
+
+    /**
+     * Punto único de salida "en juego" (back del sistema vía
+     * [com.example.kortexgames.ui.components.GameExitGuard] o "SALIR" del menú de
+     * pausa): si hay una corrida en curso ([GameStatus.RUNNING] o [GameStatus.PAUSED])
+     * la guarda antes de navegar atrás. En el resto de estados no hay progreso que
+     * perder, así que [onExit] se llama directo.
+     */
+    fun requestExit(onExit: () -> Unit) {
+        val status = currentState.status
+        if (status != GameStatus.RUNNING && status != GameStatus.PAUSED) {
+            onExit()
+            return
+        }
+        viewModelScope.launch {
+            // Las celdas en animación de limpieza (Clearing) se vacían antes de
+            // guardar: el dominio ya las dio por rotas y, sin dedo en pantalla al
+            // reanudar, no habría quien dispare su animación de desaparición —
+            // quedarían "encendidas" para siempre. Vaciarlas deja el tablero en el
+            // estado lógico exacto que tendría tras terminar la animación.
+            val snapshot = engine.state.value.let { s ->
+                s.copy(board = s.board.mapCells { if (it is BoardCell.Clearing) BoardCell.Empty else it })
+            }
+            savedGameState.save(GameIds.NEON_BLOCK_GRID, Json.encodeToString(snapshot))
+            onExit()
+        }
+    }
+
+    /** Decodifica un guardado; tolerante a fallos (versión previa ⇒ "no hay partida"). */
+    private fun decodeSaved(json: String): BlockGridGameState? =
+        runCatching { Json.decodeFromString<BlockGridGameState>(json) }.getOrNull()
+
     /** Guarda el resultado (local-first) y expone el game-over con percentil. */
     private fun onFinished(result: GameResult) {
         viewModelScope.launch {
+            // Corrida terminada: no debe quedar un guardado "fantasma" de esta partida.
+            savedGameState.clear(GameIds.NEON_BLOCK_GRID)
             val outcome = progress.saveResult(result)
             sendEffect(BlockGridEffect.PlaySound(SoundEffect.LEVEL_UP))
             sendEffect(BlockGridEffect.Vibrate(HapticFeedback.SUCCESS))

@@ -135,6 +135,13 @@ object GameProgressions {
         GameIds.NEON_CIRCUIT to GameProgression(
             ProgressionKind.LEVELED, MetricDirection.HIGHER_IS_BETTER, "Nivel máx", MetricUnit.LEVEL,
         ),
+        // 2048 es una corrida hasta quedarse sin movimientos: ENDLESS con récord de
+        // puntaje. La métrica NO es la ficha más alta aunque sea el hito que el
+        // jugador presume: dos partidas que llegan a 1024 se distinguen por el
+        // puntaje, y este ya crece de forma monótona con las fusiones.
+        GameIds.NEON_2048 to GameProgression(
+            ProgressionKind.ENDLESS, MetricDirection.HIGHER_IS_BETTER, "Mejor", MetricUnit.POINTS,
+        ),
     )
 
     /** Progresión de un juego, o null si el id es null o no está registrado. */

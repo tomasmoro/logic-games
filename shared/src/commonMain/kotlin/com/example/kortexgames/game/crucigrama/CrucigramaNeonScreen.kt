@@ -63,12 +63,14 @@ import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.game.LeveledGamePhase
+import com.example.kortexgames.ui.components.GameExitGuard
 import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.LevelStripState
 import com.example.kortexgames.ui.components.NeonIcon
+import com.example.kortexgames.ui.components.ResumeState
 import com.example.kortexgames.ui.components.SpaceBackdrop
 import com.example.kortexgames.ui.components.bounceClick
 import com.example.kortexgames.ui.components.drawNeonTile
@@ -115,10 +117,19 @@ private val WordColors = listOf(
 @Composable
 fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
     val vm: CrucigramaNeonViewModel = viewModel {
-        CrucigramaNeonViewModel(graph.progressRepository, graph.playerProgressRepository, graph.audio)
+        CrucigramaNeonViewModel(
+            graph.progressRepository,
+            graph.playerProgressRepository,
+            graph.savedGameStateRepository,
+            graph.audio,
+        )
     }
     val state by vm.state.collectAsStateWithLifecycle()
     val game = state.game
+
+    // Único punto de salida "en juego" (back del sistema y "SALIR" del menú de
+    // pausa): guarda la partida en curso antes de navegar atrás.
+    val exitWithSave: () -> Unit = { vm.requestExit(onExit) }
 
     if (state.phase == LeveledGamePhase.LEVEL_SELECT) {
         var selectedLevel by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
@@ -134,6 +145,14 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
             heroImage = Res.drawable.crucigrama_intro,
             startLabel = "Empezar",
             onStart = { vm.onIntent(CrucigramaNeonIntent.PlayLevel(selectedLevel)) },
+            // Partida a medias guardada al salir: la antesala la ofrece como CTA
+            // principal, con su nivel para que el jugador sepa qué retoma.
+            resume = state.savedLevel?.let { level ->
+                ResumeState(
+                    onResume = { vm.onIntent(CrucigramaNeonIntent.ResumeSaved) },
+                    detail = "Nivel $level en curso",
+                )
+            },
             onExit = onExit,
             background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },
         )
@@ -241,9 +260,19 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
             audio = graph.audio,
             onPause = { vm.onIntent(CrucigramaNeonIntent.Pause) },
             onResume = { vm.onIntent(CrucigramaNeonIntent.Resume) },
-            onExit = onExit,
+            onExit = exitWithSave,
             gameTitle = "Crucigrama Neón",
             helpText = "Escribe palabras con el teclado inferior. Si una palabra es correcta, se coloca sola en su lugar dentro del crucigrama.",
+            accent = CategoryPalette.Language,
+            exitKeepsProgress = true,
+        )
+
+        // Atrás del sistema: reanuda si estaba en pausa, o pregunta antes de salir
+        // mientras se juega (la partida se guarda al confirmar, ver exitWithSave).
+        GameExitGuard(
+            status = state.status,
+            onResume = { vm.onIntent(CrucigramaNeonIntent.Resume) },
+            onConfirmExit = exitWithSave,
             accent = CategoryPalette.Language,
         )
     }
@@ -526,6 +555,15 @@ private fun GridCell(
 
                 // Chispas propias del crucigrama: partículas radiales que salen del
                 // centro y se apagan al encender la palabra.
+                //
+                // NO delega en `drawNeonSparks` (la ráfaga compartida de §9.7) a
+                // propósito: aquel efecto son esquirlas *con estela* lanzadas a
+                // ángulos aleatorios y con frenada ease-out; este es un anillo de
+                // puntos equiespaciados que se expande a velocidad constante y
+                // encoge. Difieren en forma, reparto angular, curva temporal y
+                // color (aquí sin aclarado hacia blanco): unificarlos exigiría
+                // tantos parámetros de modo que la función compartida dejaría de
+                // describir un solo efecto. Son efectos distintos, no un duplicado.
                 val sp = spark.value
                 if (sp > 0f && sp < 1f) {
                     val count = 7

@@ -10,6 +10,7 @@ import com.example.kortexgames.data.local.SqlDelightLocalAchievementsDataSource
 import com.example.kortexgames.data.local.SqlDelightLocalLevelTimeDataSource
 import com.example.kortexgames.data.local.SqlDelightLocalPlayerProgressDataSource
 import com.example.kortexgames.data.local.SqlDelightLocalProgressDataSource
+import com.example.kortexgames.data.local.SqlDelightLocalSavedGameStateDataSource
 import com.example.kortexgames.data.local.createDatabase
 import com.example.kortexgames.data.remote.RemoteAchievementsDataSource
 import com.example.kortexgames.data.remote.RemoteLevelTimeDataSource
@@ -21,6 +22,7 @@ import com.example.kortexgames.data.repository.AchievementsRepositoryImpl
 import com.example.kortexgames.data.repository.AuthRepositoryImpl
 import com.example.kortexgames.data.repository.PlayerProgressRepositoryImpl
 import com.example.kortexgames.data.repository.ProgressRepositoryImpl
+import com.example.kortexgames.data.repository.SavedGameStateRepositoryImpl
 import com.example.kortexgames.data.settings.OnboardingGate
 import com.example.kortexgames.data.settings.SettingsRepository
 import com.example.kortexgames.data.settings.createSettingsDataStore
@@ -32,6 +34,7 @@ import com.example.kortexgames.domain.repository.AchievementsRepository
 import com.example.kortexgames.domain.repository.AuthRepository
 import com.example.kortexgames.domain.repository.PlayerProgressRepository
 import com.example.kortexgames.domain.repository.ProgressRepository
+import com.example.kortexgames.domain.repository.SavedGameStateRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -77,6 +80,8 @@ class AppGraph(context: PlatformContext) {
         SqlDelightLocalLevelTimeDataSource(database, Dispatchers.Default)
     private val localAchievements =
         SqlDelightLocalAchievementsDataSource(database, Dispatchers.Default)
+    private val localSavedGameState =
+        SqlDelightLocalSavedGameStateDataSource(database, Dispatchers.Default)
 
     // --- Backend Supabase (FASE 2) ------------------------------------------
     val supabaseClient = buildSupabaseClient()
@@ -122,6 +127,10 @@ class AppGraph(context: PlatformContext) {
         remote = remoteAchievements,
         authState = { authState },
     )
+
+    /** Partida en curso guardada al salir (juegos que lo activan). Solo local. */
+    val savedGameStateRepository: SavedGameStateRepository =
+        SavedGameStateRepositoryImpl(local = localSavedGameState)
 
     // --- Audio & Háptica (nativo, respeta settings) -------------------------
     val audio: AudioAndHapticManager =

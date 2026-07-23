@@ -3,6 +3,7 @@ package com.example.kortexgames.game.wordsearch
 import com.example.kortexgames.core.audio.AudioAndHapticManager
 import com.example.kortexgames.game.BaseGameEngine
 import com.example.kortexgames.game.GameIds
+import com.example.kortexgames.game.ResumableGameEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -11,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.serialization.Serializable
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 import kotlin.random.Random
@@ -40,7 +42,7 @@ class NeonLexiconEngine(
     difficulty = 1,
     scope = scope,
     audio = audio,
-) {
+), ResumableGameEngine<NeonLexiconGameState> {
 
     private val _state = MutableStateFlow(NeonLexiconGameState())
     override val state: StateFlow<NeonLexiconGameState> = _state.asStateFlow()
@@ -59,13 +61,35 @@ class NeonLexiconEngine(
     private var attempts: Int = 0
     private var correct: Int = 0
 
+    /** Estado a restaurar en el próximo [onStart]; lo consume [resumeFrom]. */
+    private var pendingResume: NeonLexiconGameState? = null
+
     override fun onStart() {
-        loadLevel(currentLevel)
+        val resume = pendingResume
+        if (resume != null) {
+            _state.value = resume
+            pendingResume = null
+        } else {
+            loadLevel(currentLevel)
+        }
     }
 
     /** Arranca un nivel concreto del selector de la antesala. */
     fun startAtLevel(level: Int) {
         currentLevel = level.coerceAtLeast(1)
+        start()
+    }
+
+    /**
+     * Reanuda una partida guardada al salir en vez de regenerar el tablero: adopta el
+     * [saved] tal cual y delega en [start] para que el ciclo de vida sea idéntico al
+     * de una partida normal. Los contadores de precisión y el `tick` de animación se
+     * reinician (empiezan a contar desde la reanudación); es una simplificación
+     * asumida, no afecta el récord (nivel alcanzado) ni el tablero.
+     */
+    override fun resumeFrom(saved: NeonLexiconGameState) {
+        pendingResume = saved
+        currentLevel = saved.level.coerceAtLeast(1)
         start()
     }
 
@@ -198,6 +222,7 @@ class NeonLexiconEngine(
  * @property selection trazo en curso, o null en reposo.
  * @property score puntos acumulados (base para el [com.example.kortexgames.domain.model.GameResult]).
  */
+@Serializable
 data class NeonLexiconGameState(
     val level: Int = 0,
     val grid: WordSearchGrid = WordSearchGrid(),

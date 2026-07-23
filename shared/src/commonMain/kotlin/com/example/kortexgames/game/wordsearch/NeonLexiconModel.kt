@@ -1,5 +1,6 @@
 package com.example.kortexgames.game.wordsearch
 
+import kotlinx.serialization.Serializable
 import kotlin.random.Random
 
 /**
@@ -28,6 +29,7 @@ import kotlin.random.Random
  * @property row fila 0-based (crece hacia abajo).
  * @property col columna 0-based (crece hacia la derecha).
  */
+@Serializable
 data class Coordinate(val row: Int, val col: Int)
 
 /**
@@ -45,6 +47,7 @@ data class Coordinate(val row: Int, val col: Int)
  * @property rowStep desplazamiento de fila por letra (−1, 0 o +1).
  * @property colStep desplazamiento de columna por letra (−1, 0 o +1).
  */
+@Serializable
 enum class LineDirection(val rowStep: Int, val colStep: Int) {
     EAST(0, 1),
     WEST(0, -1),
@@ -80,6 +83,7 @@ data class LetterCell(val position: Coordinate, val letter: Char)
  * @property cols número de columnas.
  * @property letters matriz `[fila][columna]` de caracteres en mayúscula.
  */
+@Serializable
 data class WordSearchGrid(
     val rows: Int = 0,
     val cols: Int = 0,
@@ -105,6 +109,7 @@ data class WordSearchGrid(
  * @property start coordenada de la primera letra.
  * @property direction eje sobre el que se despliega.
  */
+@Serializable
 data class TargetWord(
     val text: String,
     val start: Coordinate,
@@ -134,6 +139,7 @@ data class TargetWord(
  * @property foundAtTick tick en que se encontró; la UI lo usa para escalonar la
  *           animación de "salto + brillo" de las letras recién resueltas.
  */
+@Serializable
 data class WordEntry(
     val word: TargetWord,
     val found: Boolean = false,

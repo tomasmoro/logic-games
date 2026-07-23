@@ -48,34 +48,168 @@ rotarlos o usar valores por desarrollador sin tocar el código.
 
 ---
 
-## 1. Google Cloud Console
+## 1. Google Cloud Console (paso a paso, campo por campo)
 
-Todo en el **mismo** proyecto de Google Cloud.
+Todo en el **mismo** proyecto de Google Cloud (los tres client IDs deben convivir
+en un único proyecto; si los creas en proyectos distintos, Supabase no podrá
+autorizar los tres a la vez de forma coherente).
 
-1. Ve a [console.cloud.google.com](https://console.cloud.google.com/) → crea (o elige)
-   un proyecto.
-2. **APIs & Services → OAuth consent screen**: configúrala (tipo *External*, nombre de
-   app, correo de soporte). Añádete como *test user* mientras esté en modo prueba.
-3. **APIs & Services → Credentials → Create Credentials → OAuth client ID**, y crea
-   **tres** clients:
+La consola está mayormente en inglés aunque tu cuenta esté en español — dejo los
+nombres de campo en inglés tal como aparecen en pantalla.
 
-   **a) Web application** →
-   - Anota su **Client ID** (`…apps.googleusercontent.com`) → irá a `GOOGLE_WEB_CLIENT_ID`.
-   - Anota su **Client Secret** → irá **solo** a Supabase.
+### 1.1 Crear (o elegir) el proyecto
 
-   **b) Android** →
-   - *Package name*: `com.example.kortexgames`
-   - *SHA-1*: ejecútalo con el script del repo:
-     ```bash
-     ./scripts/print-android-sha1.sh              # SHA-1 de DEBUG (para probar)
-     # release: ./scripts/print-android-sha1.sh <keystore> <alias>
-     ```
-     (Este client id no se pega en ningún lado, pero debe existir.)
+1. Entra a [console.cloud.google.com](https://console.cloud.google.com/).
+2. Arriba a la izquierda, junto al logo de Google Cloud, hay un selector de
+   proyecto. Si ya tienes uno para esta app, selecciónalo. Si no:
+   **New Project** → dale un nombre (p. ej. `KortexGames`) → **Create**.
+3. Espera a que la notificación (icono de campana) confirme que el proyecto está
+   creado, y selecciónalo en el desplegable si no quedó activo solo.
 
-   **c) iOS** →
-   - *Bundle ID*: el de la app iOS. Lo ves en `iosApp/Configuration/Config.xcconfig`
-     (`PRODUCT_BUNDLE_IDENTIFIER`, hoy `com.example.kortexgames.KortexGames$(TEAM_ID)`).
-   - Anota su **Client ID** → irá a `GOOGLE_IOS_CLIENT_ID`.
+> No hace falta habilitar ninguna API adicional (Google People API, etc.) para
+> este flujo: el login con ID token usa Google Identity Services, que ya viene
+> disponible sin activarlo explícitamente.
+
+### 1.2 Configurar la pantalla de consentimiento (OAuth consent screen)
+
+Es obligatoria antes de poder crear ningún Client ID: es lo que ve el usuario
+("Kortex Games quiere acceder a tu cuenta de Google...").
+
+> Google rediseñó esta parte de la consola durante 2025 (**"Google Auth
+> Platform"**). Según cuándo la abras verás uno de estos dos flujos — mira cuál
+> te aparece a ti (si no ves "User Type" al entrar, es el nuevo) y sigue esa
+> variante:
+
+**Si ves un botón "Get Started" (flujo nuevo, Google Auth Platform):**
+
+1. Menú ☰ → **APIs & Services → OAuth consent screen** (puede aparecer también
+   como **"Google Auth Platform"** en el menú, o buscándolo en la barra superior).
+2. Pulsa **Get Started**. Es un asistente de varios pasos:
+   - **App Information**: *App name* (p. ej. `Kortex Games`) y *User support
+     email* (desplegable, tu cuenta).
+   - **Audience** (esto reemplaza al viejo "User Type"): elige **External** —
+     a menos que uses Google Workspace y quieras restringir el login a tu
+     organización.
+   - **Contact Information**: tu email como *Developer contact information*
+     (obligatorio, es donde Google te avisa de cambios de política).
+   - **Finish**: marca la casilla *"I agree to the Google API Services User
+     Data Policy"* → **Continue** → **Create**.
+3. Aterrizas en el dashboard de **Google Auth Platform**, con pestañas a la
+   izquierda: *Overview*, *Branding*, **Audience**, *Clients*, *Data Access*,
+   *Verification Center*. Dos de estas requieren un paso más:
+   - **Audience** → sección **Test users** → **+ Add users**: mientras la app
+     esté en *Publishing status: Testing* (el estado inicial), **solo las
+     cuentas que agregues aquí podrán iniciar sesión** — si pruebas con tu
+     cuenta y no la sumaste, Google devuelve *"Access blocked: KortexGames has
+     not completed the Google verification process"*. Agrega tu email (y el de
+     cualquier tester).
+   - **Data Access** → no hace falta tocar nada: `openid`, `email` y `profile`
+     (los que pide nuestro código) son *scopes no sensibles* que Google Identity
+     Services añade por defecto al flujo de login, sin que los declares a mano.
+
+**Si ves "User Type: External/Internal" directo (flujo clásico, aún posible en
+algunos proyectos):**
+
+1. **User Type**: **External** → **Create**.
+2. **App information**: *App name*, *User support email*, *App logo* (opcional).
+3. **App domain** (opcional sin web pública) → **Developer contact information**
+   (tu email) → **Save and Continue**.
+4. **Scopes**: no añadas nada a mano, `openid`/`email`/`profile` van por
+   defecto → **Save and Continue**.
+5. **Test users** → **+ Add users** → tu email (mismo motivo que arriba) →
+   **Save and Continue**.
+6. Revisa el resumen → **Back to Dashboard**.
+
+> **Testing vs. Production (aplica a ambos flujos):** para desarrollar y probar
+> te alcanza con **Testing** + la lista de *test users* (hasta 100). Publicar a
+> producción (*Publish App*, en *Audience* o en el dashboard según el flujo)
+> permite que cualquier cuenta de Google inicie sesión; como usamos solo scopes
+> no sensibles no dispara el proceso largo de verificación, aunque puede seguir
+> mostrando un aviso de "app no verificada" hasta que Google la revise — no
+> bloquea el login, solo añade un clic de "Continuar" para el usuario.
+
+### 1.3 Crear los tres OAuth Client IDs
+
+Dos caminos posibles, según el flujo que te tocó — llegan al mismo lugar:
+
+- **Flujo nuevo (Google Auth Platform)**: dashboard → pestaña **Clients** →
+  **+ Create Client**.
+- **Flujo clásico, o siempre disponible**: Menú ☰ → **APIs & Services →
+  Credentials** → **+ Create Credentials** → **OAuth client ID**.
+
+Repite el paso tres veces, uno por tipo:
+
+#### a) Web application
+
+1. *Application type*: **Web application**.
+2. *Name*: uno identificable, p. ej. `KortexGames – Web (Supabase)`. Es solo una
+   etiqueta interna, no afecta al funcionamiento.
+3. *Authorized JavaScript origins* / *Authorized redirect URIs*: **déjalos
+   vacíos**. Este client no sirve para que un navegador inicie el flujo; existe
+   únicamente como **audiencia** (`aud`) del ID token que emite Android y como
+   client id/secret que Supabase usa para verificar Google como proveedor.
+4. **Create**. Se abre un modal **"OAuth client created"** con:
+   - **Client ID** — cadena `NNNNNNNNNN-xxxxxxxx.apps.googleusercontent.com`.
+     → esto es `GOOGLE_WEB_CLIENT_ID`.
+   - **Client Secret** — cadena corta tipo `GOCSPX-xxxxxxxx`.
+     → esto va **solo** a Supabase, nunca al repo.
+   - Copia ambos ya (o descarga el JSON con **Download JSON**); si cierras el
+     modal, el Client ID lo puedes volver a ver en la tabla de Credentials, pero
+     el **Secret no se vuelve a mostrar completo** — tendrías que resetearlo
+     (**Reset Secret**) si lo pierdes.
+
+#### b) Android
+
+1. *Application type*: **Android**.
+2. *Name*: p. ej. `KortexGames – Android`.
+3. *Package name*: `com.example.kortexgames` (coincide con `applicationId` en
+   `androidApp/build.gradle.kts`).
+4. *SHA-1 certificate fingerprint*: pégala aquí. Para obtenerla:
+   ```bash
+   ./scripts/print-android-sha1.sh              # SHA-1 de DEBUG (para probar ya)
+   # ./scripts/print-android-sha1.sh <keystore> <alias>   # release, cuando publiques
+   ```
+   El script imprime una línea `SHA1: AA:BB:CC:...` — pega exactamente ese valor
+   (con los dos puntos) en el campo.
+5. **Create**. Los client IDs de tipo Android **no tienen secret** (una app
+   instalada no puede guardar uno de forma segura) y este Client ID en particular
+   **no se pega en ningún archivo del repo**: su única función es quedar
+   registrado junto al SHA-1 para que Google confíe en las peticiones que
+   Credential Manager hace desde tu APK firmado con esa clave.
+
+> Si más adelante generas una build de **release** firmada con otro keystore
+> (o usas Play App Signing, cuya SHA-1 ves en Play Console → *Setup → App
+> Integrity*), tendrás que **añadir esa segunda SHA-1** al mismo Android Client
+> ID (edítalo → *Add fingerprint*) o el login fallará solo en esa build.
+
+#### c) iOS
+
+1. *Application type*: **iOS**.
+2. *Name*: p. ej. `KortexGames – iOS`.
+3. *Bundle ID*: tiene que ser exactamente el de la app. Lo ves en
+   `iosApp/Configuration/Config.xcconfig`:
+   ```
+   PRODUCT_BUNDLE_IDENTIFIER=com.example.kortexgames.KortexGames$(TEAM_ID)
+   ```
+   `$(TEAM_ID)` se resuelve al valor de la línea `TEAM_ID=XRVAAUV9DG` del mismo
+   archivo, así que el bundle id real a pegar es
+   `com.example.kortexgames.KortexGamesXRVAAUV9DG`. Si tienes dudas, ábrelo en
+   Xcode: proyecto `iosApp` → target `iosApp` → pestaña *General* → campo
+   *Bundle Identifier* muestra el valor ya resuelto.
+4. *App Store ID* / *Team ID* (campos opcionales que aparecen debajo): puedes
+   dejarlos vacíos — solo hacen falta para *Universal Links*, que este flujo no
+   usa (`ASWebAuthenticationSession` no depende de ellos).
+5. **Create**. Igual que Android, no genera secret. El **Client ID**
+   (`…apps.googleusercontent.com`) → esto es `GOOGLE_IOS_CLIENT_ID`.
+
+### 1.4 Dónde volver a ver estos valores después
+
+**APIs & Services → Credentials** lista los tres bajo *OAuth 2.0 Client IDs*.
+Haz clic en el nombre de cualquiera para reabrir su detalle y volver a copiar el
+**Client ID** cuando lo necesites. El **Client Secret** del Web client es la
+única excepción: tras cerrar el modal inicial solo se ve enmascarado
+(`••••••••`); si lo perdiste, usa **Reset Secret** en esa misma pantalla (esto
+invalida el secret anterior — habrá que actualizarlo también en Supabase).
 
 ---
 

@@ -85,6 +85,9 @@ kotlin {
     sourceSets {
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
+            // Back del sistema (PlatformBackHandler.android.kt): el BackHandler común
+            // de Compose Multiplatform no publica variante Android (ver su KDoc).
+            implementation(libs.androidx.activity.compose)
             // FASE 3: driver SQLite Android + motor Ktor para Supabase
             implementation(libs.sqldelight.android.driver)
             implementation(libs.ktor.client.okhttp)

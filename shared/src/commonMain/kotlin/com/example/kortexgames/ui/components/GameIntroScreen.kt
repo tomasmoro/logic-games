@@ -70,6 +70,26 @@ data class LevelStripState(
 )
 
 /**
+ * **Partida pendiente** detectada al abrir la antesala: el jugador salió a mitad de
+ * juego y su progreso se guardó (ver
+ * [com.example.kortexgames.domain.repository.SavedGameStateRepository]).
+ *
+ * Cuando un juego pasa esto a [GameIntroScreen], la antesala invierte la jerarquía
+ * de sus acciones: **continuar** pasa a ser el CTA principal (es lo que el jugador
+ * casi siempre quiere al volver) y empezar de cero baja a acción secundaria. Los
+ * juegos que no guardan partida lo dejan en `null` y la antesala no cambia.
+ *
+ * @property detail resumen corto de lo que se retoma ("Nivel 5", "1240 pts"); se
+ *   muestra bajo el CTA para que el jugador sepa QUÉ va a continuar antes de pulsar.
+ *   `null` = sin resumen.
+ * @property onResume reanuda la partida guardada.
+ */
+data class ResumeState(
+    val onResume: () -> Unit,
+    val detail: String? = null,
+)
+
+/**
  * **Pantalla de intro** común a todos los juegos: la antesala que se muestra antes de
  * empezar a jugar (petición del usuario, inspirada en apps tipo Impulse). Presenta la
  * identidad del juego con estética neón (§9): icono, título, descripción y —si el juego
@@ -94,6 +114,8 @@ data class LevelStripState(
  * @param levels datos del carril de niveles; **null** en juegos sin niveles (ENDLESS).
  * @param onHelp acción del botón de ayuda; por ahora un no-op (pendiente de contenido).
  * @param startLabel texto del CTA (por defecto "Comenzar").
+ * @param resume partida pendiente de continuar (ver [ResumeState]); **null** en los
+ *        juegos que no guardan progreso al salir, que mantienen la antesala de siempre.
  * @param background capa ambiental opcional detrás del contenido (fondo temático del juego).
  */
 @Composable
@@ -109,6 +131,7 @@ fun GameIntroScreen(
     levels: LevelStripState? = null,
     onHelp: () -> Unit = {},
     startLabel: String = "Comenzar",
+    resume: ResumeState? = null,
     background: (@Composable () -> Unit)? = null,
 ) {
     Box(modifier = modifier.fillMaxSize().background(LogicColors.BackgroundDark)) {
@@ -178,14 +201,17 @@ fun GameIntroScreen(
                 Spacer(Modifier.height(24.dp))
             }
 
-            // CTA "Comenzar": el único bucle de atención de la pantalla (§9.4). Latido +
-            // halo que respira sobre el degradado verde de acción principal.
-            Box(
+            // Acciones. El CTA principal es el único bucle de atención de la pantalla
+            // (§9.4): latido + halo que respira sobre el degradado verde. Cuando hay
+            // partida pendiente ese papel lo toma "Continuar" —lo que el jugador
+            // quiere al volver— y empezar de cero baja a acción secundaria, para que
+            // un toque distraído no borre el progreso guardado.
+            Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 20.dp),
-                contentAlignment = Alignment.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 AnimatedGameButton(
-                    onClick = onStart,
+                    onClick = resume?.onResume ?: onStart,
                     gradient = LogicGradients.play,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -204,12 +230,40 @@ fun GameIntroScreen(
                             glow = false,
                         )
                         Text(
-                            startLabel,
+                            if (resume != null) "Continuar" else startLabel,
                             style = MaterialTheme.typography.titleMedium,
                             color = LogicColors.BackgroundDark,
                             fontWeight = FontWeight.ExtraBold,
                         )
                     }
+                }
+
+                if (resume != null) {
+                    // Qué se retoma exactamente ("Nivel 5", "1240 pts"): sin esto el
+                    // jugador no sabe si continúa lo que cree recordar.
+                    if (resume.detail != null) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            resume.detail,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = LogicColors.OnDarkMuted,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    // Secundario y sin peso visual: descarta la partida guardada, así
+                    // que no debe competir con "Continuar" (§9.1: el acento es escaso).
+                    Text(
+                        "Empezar de nuevo",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = LogicColors.OnDarkMuted,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .bounceClick(onClick = onStart)
+                            .padding(vertical = 12.dp),
+                    )
                 }
             }
         }

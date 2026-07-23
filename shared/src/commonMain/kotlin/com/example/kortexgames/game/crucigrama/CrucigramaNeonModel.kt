@@ -1,8 +1,10 @@
 package com.example.kortexgames.game.crucigrama
 
+import kotlinx.serialization.Serializable
 import kotlin.random.Random
 
 /** Dirección de escritura de una palabra en la rejilla. */
+@Serializable
 enum class CrucigramaDirection {
     HORIZONTAL,
     VERTICAL,
@@ -118,6 +120,7 @@ data class CrucigramaNeonLevelSpec(
 }
 
 /** Estado de una pista durante la partida. */
+@Serializable
 data class CrucigramaNeonSlotState(
     val number: Int,
     val clue: String,
@@ -131,6 +134,7 @@ data class CrucigramaNeonSlotState(
 )
 
 /** Estado de una celda jugable de la rejilla. */
+@Serializable
 data class CrucigramaNeonCellState(
     val index: Int,
     val row: Int,
@@ -371,6 +375,16 @@ object CrucigramaNeonGenerator {
         ),
         LevelDef(
             listOf(
+                "ZAPATO" to "Calzado que cubre el pie y habitualmente no pasa de la garganta",
+                "POZO" to "Excavación profunda en la tierra para extraer agua, petróleo u otros líquidos",
+                "PATO" to "Ave acuática de pico ancho y plano y patas con membrana interdigital",
+                "AZOTA" to "Golpear con fuerza y repetidamente",
+                "TAZA" to "Recipiente pequeño con asa para beber líquidos calientes",
+            ),
+            extras = listOf("TOPAZ", "OPTA", "APTO"),
+        ),
+        LevelDef(
+            listOf(
                 "MOLINO" to "Maquina que produce energía con el viento",
                 "LIMON" to "Fruto cítrico",
                 "MIO" to "Que pertenece a mí",
@@ -379,6 +393,28 @@ object CrucigramaNeonGenerator {
                 "MILLON" to "100 x 100 x 100"
             ),
             extras = listOf("MIMO", "LILO", "ION", "LIO", "OLMO"),
+        ),
+        LevelDef(
+            listOf(
+                "SONIDO" to "Sensación percibida por el oído producida por la vibración de la materia",
+                "NIDO" to "Estructura que construyen las aves para poner sus huevos y criar a sus polluelos",
+                "DIOS" to "Ser supremo al que se rinde culto en distintas religiones como creador del universo",
+                "OIDO" to "Órgano de la audición o sentido corporal con el que se perciben los sonidos",
+                "SINO" to "Destino o fuerza que según algunas creencias determina la vida de las personas",
+                "DON" to "Habilidad especial"
+            ),
+            extras = listOf( "DOS", "SIDO", "DINOS", "DIN"),
+        ),
+        LevelDef(
+            listOf(
+                "HACHE" to "Nombre de la octava letra del abecedario español",
+                "HACE" to "Forma del verbo hacer, referente a realizar, fabricar o ejecutar algo",
+                "ECHA" to "Forma del verbo echar, referente a tirar, expulsar o verter algo",
+                "HACHA" to "Herramienta con hoja metálica afilada empleada para talar o cortar leña",
+                "CHECA" to "Interjección coloquial utilizada para llamar la atención de una persona",
+                "CACHE" to "Memoria de acceso rápido en un sistema informático que almacena datos temporalmente para mejorar el rendimiento"
+            ),
+            extras = listOf("ECHE"),
         ),
         LevelDef(
             listOf(
@@ -437,6 +473,18 @@ object CrucigramaNeonGenerator {
         ),
         LevelDef(
             listOf(
+                "ROCA" to "Materia mineral sólida y dura que forma la corteza de la Tierra",
+                "RICO" to "Que posee una gran fortuna económica o tiene un sabor muy agradable",
+                "ARCO" to "Porción de una línea curva, o arma usada para disparar flechas",
+                "ORCA" to "Mamífero marino de gran tamaño, también llamado ballena asesina",
+                "CARO" to "Que tiene un precio elevado o que goza de un gran aprecio afectivo",
+                "CORO" to "Grupo de personas que cantan simultáneamente una pieza musical",
+                "CIRCO" to "Espectáculo público que combina acrobacias, payasos y animales adiestrados",
+            ),
+            extras = listOf( "CRIO", "ROCIO", "CRIA", "RICA", "RIO", "OIR", "ACARO", "COCO"),
+        ),
+        LevelDef(
+            listOf(
                 "ACERCA" to "Poner algo cerca de otra cosa o aproximar ideas o conceptos",
                 "CREAR" to "Producir algo de la nada",
                 "CERA" to "Sustancia sólida y blanda que fabrican las abejas para formar sus panales",
@@ -446,6 +494,28 @@ object CrucigramaNeonGenerator {
 
             ),
             extras = listOf("RARA", "ARAR", "ERA", "RECAER", "RECREA", "CERCA"),
+        ),
+        LevelDef(
+            listOf(
+                "SUERTE" to "Encadenamiento de sucesos fortuitos o causa a la que se atribuye la buena fortuna",
+                "SURTE" to "Forma del verbo surtir, referente a proveer o abastecer de lo necesario",
+                "SUTURA" to "Costura quirúrgica empleada para unir los bordes de una herida y facilitar su curación",
+                "TUS" to "Pronombre posesivo de segunda persona plural",
+                "ERUTE" to "Forma del verbo erutar",
+                "RUTA" to "Camino o itinerario que se sigue para ir de un lugar a otro",
+                "SUR" to "Punto cardinal opuesto al norte",
+            ),
+            extras = listOf("SET", "RES", "SER", "USE", "TES"),
+        ),
+        LevelDef(
+            listOf(
+                "KILO" to "Unidad de masa del Sistema Internacional equivalente a mil gramos",
+                "LISO" to "Que tiene la superficie suave, uniforme y libre de arrugas o relieves",
+                "SILO" to "Construcción o depósito grande para almacenar granos u otros materiales",
+                "KOI" to "Pez ornamental de origen japonés, muy apreciado por su belleza y colores vivos",
+                "SOL" to "Estrella que ilumina el cielo",
+            ),
+            extras = listOf("LOS", "ISO"),
         ),
         LevelDef(
             listOf(
@@ -460,27 +530,16 @@ object CrucigramaNeonGenerator {
         ),
         LevelDef(
             listOf(
-                "TISANA" to "Infusión de plantas medicinales en agua hirviendo",
+                "TINA" to "Recipiente para bañarse",
                 "TINTA" to "Líquido coloreado que se utiliza para escribir, dibujar o imprimir",
-                "INSTA" to "Urge o exige la pronta ejecución o cumplimiento de algo",
+                "ANIS" to "Planta aromática de la que se obtiene un licor dulce y transparente",
                 "SANTA" to "Mujer de gran virtud y bondad, o declarada venerable por la Iglesia",
                 "SATAN" to "Figura del mal en varias religiones, especialmente en el cristianismo",
                 "SATIN" to "Tejido de textura densa y superficie bastante brillante, parecido al raso",
             ),
-            extras = listOf("ANIS", "NATA", "SANA", "SITIA", "ANTI", "TANTA", "TAN", "SIN"),
+            extras = listOf( "NATA", "SANA", "SITIA", "ANTI", "TANTA", "TAN", "SIN"),
         ),
-        LevelDef(
-            listOf(
-                "ROCA" to "Materia mineral sólida y dura que forma la corteza de la Tierra",
-                "RICO" to "Que posee una gran fortuna económica o tiene un sabor muy agradable",
-                "ARCO" to "Porción de una línea curva, o arma usada para disparar flechas",
-                "ORCA" to "Mamífero marino de gran tamaño, también llamado ballena asesina",
-                "CARO" to "Que tiene un precio elevado o que goza de un gran aprecio afectivo",
-                "CORO" to "Grupo de personas que cantan simultáneamente una pieza musical",
-                "CIRCO" to "Espectáculo público que combina acrobacias, payasos y animales adiestrados",
-            ),
-            extras = listOf( "CRIO", "ROCIO", "CRIA", "RICA", "RIO", "OIR"),
-        ),
+
     )
 
     private val levels: List<CrucigramaNeonLevelSpec> by lazy { levelDefs.map { buildSpec(it) } }

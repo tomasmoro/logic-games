@@ -3,6 +3,7 @@ package com.example.kortexgames.game.blockgrid
 import com.example.kortexgames.core.audio.AudioAndHapticManager
 import com.example.kortexgames.game.BaseGameEngine
 import com.example.kortexgames.game.GameIds
+import com.example.kortexgames.game.ResumableGameEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -11,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.serialization.Serializable
 import kotlin.random.Random
 
 /**
@@ -40,7 +42,7 @@ class BlockGridEngine(
     difficulty = 1,
     scope = scope,
     audio = audio,
-) {
+), ResumableGameEngine<BlockGridGameState> {
 
     private val _state = MutableStateFlow(BlockGridGameState())
     override val state: StateFlow<BlockGridGameState> = _state.asStateFlow()
@@ -57,11 +59,38 @@ class BlockGridEngine(
     private var dropAttempts = 0
     private var dropsPlaced = 0
 
+    /** Estado a restaurar en el próximo [onStart]; lo consume [resumeFrom]. */
+    private var pendingResume: BlockGridGameState? = null
+
     override fun onStart() {
-        nextPieceId = 0
-        dropAttempts = 0
-        dropsPlaced = 0
-        _state.value = BlockGridGameState(hand = dealHand())
+        val resume = pendingResume
+        if (resume != null) {
+            // nextPieceId se continúa DESPUÉS del mayor id de la mano guardada: si se
+            // reiniciara a 0, la próxima mano repartiría ids que ya usa una pieza
+            // reanudada, rompiendo la identidad `key(piece.id)` de la UI (dos piezas
+            // con el mismo id). Los contadores de precisión sí se reinician (cuentan
+            // desde la reanudación), como el resto de juegos reanudables.
+            nextPieceId = (resume.hand.maxOfOrNull { it.id } ?: -1) + 1
+            dropAttempts = 0
+            dropsPlaced = 0
+            _state.value = resume
+            pendingResume = null
+        } else {
+            nextPieceId = 0
+            dropAttempts = 0
+            dropsPlaced = 0
+            _state.value = BlockGridGameState(hand = dealHand())
+        }
+    }
+
+    /**
+     * Reanuda una corrida guardada al salir en vez de repartir mano nueva: adopta el
+     * [saved] tal cual y delega en [start] para que el ciclo de vida sea idéntico al
+     * de una partida normal. La restauración del contador de ids ocurre en [onStart].
+     */
+    override fun resumeFrom(saved: BlockGridGameState) {
+        pendingResume = saved
+        start()
     }
 
     /**
@@ -228,6 +257,7 @@ class BlockGridEngine(
  * @property score puntos acumulados.
  * @property linesCleared líneas rotas en total (métrica para logros).
  */
+@Serializable
 data class BlockGridGameState(
     val board: BoardGrid = BoardGrid(),
     val hand: List<Polyomino> = emptyList(),

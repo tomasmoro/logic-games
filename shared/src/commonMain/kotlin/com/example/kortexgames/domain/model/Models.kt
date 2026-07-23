@@ -86,6 +86,19 @@ data class LevelBestTime(
     val isSynced: Boolean = true,
 )
 
+/**
+ * Partida en curso guardada al salir (back / "SALIR" del menú de pausa) de un juego
+ * que activa el guardado. [stateJson] es el estado del motor (`S` de
+ * `GameEngine<S>`) serializado con kotlinx.serialization; el formato lo decide cada
+ * juego, este modelo solo lo transporta. Es estado local efímero (no sincroniza con
+ * Supabase, a diferencia de [PlayerGameProgress]/[LevelBestTime]).
+ */
+data class SavedGameState(
+    val gameId: String,
+    val stateJson: String,
+    val savedAt: Instant,
+)
+
 /** Salida del RPC get_score_percentile / submit_game_result (FASE 2). */
 data class PercentileResult(
     val betterThanPct: Double,

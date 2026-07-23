@@ -44,7 +44,10 @@ import com.example.kortexgames.game.blockgrid.BlockGridScreen
 import com.example.kortexgames.game.wordsearch.NeonLexiconScreen
 import com.example.kortexgames.game.screws.ScrewGameScreen
 import com.example.kortexgames.game.neoncircuit.NeonCircuitScreen
+import com.example.kortexgames.game.neon2048.Neon2048Screen
 import com.example.kortexgames.game.neonpulse.NeonPulseScreen
+import com.example.kortexgames.game.defuser.DefuserScreen
+import com.example.kortexgames.game.neonsudoku.NeonSudokuScreen
 import com.example.kortexgames.game.polarity.PolarityCollisionScreen
 import com.example.kortexgames.game.starport.StarportScreen
 import com.example.kortexgames.game.watersort.WaterSortScreen
@@ -120,7 +123,8 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean) {
                 currentRoute == Routes.NEON_SCREWS || currentRoute == Routes.NEON_BLOCK_GRID ||
                 currentRoute == Routes.NEON_LEXICON || currentRoute == Routes.STARPORT_ESCAPE ||
                 currentRoute == Routes.NEON_CIRCUIT || currentRoute == Routes.HYPERGATE ||
-                currentRoute == Routes.NEON_PULSE
+                currentRoute == Routes.NEON_PULSE || currentRoute == Routes.NEON_2048 ||
+                currentRoute == Routes.NEON_SUDOKU
             ) {
                 graph.adManager.onEnterGameplay()
             } else {
@@ -260,6 +264,15 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean) {
                 }
                 composable(Routes.NEON_PULSE) {
                     NeonPulseScreen(graph) { navController.popBackStack() }
+                }
+                composable(Routes.NEON_2048) {
+                    Neon2048Screen(graph) { navController.popBackStack() }
+                }
+                composable(Routes.NEON_SUDOKU) {
+                    NeonSudokuScreen(graph) { navController.popBackStack() }
+                }
+                composable(Routes.NEON_DEFUSER) {
+                    DefuserScreen(graph) { navController.popBackStack() }
                 }
             }
         }

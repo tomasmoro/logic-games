@@ -8,6 +8,7 @@ import com.example.kortexgames.core.mvi.UiState
 import com.example.kortexgames.game.GameOverInfo
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.game.LeveledGamePhase
+import kotlinx.serialization.Serializable
 
 /**
  * # Contrato MVI de "Neon Lexicon" (Sopa de Letras Neón)
@@ -38,6 +39,7 @@ import com.example.kortexgames.game.LeveledGamePhase
  *           legales ([LineDirection]); con false la UI puede pintar el láser en
  *           tono neutro para indicar "todavía no es una selección válida".
  */
+@Serializable
 data class Selection(
     val start: Coordinate,
     val current: Coordinate,
@@ -57,6 +59,9 @@ data class Selection(
  * @property status ciclo de vida estándar de partida (IDLE→RUNNING→FINISHED).
  * @property gameOver datos de la pantalla de resultado (récord, percentil); null
  *           mientras se juega.
+ * @property savedLevel nivel de la partida guardada al salir, o null si no hay
+ *           ninguna pendiente. La antesala lo ofrece como "Continuar" (ver
+ *           [com.example.kortexgames.ui.components.ResumeState]).
  */
 data class NeonLexiconUiState(
     val phase: LeveledGamePhase = LeveledGamePhase.LEVEL_SELECT,
@@ -67,6 +72,7 @@ data class NeonLexiconUiState(
     val selection: Selection? = null,
     val status: GameStatus = GameStatus.IDLE,
     val gameOver: GameOverInfo? = null,
+    val savedLevel: Int? = null,
 ) : UiState {
 
     /**
@@ -97,6 +103,9 @@ sealed interface NeonLexiconIntent : UiIntent {
 
     /** Desde la antesala: jugar un nivel concreto del carril. */
     data class PlayLevel(val level: Int) : NeonLexiconIntent
+
+    /** Desde la antesala: retomar la partida guardada al salir (ver [NeonLexiconUiState.savedLevel]). */
+    data object ResumeSaved : NeonLexiconIntent
 
     /**
      * El jugador tocó la celda ([row], [col]): comienza un trazo con ancla ahí.

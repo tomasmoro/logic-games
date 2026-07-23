@@ -11,6 +11,7 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.Favorite
@@ -27,7 +28,9 @@ import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.SportsEsports
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Vibration
@@ -95,6 +98,9 @@ object KortexIcons {
     /** Papelera: borrar toda la palabra en curso de una vez (limpia el buffer). */
     val Trash: ImageVector = Icons.Rounded.DeleteOutline
 
+    /** Lápiz: modo "notas" / anotaciones a mano alzada (Neon Sudoku Matrix). */
+    val Pencil: ImageVector = Icons.Rounded.Edit
+
     /** Pausa: detiene la partida y abre el menú de pausa (común a todos los juegos). */
     val Pause: ImageVector = Icons.Rounded.Pause
 
@@ -125,6 +131,21 @@ object KortexIcons {
      * está sujeta a un anuncio, no que sea gratuita.
      */
     val RewardedAd: ImageVector = Icons.Rounded.OndemandVideo
+
+    /**
+     * Escudo protector: la "bandera" de Neon Defuser (marca donde el jugador cree
+     * que hay una mina) y el icono del contador de minas restantes en su HUD. Se
+     * elige escudo (no una bandera clásica) porque encaja con la fantasía de
+     * "desactivar" un panel de amenazas en vez de conquistar territorio.
+     */
+    val Shield: ImageVector = Icons.Rounded.Shield
+
+    /**
+     * Aviso de peligro: refuerza los mensajes de amenaza/derrota. La mina de Neon
+     * Defuser NO usa este icono: se dibuja como geometría en el `Canvas`, porque es
+     * un objeto del juego y no un icono de UI (ver `DefuserBoard`).
+     */
+    val Warning: ImageVector = Icons.Rounded.Warning
 }
 
 /**

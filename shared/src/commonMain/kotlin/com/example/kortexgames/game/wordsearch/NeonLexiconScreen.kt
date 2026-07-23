@@ -51,10 +51,12 @@ import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.ArcadeBrickBackground
+import com.example.kortexgames.ui.components.GameExitGuard
 import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.LevelStripState
+import com.example.kortexgames.ui.components.ResumeState
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.sin
@@ -79,10 +81,19 @@ private val MaxCell = 44.dp
 @Composable
 fun NeonLexiconScreen(graph: AppGraph, onExit: () -> Unit) {
     val vm: NeonLexiconViewModel = viewModel {
-        NeonLexiconViewModel(graph.progressRepository, graph.playerProgressRepository, graph.audio)
+        NeonLexiconViewModel(
+            graph.progressRepository,
+            graph.playerProgressRepository,
+            graph.savedGameStateRepository,
+            graph.audio,
+        )
     }
     val state by vm.state.collectAsStateWithLifecycle()
     val accent = CategoryPalette.Language
+
+    // Único punto de salida "en juego" (back del sistema y "SALIR" del menú de
+    // pausa): guarda la partida en curso antes de navegar atrás.
+    val exitWithSave: () -> Unit = { vm.requestExit(onExit) }
 
     // Único punto donde los Effects se vuelven sonido/vibración (patrón blockgrid).
     LaunchedEffect(Unit) {
@@ -108,6 +119,12 @@ fun NeonLexiconScreen(graph: AppGraph, onExit: () -> Unit) {
             ),
             startLabel = "Empezar",
             onStart = { vm.onIntent(NeonLexiconIntent.PlayLevel(selectedLevel)) },
+            resume = state.savedLevel?.let { level ->
+                ResumeState(
+                    onResume = { vm.onIntent(NeonLexiconIntent.ResumeSaved) },
+                    detail = "Nivel $level en curso",
+                )
+            },
             onExit = onExit,
             background = {
                 ArcadeBrickBackground(modifier = Modifier.fillMaxSize(), accent = accent)
@@ -179,9 +196,19 @@ fun NeonLexiconScreen(graph: AppGraph, onExit: () -> Unit) {
             audio = graph.audio,
             onPause = { vm.onIntent(NeonLexiconIntent.Pause) },
             onResume = { vm.onIntent(NeonLexiconIntent.Resume) },
-            onExit = onExit,
+            onExit = exitWithSave,
             gameTitle = "Sopa de Letras Neón",
             helpText = "Desliza el dedo sobre las letras para trazar cada palabra escondida: horizontal, vertical o en diagonal. Encuéntralas todas para superar el nivel.",
+            accent = accent,
+            exitKeepsProgress = true,
+        )
+
+        // Atrás del sistema: reanuda si estaba en pausa, o pregunta antes de salir
+        // mientras se juega (la partida se guarda al confirmar, ver exitWithSave).
+        GameExitGuard(
+            status = state.status,
+            onResume = { vm.onIntent(NeonLexiconIntent.Resume) },
+            onConfirmExit = exitWithSave,
             accent = accent,
         )
     }

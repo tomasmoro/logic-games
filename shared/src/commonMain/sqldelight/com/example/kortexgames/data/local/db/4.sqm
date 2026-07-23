@@ -1,0 +1,11 @@
+-- Migración v4 → v5: añade la tabla de partida en curso guardada al salir. Necesaria
+-- para que las instalaciones EXISTENTES (BD en v4, sin esta tabla) la reciban vía
+-- onUpgrade. Las instalaciones nuevas la obtienen del CREATE en SavedGameState.sq
+-- mediante Schema.create. Este .sqm eleva Schema.version a 5, disparando la migración
+-- en dispositivos con la BD antigua. Mismo patrón que 1.sqm–3.sqm (ver PlayerProgress.sq);
+-- toda nueva alta de tabla/columna debe seguirlo.
+CREATE TABLE SavedGameStateEntity (
+    gameId      TEXT    NOT NULL PRIMARY KEY,
+    stateJson   TEXT    NOT NULL,
+    savedAt     INTEGER NOT NULL
+);

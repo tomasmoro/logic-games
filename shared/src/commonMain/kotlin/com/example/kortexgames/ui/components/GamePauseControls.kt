@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.kortexgames.core.audio.AudioAndHapticManager
@@ -82,6 +83,10 @@ import kotlinx.coroutines.launch
  * @param helpText explicación de "cómo se juega"; si es `null`, se oculta la ayuda.
  *        Reutiliza la descripción de la antesala del juego.
  * @param accent color de acento de la categoría (halo del botón, secciones del menú).
+ * @param exitKeepsProgress si el juego guarda la partida en curso al salir (ver
+ *        [com.example.kortexgames.game.ResumableGameEngine] / [GameExitGuard]): cuando
+ *        es `true` se aclara bajo "SALIR" que no se pierde el progreso. `false` por
+ *        defecto para no cambiar el copy de los juegos que aún no lo activan.
  */
 @Composable
 fun GamePauseControls(
@@ -95,6 +100,7 @@ fun GamePauseControls(
     gameTitle: String? = null,
     helpText: String? = null,
     accent: Color = LogicColors.NeonCyan,
+    exitKeepsProgress: Boolean = false,
 ) {
     Box(modifier = modifier.fillMaxSize()) {
         // Botón de pausa: solo mientras se juega (en PAUSED lo sustituye el menú, y en
@@ -122,6 +128,7 @@ fun GamePauseControls(
             accent = accent,
             onResume = onResume,
             onExit = onExit,
+            exitKeepsProgress = exitKeepsProgress,
         )
     }
 }
@@ -187,6 +194,7 @@ private fun BoxScope.PauseMenu(
     accent: Color,
     onResume: () -> Unit,
     onExit: () -> Unit,
+    exitKeepsProgress: Boolean,
 ) {
     val scrimAlpha by animateFloatAsState(
         targetValue = if (visible) 0.82f else 0f,
@@ -364,6 +372,17 @@ private fun BoxScope.PauseMenu(
                         fontWeight = FontWeight.Bold,
                     )
                 }
+            }
+            // Solo en juegos que activan el guardado al salir (ver GameExitGuard):
+            // tranquiliza antes de que el jugador pulse "SALIR".
+            if (exitKeepsProgress) {
+                Text(
+                    "No perderás tu progreso: podrás continuar donde lo dejaste.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = LogicColors.OnDarkMuted,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }

@@ -60,13 +60,16 @@ import com.example.kortexgames.core.theme.CategoryPalette
 import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameStatus
+import com.example.kortexgames.ui.components.GameExitGuard
 import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
+import com.example.kortexgames.ui.components.ResumeState
 import com.example.kortexgames.ui.components.SpaceBackdrop
 import com.example.kortexgames.ui.components.alphaIf
 import com.example.kortexgames.ui.components.bounceClick
+import com.example.kortexgames.ui.components.drawNeonSparks
 import com.example.kortexgames.ui.components.drawNeonTile
 import kotlinx.coroutines.delay
 import kotlin.math.cos
@@ -133,9 +136,13 @@ private fun BlockAccent.color(): Color = when (this) {
 @Composable
 fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
     val vm: BlockGridViewModel = viewModel {
-        BlockGridViewModel(graph.progressRepository, graph.audio)
+        BlockGridViewModel(graph.progressRepository, graph.savedGameStateRepository, graph.audio)
     }
     val state by vm.state.collectAsStateWithLifecycle()
+
+    // Único punto de salida "en juego" (back del sistema y "SALIR" del menú de
+    // pausa): guarda la corrida en curso antes de navegar atrás.
+    val exitWithSave: () -> Unit = { vm.requestExit(onExit) }
 
     // --- Estado local de UI (declarado ANTES del colector de efectos, que lo lee
     // en sus closures; en Kotlin un lambda no puede referenciar variables aún no
@@ -200,6 +207,12 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
             description = "Arrastra las piezas al tablero y completa filas o columnas para romperlas. La partida termina cuando ninguna pieza cabe.",
             accent = CategoryPalette.SpatialVision,
             onStart = { vm.onIntent(BlockGridIntent.StartGame) },
+            resume = state.savedScore?.let { score ->
+                ResumeState(
+                    onResume = { vm.onIntent(BlockGridIntent.ResumeSaved) },
+                    detail = "$score pts en curso",
+                )
+            },
             onExit = onExit,
             background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },
         )
@@ -379,9 +392,19 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
             audio = graph.audio,
             onPause = { vm.onIntent(BlockGridIntent.Pause) },
             onResume = { vm.onIntent(BlockGridIntent.Resume) },
-            onExit = onExit,
+            onExit = exitWithSave,
             gameTitle = "Tetris Neón",
             helpText = "Arrastra las piezas al tablero y completa filas o columnas para romperlas. La partida termina cuando ninguna pieza cabe.",
+            accent = CategoryPalette.SpatialVision,
+            exitKeepsProgress = true,
+        )
+
+        // Atrás del sistema: reanuda si estaba en pausa, o pregunta antes de salir
+        // mientras se juega (la corrida se guarda al confirmar, ver exitWithSave).
+        GameExitGuard(
+            status = state.status,
+            onResume = { vm.onIntent(BlockGridIntent.Resume) },
+            onConfirmExit = exitWithSave,
             accent = CategoryPalette.SpatialVision,
         )
     }
@@ -565,7 +588,7 @@ private fun BoardCanvas(
                             alpha = 1f - p,
                             scale = 1f - 0.55f * p,
                         )
-                        // Chispas al romperse (mismo lenguaje que Crucigrama Neón):
+                        // Chispas al romperse (ráfaga neón compartida de la app):
                         // esquirlas que salen del bloque mientras se desvanece.
                         drawClearSparks(topLeft, cellPx, cell.accent.color(), p)
                     }
@@ -1160,49 +1183,35 @@ private fun DrawScope.drawLineGlowPreview(lines: FullLines, cellPx: Float, accen
     }
 }
 
-/** 2π: círculo completo, para repartir las chispas de ruptura en toda dirección. */
+/** 2π: círculo completo, para repartir partículas en toda dirección. */
 private const val TAU = 6.2831855f
 
-/** Nº de chispas que libera cada bloque de una línea rota. */
-private const val CLEAR_SPARK_COUNT = 6
+/**
+ * Alcance de las chispas de ruptura, en fracción del lado de la celda. La
+ * estela que dibuja [drawNeonSparks] es proporcional a este alcance, así que
+ * tocar este valor reescala la ráfaga entera de forma coherente.
+ */
+private const val CLEAR_SPARK_REACH = 0.9f
 
 /**
- * Chispas de ruptura de un bloque [BoardCell.Clearing] (mismo lenguaje visual
- * que la ráfaga de acierto de Crucigrama Neón): esquirlas que nacen en el
- * centro del bloque y salen disparadas hacia afuera mientras se desvanecen,
+ * Chispas de ruptura de un bloque [BoardCell.Clearing]: esquirlas que nacen en
+ * el centro del bloque y salen disparadas hacia afuera mientras se desvanecen,
  * sincronizadas con [progress] (0=recién roto..1=ya desvanecido del todo).
+ *
+ * Delega en [drawNeonSparks], la fuente única del efecto (CLAUDE.md §9.7); aquí
+ * solo se traduce la geometría de la celda (esquina + lado) a los parámetros
+ * del componente.
  *
  * La semilla sale de la posición de la celda (determinista, sin `remember`
  * porque esto corre dentro de un `Canvas`): cada bloque siempre chispea igual,
  * pero bloques distintos no se ven clonados.
  */
 private fun DrawScope.drawClearSparks(topLeft: Offset, cellPx: Float, accent: Color, progress: Float) {
-    if (progress <= 0f || progress >= 1f) return
-    val center = topLeft + Offset(cellPx / 2f, cellPx / 2f)
-    val rnd = Random((topLeft.x * 131f + topLeft.y * 977f).toInt())
-    val hot = lerp(accent, Color.White, 0.35f)
-    // Salen rápido y frenan (ease-out), como esquirlas reales.
-    val ease = 1f - (1f - progress) * (1f - progress)
-    val alpha = 1f - progress
-    val maxDist = cellPx * 0.9f
-    val unit = cellPx * 0.2f
-
-    repeat(CLEAR_SPARK_COUNT) {
-        val angle = rnd.nextFloat() * TAU
-        val reach = 0.5f + rnd.nextFloat() * 0.6f
-        val length = 0.6f + rnd.nextFloat() * 0.5f
-        val dist = ease * maxDist * reach
-        val dx = cos(angle)
-        val dy = sin(angle)
-        val head = center + Offset(dx * dist, dy * dist)
-        val tail = center + Offset(dx * (dist - unit * length), dy * (dist - unit * length))
-        drawLine(
-            color = hot.copy(alpha = alpha),
-            start = tail,
-            end = head,
-            strokeWidth = 2.dp.toPx(),
-            cap = StrokeCap.Round,
-        )
-        drawCircle(Color.White.copy(alpha = 0.9f * alpha), radius = 1.4.dp.toPx(), center = head)
-    }
+    drawNeonSparks(
+        center = topLeft + Offset(cellPx / 2f, cellPx / 2f),
+        reach = cellPx * CLEAR_SPARK_REACH,
+        accent = accent,
+        progress = progress,
+        seed = (topLeft.x * 131f + topLeft.y * 977f).toInt(),
+    )
 }

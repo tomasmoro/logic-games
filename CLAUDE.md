@@ -201,6 +201,16 @@ en vez de pedir credenciales.
   dependencias ahí, no con coordenadas sueltas en los `build.gradle.kts`.
 - iOS se integra vía el framework `ComposeApp` y `MainViewController()`.
 
+### Verificación de cambios (NO uses emulador/simulador)
+
+- **No arranques el emulador Android ni el simulador iOS para verificar cambios**
+  (gasta demasiados tokens/tiempo en este entorno). Verifica con `./gradlew
+  :shared:compileKotlinIosSimulatorArm64` (o el target que aplique) y, si hace
+  falta, `:androidApp:assembleDebug`/tests — eso basta como señal de que el
+  código compila y es correcto.
+- Si el usuario quiere ver el resultado en pantalla, dile que lo arranque él
+  mismo (o pídeselo explícitamente) en vez de lanzarlo tú por defecto.
+
 ---
 
 ## 7. Git

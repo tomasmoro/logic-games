@@ -73,6 +73,9 @@ data class DragState(
  * @property status ciclo de vida estándar de partida (IDLE→RUNNING→FINISHED).
  * @property gameOver datos de la pantalla de resultado (récord, percentil);
  *           null mientras se juega.
+ * @property savedScore puntuación de la corrida guardada al salir, o null si no hay
+ *           ninguna pendiente. Solo relevante en la antesala (IDLE), donde se ofrece
+ *           como "Continuar" (ver [com.example.kortexgames.ui.components.ResumeState]).
  */
 data class BlockGridUiState(
     val board: BoardGrid = BoardGrid(),
@@ -82,6 +85,7 @@ data class BlockGridUiState(
     val linesCleared: Int = 0,
     val status: GameStatus = GameStatus.IDLE,
     val gameOver: GameOverInfo? = null,
+    val savedScore: Int? = null,
 ) : UiState
 
 /** Intents: único punto de entrada de la UI (patrón MVI, §4 CLAUDE.md). */
@@ -89,6 +93,9 @@ sealed interface BlockGridIntent : UiIntent {
 
     /** Arranca (o reinicia) la partida: tablero limpio y mano nueva. */
     data object StartGame : BlockGridIntent
+
+    /** Desde la antesala: retomar la corrida guardada al salir (ver [BlockGridUiState.savedScore]). */
+    data object ResumeSaved : BlockGridIntent
 
     /**
      * El jugador levantó la pieza [pieceId] de la mano. Dispara el feedback de

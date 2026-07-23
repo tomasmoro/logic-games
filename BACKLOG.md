@@ -22,6 +22,25 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
   - Verificar el test en host: `./gradlew :shared:testAndroidHostTest --tests
     "com.example.kortexgames.data.remote.auth.GoogleOAuthTest"` (hoy el árbol no
     compila por WIP de blockgrid; correrlo al integrar).
+- [ ] **Completar el branding del OAuth consent screen (Google Cloud).** Falta
+  añadir en la pestaña **Branding** del proyecto de Google Cloud (ver
+  `docs/google-signin-setup.md` §1.2): **logo** de la app (requiere subir el
+  icono a revisión de Google, tarda un poco), **página principal/homepage** de la
+  app y **política de privacidad**. Sin esto, la pantalla de consentimiento que ve
+  el usuario al loguearse con Google se ve genérica ("app no verificada") y,
+  sobre todo, **es requisito para pasar la app de Testing a Production** (sin
+  logo + homepage + política de privacidad, Google no deja publicarla más allá
+  de los test users).
+
+  **Pendiente (config/assets, no código):**
+  - Página de privacidad: hoy no existe ninguna (ni web ni in-app); hay que
+    redactarla y alojarla en una URL pública (GitHub Pages, o una página simple
+    en el dominio que se use para la app) antes de poder pegarla en Branding.
+  - Homepage: idem, puede ser tan simple como una landing mínima o la ficha de
+    la store una vez publicada.
+  - Logo: usar el icono real de la app (`androidApp` `AppIcon`/
+    `iosApp/.../Assets.xcassets/AppIcon.appiconset`), Google pide un tamaño
+    mínimo cuadrado (revisar el requisito exacto en el formulario de Branding).
 - [ ] **Confirmar cuenta por email (UX).** Si en Supabase se reactiva "Confirm
   email", el registro marca éxito sin sesión (el usuario queda invitado). Añadir
   el estado "revisa tu correo" en `AuthViewModel` para cubrir ese caso.

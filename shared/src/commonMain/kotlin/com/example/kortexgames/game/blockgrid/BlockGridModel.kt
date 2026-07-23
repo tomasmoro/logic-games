@@ -1,5 +1,7 @@
 package com.example.kortexgames.game.blockgrid
 
+import kotlinx.serialization.Serializable
+
 /**
  * # Modelos de dominio de "Neon Block Grid" (Visión Espacial)
  *
@@ -53,6 +55,7 @@ data class GridOffset(val dRow: Int, val dCol: Int)
  * MAGENTA → `Magenta`, CORAL → `Coral`, BLUE → `Blue`, AMBER → `Amber`).
  * Así el tema puede evolucionar sin tocar lógica ni datos guardados.
  */
+@Serializable
 enum class BlockAccent {
     CYAN,
     GREEN,
@@ -75,6 +78,10 @@ enum class BlockAccent {
  * partida), lo que además permite ponderar la dificultad: el generador puede
  * elegir con qué frecuencia salen las piezas grandes.
  */
+// @Serializable: el enum se serializa por su NOMBRE (no por su `cells`), así que
+// GridOffset no necesita ser serializable. Es lo que permite guardar una pieza de
+// la mano al salir y reconstruirla idéntica al reanudar (ver BlockGridEngine.resumeFrom).
+@Serializable
 enum class PolyominoShape(val cells: Set<GridOffset>) {
 
     /** Monominó 1×1: la pieza "salvavidas" que siempre cabe en cualquier hueco. */
@@ -157,6 +164,7 @@ private fun square(side: Int): Set<GridOffset> = buildSet {
  * @property accent acento neón con el que se pinta (fijo desde que se genera,
  *           para que la pieza no "cambie de color" al colocarse).
  */
+@Serializable
 data class Polyomino(
     val id: Int,
     val shape: PolyominoShape,
@@ -170,12 +178,15 @@ data class Polyomino(
  * decidió romper la línea pero la UI aún está animando fade+shrink, así que la
  * celda no debe aceptar piezas ni contar para nuevas líneas.
  */
+@Serializable
 sealed interface BoardCell {
 
     /** Celda libre: acepta bloques. */
+    @Serializable
     data object Empty : BoardCell
 
     /** Celda ocupada por un bloque asentado del acento indicado. */
+    @Serializable
     data class Filled(val accent: BlockAccent) : BoardCell
 
     /**
@@ -184,6 +195,7 @@ sealed interface BoardCell {
      * efectos de reglas cuenta como **vacía** para colocar piezas: así el
      * jugador puede encadenar jugadas sin esperar a la animación.
      */
+    @Serializable
     data class Clearing(val accent: BlockAccent) : BoardCell
 }
 
@@ -196,6 +208,7 @@ sealed interface BoardCell {
  *
  * @property cells matriz fila-mayor: `cells[row][col]`.
  */
+@Serializable
 data class BoardGrid(
     val cells: List<List<BoardCell>> = List(BOARD_SIZE) { List(BOARD_SIZE) { BoardCell.Empty } },
 ) {
