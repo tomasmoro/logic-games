@@ -35,6 +35,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.kortexgames.core.theme.CategoryPalette
 import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.di.AppGraph
+import com.example.kortexgames.game.GameMotif
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.ui.components.ArcadeBrickBackground
 import com.example.kortexgames.ui.components.GameIntroScreen
@@ -42,8 +43,6 @@ import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.clickableNoRipple
 import com.example.kortexgames.ui.components.drawNeonTile
-import kortexgames.shared.generated.resources.Res
-import kortexgames.shared.generated.resources.memory_intro
 
 /**
  * Color neón de cada uno de los 9 botones (índice = tile). Se eligen tonos bien
@@ -86,7 +85,7 @@ fun SequenceMemoryScreen(graph: AppGraph, onExit: () -> Unit) {
             title = "Memoria de Secuencias",
             description = "Observa la secuencia de notas y repítela en orden. Cada acierto la hace más larga.",
             accent = CategoryPalette.Memory,
-            heroImage = Res.drawable.memory_intro,
+            motif = GameMotif.SEQUENCE_GRID,
             onStart = { vm.onIntent(SequenceMemoryIntent.Start) },
             onExit = onExit,
             background = {

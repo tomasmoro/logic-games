@@ -39,10 +39,7 @@ import androidx.compose.ui.unit.dp
 import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.core.theme.LogicGradients
 import com.example.kortexgames.domain.model.formatDurationShort
-import androidx.compose.foundation.Image
-import androidx.compose.ui.layout.ContentScale
-import org.jetbrains.compose.resources.DrawableResource
-import org.jetbrains.compose.resources.painterResource
+import com.example.kortexgames.game.GameMotif
 
 /**
  * Datos del **selector de niveles** para la pantalla de intro de un juego LEVELED.
@@ -109,13 +106,23 @@ data class ResumeState(
  * @param onStart lanza la partida (el nivel elegido si [levels] no es null).
  * @param onExit vuelve atrás (sale a la lista de juegos).
  * @param icon icono del juego; **null** = placeholder vacío (aún sin diseñar, por petición).
- * @param heroImage arte del juego que rellena el recuadro "héroe"; tiene prioridad sobre
- *        [icon]. **null** = se usa [icon] (o placeholder vacío si ambos son null).
+ * @param motif motivo del juego ([GameMotif]) que se dibuja **centrado** dentro del recuadro
+ *        "héroe" como arte del juego; tiene prioridad sobre [icon]. **null** = se usa [icon]
+ *        (o placeholder vacío si ambos son null). Es la misma fuente que las tarjetas del
+ *        catálogo, así intro/Home/lista comparten idéntica identidad visual.
  * @param levels datos del carril de niveles; **null** en juegos sin niveles (ENDLESS).
  * @param onHelp acción del botón de ayuda; por ahora un no-op (pendiente de contenido).
  * @param startLabel texto del CTA (por defecto "Comenzar").
  * @param resume partida pendiente de continuar (ver [ResumeState]); **null** en los
  *        juegos que no guardan progreso al salir, que mantienen la antesala de siempre.
+ * @param configContent configuración previa a la partida (selector de dificultad, de
+ *        tamaño de tablero…) para juegos ENDLESS con variantes de arranque; **null** en
+ *        el resto. Se pinta dentro del propio bloque de acciones, justo ENCIMA del CTA
+ *        principal, en vez de superponerse por fuera con un padding fijo calculado a
+ *        ojo: así crece y se encoge con el resto del bloque (p. ej. cuando [resume] no
+ *        es null añade debajo su resumen + "Empezar de nuevo") sin que nunca llegue a
+ *        solaparse con el botón — un padding fijo sí se descuadra en ese caso, porque el
+ *        CTA se desplaza hacia arriba al crecer el contenido que hay debajo suyo.
  * @param background capa ambiental opcional detrás del contenido (fondo temático del juego).
  */
 @Composable
@@ -127,11 +134,12 @@ fun GameIntroScreen(
     onExit: () -> Unit,
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
-    heroImage: DrawableResource? = null,
+    motif: GameMotif? = null,
     levels: LevelStripState? = null,
     onHelp: () -> Unit = {},
     startLabel: String = "Comenzar",
     resume: ResumeState? = null,
+    configContent: (@Composable () -> Unit)? = null,
     background: (@Composable () -> Unit)? = null,
 ) {
     Box(modifier = modifier.fillMaxSize().background(LogicColors.BackgroundDark)) {
@@ -171,8 +179,8 @@ fun GameIntroScreen(
                     .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Spacer(Modifier.height(8.dp))
-                GameIconHero(icon = icon, heroImage = heroImage, accent = accent)
+                Spacer(Modifier.height(16.dp))
+                GameIconHero(icon = icon, motif = motif, accent = accent)
 
                 Spacer(Modifier.height(24.dp))
                 Text(
@@ -210,6 +218,11 @@ fun GameIntroScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                if (configContent != null) {
+                    configContent()
+                    Spacer(Modifier.height(16.dp))
+                }
+
                 AnimatedGameButton(
                     onClick = resume?.onResume ?: onStart,
                     gradient = LogicGradients.play,
@@ -272,12 +285,13 @@ fun GameIntroScreen(
 
 /**
  * "Héroe" del juego: recuadro redondeado con halo neón de acento donde vive la identidad
- * visual del juego. Prioridad de contenido: [heroImage] (arte propio del juego) > [icon]
- * (glifo neón) > **placeholder vacío** (el recuadro con su halo, para juegos aún sin
- * diseñar). Cuando hay imagen, esta rellena el recuadro (`Crop`) recortada a su forma.
+ * visual del juego. Prioridad de contenido: [motif] (arte propio del juego, dibujado
+ * centrado con [GameMotifIcon]) > [icon] (glifo neón) > **placeholder vacío** (el recuadro
+ * con su halo, para juegos aún sin diseñar). El motivo es el mismo que pinta el fondo de la
+ * tarjeta del juego en el catálogo, así intro/lista/Home comparten identidad.
  */
 @Composable
-private fun GameIconHero(icon: ImageVector?, heroImage: DrawableResource?, accent: Color) {
+private fun GameIconHero(icon: ImageVector?, motif: GameMotif?, accent: Color) {
     val shape = RoundedCornerShape(28.dp)
     Box(
         modifier = Modifier
@@ -296,10 +310,9 @@ private fun GameIconHero(icon: ImageVector?, heroImage: DrawableResource?, accen
         contentAlignment = Alignment.Center,
     ) {
         when {
-            heroImage != null -> Image(
-                painter = painterResource(heroImage),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
+            motif != null -> GameMotifIcon(
+                motif = motif,
+                accent = accent,
                 modifier = Modifier.fillMaxSize(),
             )
             icon != null -> NeonIcon(icon = icon, tint = accent, size = 64.dp)

@@ -48,6 +48,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.kortexgames.core.theme.CategoryPalette
 import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.di.AppGraph
+import com.example.kortexgames.game.GameMotif
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.ArcadeBrickBackground
@@ -110,6 +111,7 @@ fun NeonLexiconScreen(graph: AppGraph, onExit: () -> Unit) {
         var selectedLevel by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
         GameIntroScreen(
             title = "Sopa de Letras Neón",
+            motif = GameMotif.WORD_SEARCH,
             description = "Desliza el dedo sobre las letras para trazar cada palabra escondida: horizontal, vertical o en diagonal. Encuéntralas todas para superar el nivel.",
             accent = accent,
             levels = LevelStripState(

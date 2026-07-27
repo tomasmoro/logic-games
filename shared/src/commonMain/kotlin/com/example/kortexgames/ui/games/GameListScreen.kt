@@ -30,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -100,6 +102,18 @@ fun GameListScreen(
 }
 
 /**
+ * Sombra sutil detrás del texto de la tarjeta: un halo oscuro que refuerza el
+ * contraste del título/categoría sobre el motivo del fondo (además del velo
+ * inferior de [CategoryMotifSurface]). El desenfoque le da un borde suave, no una
+ * sombra dura tipo "drop shadow".
+ */
+private val TextScrimShadow = Shadow(
+    color = LogicColors.BackgroundDark,
+    offset = Offset(0f, 1f),
+    blurRadius = 6f,
+)
+
+/**
  * Tarjeta de juego. Colorea el fondo con el acento de la categoría (degradado
  * sutil), redondea fuerte y eleva. Anima su entrada con un retardo proporcional
  * al [index] para lograr el efecto cascada. Los juegos aún no disponibles se
@@ -131,6 +145,8 @@ private fun GameCard(
             onClick = onOpen,
             enabled = game.playable,
             bgTopAlpha = 0.32f,
+            motif = game.motif,
+            scrim = true,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(150.dp)
@@ -145,13 +161,13 @@ private fun GameCard(
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
                         game.category.displayName.uppercase(),
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelMedium.copy(shadow = TextScrimShadow),
                         color = accent,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
                         game.title,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleMedium.copy(shadow = TextScrimShadow),
                         color = LogicColors.OnDark,
                     )
                     when {

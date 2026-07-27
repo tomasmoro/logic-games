@@ -66,6 +66,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.kortexgames.core.theme.CategoryPalette
 import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.di.AppGraph
+import com.example.kortexgames.game.GameMotif
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.GameIntroScreen
@@ -165,6 +166,7 @@ fun WordConnectScreen(graph: AppGraph, onExit: () -> Unit) {
         var selectedLevel by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
         GameIntroScreen(
             title = "Palabras Conectadas",
+            motif = GameMotif.WORD_WHEEL,
             description = "Une las letras de la rueda arrastrando el dedo para formar palabras. " +
                 "Cada palabra que descubras se ilumina arriba.",
             accent = accent,

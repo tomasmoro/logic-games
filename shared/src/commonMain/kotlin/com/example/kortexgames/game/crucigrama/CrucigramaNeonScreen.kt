@@ -61,6 +61,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.kortexgames.core.theme.CategoryPalette
 import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.di.AppGraph
+import com.example.kortexgames.game.GameMotif
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.GameExitGuard
@@ -74,8 +75,6 @@ import com.example.kortexgames.ui.components.ResumeState
 import com.example.kortexgames.ui.components.SpaceBackdrop
 import com.example.kortexgames.ui.components.bounceClick
 import com.example.kortexgames.ui.components.drawNeonTile
-import kortexgames.shared.generated.resources.Res
-import kortexgames.shared.generated.resources.crucigrama_intro
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.PI
@@ -142,7 +141,7 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
                 selected = selectedLevel,
                 onSelect = { selectedLevel = it },
             ),
-            heroImage = Res.drawable.crucigrama_intro,
+            motif = GameMotif.CROSSWORD,
             startLabel = "Empezar",
             onStart = { vm.onIntent(CrucigramaNeonIntent.PlayLevel(selectedLevel)) },
             // Partida a medias guardada al salir: la antesala la ofrece como CTA

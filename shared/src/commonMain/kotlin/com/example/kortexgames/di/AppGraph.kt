@@ -11,11 +11,13 @@ import com.example.kortexgames.data.local.SqlDelightLocalLevelTimeDataSource
 import com.example.kortexgames.data.local.SqlDelightLocalPlayerProgressDataSource
 import com.example.kortexgames.data.local.SqlDelightLocalProgressDataSource
 import com.example.kortexgames.data.local.SqlDelightLocalSavedGameStateDataSource
+import com.example.kortexgames.data.local.SqlDelightLocalSudokuPuzzleDataSource
 import com.example.kortexgames.data.local.createDatabase
 import com.example.kortexgames.data.remote.RemoteAchievementsDataSource
 import com.example.kortexgames.data.remote.RemoteLevelTimeDataSource
 import com.example.kortexgames.data.remote.RemotePlayerProgressDataSource
 import com.example.kortexgames.data.remote.RemoteProgressDataSource
+import com.example.kortexgames.data.remote.RemoteSudokuPuzzleDataSource
 import com.example.kortexgames.data.remote.auth.GoogleAuthClient
 import com.example.kortexgames.data.remote.buildSupabaseClient
 import com.example.kortexgames.data.repository.AchievementsRepositoryImpl
@@ -23,6 +25,7 @@ import com.example.kortexgames.data.repository.AuthRepositoryImpl
 import com.example.kortexgames.data.repository.PlayerProgressRepositoryImpl
 import com.example.kortexgames.data.repository.ProgressRepositoryImpl
 import com.example.kortexgames.data.repository.SavedGameStateRepositoryImpl
+import com.example.kortexgames.data.repository.SudokuPuzzleRepositoryImpl
 import com.example.kortexgames.data.settings.OnboardingGate
 import com.example.kortexgames.data.settings.SettingsRepository
 import com.example.kortexgames.data.settings.createSettingsDataStore
@@ -35,6 +38,7 @@ import com.example.kortexgames.domain.repository.AuthRepository
 import com.example.kortexgames.domain.repository.PlayerProgressRepository
 import com.example.kortexgames.domain.repository.ProgressRepository
 import com.example.kortexgames.domain.repository.SavedGameStateRepository
+import com.example.kortexgames.game.neonsudoku.SudokuPuzzleRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -82,6 +86,8 @@ class AppGraph(context: PlatformContext) {
         SqlDelightLocalAchievementsDataSource(database, Dispatchers.Default)
     private val localSavedGameState =
         SqlDelightLocalSavedGameStateDataSource(database, Dispatchers.Default)
+    private val localSudokuPuzzle =
+        SqlDelightLocalSudokuPuzzleDataSource(database, Dispatchers.Default)
 
     // --- Backend Supabase (FASE 2) ------------------------------------------
     val supabaseClient = buildSupabaseClient()
@@ -89,6 +95,7 @@ class AppGraph(context: PlatformContext) {
     private val remotePlayerProgress = RemotePlayerProgressDataSource(supabaseClient)
     private val remoteLevelTime = RemoteLevelTimeDataSource(supabaseClient)
     private val remoteAchievements = RemoteAchievementsDataSource(supabaseClient)
+    private val remoteSudokuPuzzle = RemoteSudokuPuzzleDataSource(supabaseClient)
 
     // --- Autenticación (email + Google) -------------------------------------
     /** Seam de plataforma para el login con Google (ID token nativo). */
@@ -131,6 +138,15 @@ class AppGraph(context: PlatformContext) {
     /** Partida en curso guardada al salir (juegos que lo activan). Solo local. */
     val savedGameStateRepository: SavedGameStateRepository =
         SavedGameStateRepositoryImpl(local = localSavedGameState)
+
+    /** Banco de puzzles de Neon Sudoku Matrix (local-first): caché SQLDelight
+     *  sembrada desde el seed empaquetado y enriquecida desde Supabase en segundo
+     *  plano. Sustituye a las plantillas que vivían embebidas en el `enum`. */
+    val sudokuPuzzleRepository: SudokuPuzzleRepository = SudokuPuzzleRepositoryImpl(
+        local = localSudokuPuzzle,
+        remote = remoteSudokuPuzzle,
+        scope = appScope,
+    )
 
     // --- Audio & Háptica (nativo, respeta settings) -------------------------
     val audio: AudioAndHapticManager =

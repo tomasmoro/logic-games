@@ -51,6 +51,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.kortexgames.core.theme.CategoryPalette
 import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.di.AppGraph
+import com.example.kortexgames.game.GameMotif
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.CitySkylineBackground
@@ -62,8 +63,6 @@ import com.example.kortexgames.ui.components.LevelStripState
 import com.example.kortexgames.ui.components.NeonIcon
 import com.example.kortexgames.ui.components.bounceClick
 import com.example.kortexgames.ui.components.drawNeonTile
-import kortexgames.shared.generated.resources.Res
-import kortexgames.shared.generated.resources.energyflow_intro
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -117,7 +116,7 @@ fun EnergyFlowScreen(graph: AppGraph, onExit: () -> Unit) {
             ),
             onStart = { vm.onIntent(EnergyFlowIntent.PlayLevel(selectedLevel)) },
             onExit = onExit,
-            heroImage = Res.drawable.energyflow_intro,
+            motif = GameMotif.ENERGY_PIPES,
             background = {
                 CitySkylineBackground(modifier = Modifier.fillMaxSize(), accent = CategoryPalette.SpatialVision)
             },

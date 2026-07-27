@@ -15,13 +15,6 @@ import androidx.compose.material.icons.rounded.ViewModule
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.example.kortexgames.core.theme.CategoryPalette
-import kortexgames.shared.generated.resources.Res
-import kortexgames.shared.generated.resources.bubblemath_intro
-import kortexgames.shared.generated.resources.crucigrama_intro
-import kortexgames.shared.generated.resources.energyflow_intro
-import kortexgames.shared.generated.resources.memory_intro
-import kortexgames.shared.generated.resources.potionsorting_intro
-import org.jetbrains.compose.resources.DrawableResource
 
 /**
  * IDs estables de los juegos de ejemplo. Deben coincidir con las filas sembradas
@@ -135,6 +128,68 @@ enum class GameCategory(
 }
 
 /**
+ * Motivo visual **propio de un juego** para el fondo de su tarjeta de catálogo.
+ *
+ * Existe porque varios juegos comparten [GameCategory] (p. ej. Crucigrama, Sopa de
+ * Letras y Palabras Conectadas son todos "Lenguaje y Vocabulario") y, si el fondo
+ * dependiera solo de la categoría, sus tarjetas serían idénticas y no comunicarían
+ * de qué juego se trata. Cada motivo dibuja una miniatura reconocible de la
+ * mecánica del juego (una rejilla de crucigrama, una sopa de letras con palabras
+ * marcadas, la rueda de letras…), teñida con el acento de la categoría para no
+ * romper la identidad de color.
+ *
+ * Es un `enum` puro (sin dependencias de dibujo) a propósito: el mapeo motivo →
+ * Canvas vive en la capa de UI ([com.example.kortexgames.ui.components.CategoryTexture]),
+ * de modo que el catálogo de dominio no arrastre lógica de Compose.
+ */
+enum class GameMotif {
+    /** Sopa de letras: cuadrícula de letras con algunas palabras resaltadas/tachadas. */
+    WORD_SEARCH,
+
+    /** Crucigrama: rejilla entrelazada de casillas abiertas, bloques y letras. */
+    CROSSWORD,
+
+    /** Palabras conectadas: rueda de letras unidas por un trazo. */
+    WORD_WHEEL,
+
+    /** Ordena las pociones / water sort: frasquitos de poción con líquido. */
+    POTIONS,
+
+    /** Tetris / block puzzle: piezas de tetrominó (formas de 4 bloques). */
+    TETROMINO,
+
+    /** Sudoku: cuadrícula 9×9 con separadores de bloque y algunos números. */
+    SUDOKU_GRID,
+
+    /** Neon 2048: recuadros con potencias de dos (2, 4, 8…) del juego. */
+    NUMBER_TILES,
+
+    /** Neon Defuser / buscaminas: rejilla con números, una bandera y una mina. */
+    MINESWEEPER,
+
+    /** Neon Circuit Flow / flow free: nodos unidos por tuberías redondeadas en rejilla. */
+    CIRCUIT_FLOW,
+
+    /** Hypergate: portal circular con cometas que se precipitan hacia él. */
+    HYPERGATE,
+
+    /** Pulso Neon: varios pulsos concéntricos espaciados y de tamaños escalonados. */
+    NEON_PULSE,
+
+    /** Memoria de Secuencias: rejilla 3×3 de pads con uno iluminado (estilo Simon). */
+    SEQUENCE_GRID,
+
+    /** Burbujas de Cálculo: burbujas con operaciones y un objetivo numérico. */
+    MATH_BUBBLES,
+
+    /** Flujo de Energía: tablero de tuberías que conecta dos nodos-objetivo iluminados. */
+    ENERGY_PIPES,
+
+    /** Atracción Geométrica: círculo de 4 sectores con partículas que llegan de fuera. */
+    POLARITY_SECTORS,
+}
+
+/**
  * Metadatos de un minijuego para pintar el catálogo. Es contenido de UI (no un
  * modelo de dominio): describe cómo se muestra y si ya es jugable. El icono y el
  * color se toman de su [category].
@@ -145,9 +200,10 @@ enum class GameCategory(
  *           su código sigue en el repo pero se oculta por completo del catálogo y
  *           del dado aleatorio (ver [GameCatalog.games]). No confundir con
  *           [playable] (roadmap "Próximamente", que sí se muestra atenuado).
- * @property heroImage arte "héroe" del juego (el mismo de su pantalla de intro);
- *           **fuente única de verdad** reutilizada por la intro y por las tarjetas de
- *           la Home. null = aún sin arte → se cae al icono de la categoría.
+ * @property motif motivo visual propio del juego ([GameMotif]): pinta el fondo de su
+ *           tarjeta del catálogo y, dibujado centrado, hace de arte "héroe" en la
+ *           intro y de miniatura en la Home (**fuente única de identidad visual**).
+ *           null = usa el fondo genérico de la categoría y su icono como respaldo.
  */
 data class GameInfo(
     val id: String?,
@@ -155,7 +211,7 @@ data class GameInfo(
     val category: GameCategory,
     val playable: Boolean,
     val published: Boolean = true,
-    val heroImage: DrawableResource? = null,
+    val motif: GameMotif? = null,
 )
 
 /**
@@ -173,23 +229,23 @@ object GameCatalog {
      * único punto para que nunca se cuelen en dos sitios distintos.
      */
     private val allGames: List<GameInfo> = listOf(
-        GameInfo(GameIds.SEQUENCE_MEMORY, "Memoria de Secuencias", GameCategory.MEMORY, playable = true, heroImage = Res.drawable.memory_intro),
-        GameInfo(GameIds.WATER_SORT, "Ordena las Pociones", GameCategory.LOGIC, playable = true, heroImage = Res.drawable.potionsorting_intro),
-        GameInfo(GameIds.BUBBLE_MATH, "Burbujas de Cálculo", GameCategory.MENTAL_MATH, playable = true, heroImage = Res.drawable.bubblemath_intro),
-        GameInfo(GameIds.ENERGY_FLOW, "Flujo de Energía", GameCategory.SPATIAL, playable = true, heroImage = Res.drawable.energyflow_intro),
-        GameInfo(GameIds.POLARITY_COLLISION, "Atracción Geométrica", GameCategory.SPATIAL, playable = true),
-        GameInfo(GameIds.CRUCIGRAMA_NEON, "Crucigrama Neón", GameCategory.LANGUAGE, playable = true, heroImage = Res.drawable.crucigrama_intro),
-        GameInfo(GameIds.WORD_CONNECT, "Palabras Conectadas", GameCategory.LANGUAGE, playable = true, published = false),
+        GameInfo(GameIds.WATER_SORT, "Ordena las Pociones", GameCategory.LOGIC, playable = true, motif = GameMotif.POTIONS),
+        GameInfo(GameIds.NEON_2048, "2048", GameCategory.MENTAL_MATH, playable = true, motif = GameMotif.NUMBER_TILES),
+        GameInfo(GameIds.NEON_DEFUSER, "Buscaminas", GameCategory.ATTENTION, playable = true, motif = GameMotif.MINESWEEPER),
+        GameInfo(GameIds.ENERGY_FLOW, "Flujo de Energía", GameCategory.SPATIAL, playable = true, motif = GameMotif.ENERGY_PIPES),
+        GameInfo(GameIds.BUBBLE_MATH, "Burbujas de Cálculo", GameCategory.MENTAL_MATH, playable = true, motif = GameMotif.MATH_BUBBLES),
+        GameInfo(GameIds.NEON_BLOCK_GRID, "Tetris Neón", GameCategory.LOGIC, playable = true, motif = GameMotif.TETROMINO),
+        GameInfo(GameIds.CRUCIGRAMA_NEON, "Crucigrama Neón", GameCategory.LANGUAGE, playable = true, motif = GameMotif.CROSSWORD),
+        GameInfo(GameIds.NEON_SUDOKU_MATRIX, "Neon Sudoku", GameCategory.MENTAL_MATH, playable = true, motif = GameMotif.SUDOKU_GRID),
+        GameInfo(GameIds.NEON_PULSE, "Pulso Neon", GameCategory.REFLEXES, playable = true, motif = GameMotif.NEON_PULSE),
+        GameInfo(GameIds.POLARITY_COLLISION, "Atracción Geométrica", GameCategory.SPATIAL, playable = true, motif = GameMotif.POLARITY_SECTORS),
+        GameInfo(GameIds.WORD_CONNECT, "Palabras Conectadas", GameCategory.LANGUAGE, playable = true, published = false, motif = GameMotif.WORD_WHEEL),
         GameInfo(GameIds.NEON_SCREWS, "Tornillos Neón", GameCategory.SPATIAL, playable = true, published = false),
-        GameInfo(GameIds.NEON_BLOCK_GRID, "Tetris Neón", GameCategory.SPATIAL, playable = true),
-        GameInfo(GameIds.NEON_LEXICON, "Sopa de Letras Neón", GameCategory.LANGUAGE, playable = true),
+        GameInfo(GameIds.SEQUENCE_MEMORY, "Memoria de Secuencias", GameCategory.MEMORY, playable = true, motif = GameMotif.SEQUENCE_GRID),
+        GameInfo(GameIds.NEON_LEXICON, "Sopa de Letras Neón", GameCategory.LANGUAGE, playable = true, motif = GameMotif.WORD_SEARCH),
         GameInfo(GameIds.STARPORT_ESCAPE, "Neon Starport Escape", GameCategory.LOGIC, playable = true, published = false),
-        GameInfo(GameIds.NEON_CIRCUIT, "Neon Circuit Flow", GameCategory.PROBLEM_SOLVING, playable = true),
-        GameInfo(GameIds.HYPERGATE, "Hypergate", GameCategory.REFLEXES, playable = true),
-        GameInfo(GameIds.NEON_PULSE, "Neon Pulse", GameCategory.REFLEXES, playable = true),
-        GameInfo(GameIds.NEON_2048, "Neon Grid 2048", GameCategory.MENTAL_MATH, playable = true),
-        GameInfo(GameIds.NEON_SUDOKU_MATRIX, "Neon Sudoku Matrix", GameCategory.LOGIC, playable = true),
-        GameInfo(GameIds.NEON_DEFUSER, "Neon Defuser", GameCategory.ATTENTION, playable = true),
+        GameInfo(GameIds.NEON_CIRCUIT, "Conectores", GameCategory.PROBLEM_SOLVING, playable = true, motif = GameMotif.CIRCUIT_FLOW),
+        GameInfo(GameIds.HYPERGATE, "Hypergate", GameCategory.REFLEXES, playable = true, motif = GameMotif.HYPERGATE),
         GameInfo(null, "Parejas Relámpago", GameCategory.MEMORY, playable = false),
         GameInfo(null, "Cadena Lógica", GameCategory.LOGIC, playable = false),
         GameInfo(null, "Encuentra el Intruso", GameCategory.ATTENTION, playable = false),

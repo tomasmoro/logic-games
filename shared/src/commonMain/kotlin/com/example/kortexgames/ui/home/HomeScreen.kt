@@ -6,7 +6,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -46,13 +45,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.jetbrains.compose.resources.painterResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.kortexgames.core.ads.AdEvent
 import com.example.kortexgames.core.theme.LogicColors
@@ -68,6 +65,7 @@ import com.example.kortexgames.game.daily.DailyMissionGame
 import com.example.kortexgames.game.daily.calculateStreakDays
 import com.example.kortexgames.ui.components.CategoryMotifSurface
 import com.example.kortexgames.ui.components.CircularProgressRing
+import com.example.kortexgames.ui.components.GameMotifIcon
 import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.NeonIcon
 import com.example.kortexgames.ui.components.bounceClick
@@ -702,10 +700,11 @@ private fun StarGameCard(
 }
 
 /**
- * Miniatura cuadrada de un juego para las tarjetas de la Home. Reutiliza el **arte
- * héroe** ([GameInfo.heroImage]) —el mismo que su pantalla de intro— recortado a la
- * forma; si el juego aún no tiene arte, cae al icono de su categoría sobre un chip
- * tenue del color de acento, manteniendo la coherencia visual del catálogo.
+ * Miniatura cuadrada de un juego para las tarjetas de la Home. Reutiliza el **motivo
+ * del juego** ([GameInfo.motif]) —el mismo que pinta su tarjeta del catálogo y su
+ * recuadro héroe de la intro, dibujado centrado con [GameMotifIcon]—; si el juego aún
+ * no tiene motivo, cae al icono de su categoría sobre un chip tenue del color de
+ * acento, manteniendo la coherencia visual del catálogo.
  */
 @Composable
 private fun GameThumbnail(game: GameInfo, accent: Color, size: Dp, cornerRadius: Dp) {
@@ -717,14 +716,9 @@ private fun GameThumbnail(game: GameInfo, accent: Color, size: Dp, cornerRadius:
             .background(accent.copy(alpha = 0.15f)),
         contentAlignment = Alignment.Center,
     ) {
-        val hero = game.heroImage
-        if (hero != null) {
-            Image(
-                painter = painterResource(hero),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
+        val motif = game.motif
+        if (motif != null) {
+            GameMotifIcon(motif = motif, accent = accent, modifier = Modifier.fillMaxSize())
         } else {
             NeonIcon(icon = game.category.icon, tint = accent, size = size * 0.5f)
         }

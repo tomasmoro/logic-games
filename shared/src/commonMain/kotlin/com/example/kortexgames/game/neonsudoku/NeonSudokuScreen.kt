@@ -27,6 +27,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,17 +39,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.kortexgames.core.audio.SoundEffect
 import com.example.kortexgames.core.theme.CategoryPalette
 import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameCategory
+import com.example.kortexgames.game.GameMotif
 import com.example.kortexgames.game.GameStatus
+import com.example.kortexgames.ui.components.FireworksOverlay
 import com.example.kortexgames.ui.components.GameExitGuard
 import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.NeonIcon
+import com.example.kortexgames.ui.components.ResumeState
 import com.example.kortexgames.ui.components.ReviveAdOverlay
 import com.example.kortexgames.ui.components.SpaceBackdrop
 import com.example.kortexgames.ui.components.bounceClick
@@ -62,6 +67,16 @@ private const val NEON_SUDOKU_HELP =
     "Completa la matriz 9x9: cada fila, cada columna y cada bloque 3x3 deben " +
         "contener los dígitos del 1 al 9 sin repetirse. Toca una celda, elige un " +
         "número y activa el lápiz para anotar tus hipótesis."
+
+/**
+ * Celebración de "dígito agotado" en curso (ver [NeonSudokuEffect.DigitCompleted]).
+ * [id] le da identidad propia para que el `LaunchedEffect` de auto-cierre no borre
+ * una celebración más reciente si dos dígitos se agotan casi seguidos (mismo
+ * patrón que `MergeCelebration` en Neon Grid 2048); [digit] no se usa hoy para
+ * pintar nada (los fuegos son genéricos), pero queda disponible por si el diseño
+ * quiere personalizarlos por dígito más adelante.
+ */
+private data class DigitFireworks(val id: Int, val digit: Int)
 
 /**
  * # Neon Sudoku Matrix — Pantalla (Compose, FASE 3)
@@ -84,6 +99,7 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
     val vm: NeonSudokuViewModel = viewModel {
         NeonSudokuViewModel(
             graph.progressRepository,
+            graph.sudokuPuzzleRepository,
             graph.savedGameStateRepository,
             graph.audio,
         )
@@ -103,17 +119,36 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
     // (dos unidades pueden cerrarse con una jugada, o casi seguidas), así que van
     // en una lista y cada una se retira sola al terminar.
     val completionWaves = remember { mutableStateListOf<CompletionWave>() }
+    // Fuegos artificiales de "dígito agotado": null = ninguno en curso. Vive en la
+    // UI (no en el estado del juego) porque es adorno puntual con su propio ciclo
+    // de vida, igual que la celebración de fusión grande de Neon Grid 2048.
+    var digitFireworks by remember { mutableStateOf<DigitFireworks?>(null) }
     val scope = rememberCoroutineScope()
+
+    // Auto-cierre de los fuegos artificiales: se relanza en cada celebración nueva
+    // (la key es su `id`) y solo se limpia a sí mismo si sigue siendo la MISMA
+    // celebración al despertar — evita que una limpieza tardía borre una
+    // celebración más reciente si dos dígitos se agotan muy seguidos.
+    LaunchedEffect(digitFireworks?.id) {
+        val active = digitFireworks ?: return@LaunchedEffect
+        delay(DIGIT_FIREWORKS_MS)
+        if (digitFireworks?.id == active.id) digitFireworks = null
+    }
 
     // Traducción de efectos one-shot → audio/háptica/animación. Un único colector.
     LaunchedEffect(vm) {
-        // Contador local (no `remember`): vive en esta corrutina mientras dure la
-        // pantalla y solo da a cada onda una identidad propia.
+        // Contadores locales (no `remember`): viven en esta corrutina mientras
+        // dure la pantalla y solo dan a cada celebración una identidad propia.
         var waveSeed = 0
+        var fireworksSeed = 0
         vm.effect.collect { effect ->
             when (effect) {
                 is NeonSudokuEffect.PlaySound -> graph.audio.playSound(effect.sound)
                 is NeonSudokuEffect.Vibrate -> graph.audio.hapticFeedback(effect.haptic)
+                is NeonSudokuEffect.DigitCompleted -> {
+                    fireworksSeed++
+                    digitFireworks = DigitFireworks(id = fireworksSeed, digit = effect.digit)
+                }
                 is NeonSudokuEffect.ShakeCell -> {
                     shakeCell = effect.position
                     // LinearEasing: la amortiguación ya la aplica la propia
@@ -150,42 +185,55 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
 
     // Antesala mientras el juego está en IDLE, igual que el resto de juegos.
     //
-    // El selector de dificultad NO se mete dentro de `GameIntroScreen` (componente
-    // compartido por los ~30 juegos del catálogo, sin conocimiento de que este
-    // tiene dificultades): se superpone por fuera, en un `Box` que la envuelve,
-    // exactamente igual que Neon Grid 2048 hace con su selector de tamaño de
-    // tablero. Al ir después en el árbol de composición se dibuja por encima, y se
-    // ancla sobre el CTA "Comenzar" que la antesala fija al fondo.
+    // El selector de dificultad se pasa como `configContent` de `GameIntroScreen`:
+    // se pinta DENTRO del propio bloque de acciones, justo encima del CTA
+    // principal (no superpuesto por fuera con un padding fijo calculado a ojo,
+    // que es como lo hacía la primera versión de esta pantalla —y como sigue
+    // haciéndolo hoy Neon Grid 2048 con su selector de tamaño—). Ese padding fijo
+    // se descuadraba en cuanto `resume` añadía su resumen + "Empezar de nuevo"
+    // debajo del CTA: el bloque crecía, el CTA se desplazaba hacia arriba, y el
+    // selector —anclado a una distancia fija del fondo de la pantalla, ajena a
+    // ese crecimiento— terminaba solapándolo. `configContent` vive en el flujo
+    // normal de la Column, así que crece y se encoge con el resto del bloque y
+    // nunca puede desalinearse, sea cual sea la altura de lo que haya debajo.
+    //
+    // El selector queda SIEMPRE visible, haya o no partida guardada: `resume`
+    // solo decide qué CTA es el principal, nunca oculta la posibilidad de elegir
+    // dificultad y empezar de cero — antes, ocultarlo cuando había un guardado
+    // dejaba al jugador sin ninguna vía para abandonarlo y arrancar una partida
+    // nueva, que es el bug original que esto corrige.
     if (state.status == GameStatus.IDLE) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            GameIntroScreen(
-                title = "Neon Sudoku Matrix",
-                description = NEON_SUDOKU_HELP,
-                accent = CategoryPalette.Logic,
-                // Sin arte "héroe" propio todavía: se cae al icono de la categoría
-                // (§9.5, siempre vectorial) en vez de dejar el recuadro vacío.
-                icon = GameCategory.LOGIC.icon,
-                // "Continuar" si hay partida guardada; si no, "Comenzar". El intent
-                // Start decide (reanudar o nueva) — la UI solo cambia la etiqueta.
-                startLabel = if (state.hasSavedGame) "Continuar" else "Comenzar",
-                onStart = { vm.onIntent(NeonSudokuIntent.Start) },
-                onExit = onExit,
-                background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },
-            )
-            // El selector solo tiene sentido para una partida nueva: si hay una
-            // guardada, "Continuar" la reanuda con su propia dificultad, así que se
-            // oculta para no sugerir que se puede cambiar (mismo criterio de "no
-            // ofrecer lo que el intent ignoraría").
-            if (!state.hasSavedGame) {
+        GameIntroScreen(
+            title = "Neon Sudoku Matrix",
+            motif = GameMotif.SUDOKU_GRID,
+            description = NEON_SUDOKU_HELP,
+            accent = CategoryPalette.Logic,
+            // Sin arte "héroe" propio todavía: se cae al icono de la categoría
+            // (§9.5, siempre vectorial) en vez de dejar el recuadro vacío.
+            icon = GameCategory.LOGIC.icon,
+            // Start SIEMPRE arranca partida nueva (ver KDoc del intent); es el
+            // CTA principal cuando no hay guardado, y baja a "Empezar de nuevo"
+            // (acción secundaria de GameIntroScreen) cuando sí lo hay.
+            onStart = { vm.onIntent(NeonSudokuIntent.Start) },
+            // Partida guardada al salir: la antesala la ofrece como CTA
+            // principal (ResumeSaved), con su resumen para que el jugador sepa
+            // qué retoma. Mismo mecanismo que `savedScore` en Neon Grid 2048.
+            resume = state.savedSummary?.let { summary ->
+                ResumeState(
+                    onResume = { vm.onIntent(NeonSudokuIntent.ResumeSaved) },
+                    detail = summary,
+                )
+            },
+            configContent = {
                 DifficultySelector(
                     selected = state.difficulty,
                     onSelect = { vm.onIntent(NeonSudokuIntent.SelectDifficulty(it)) },
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(start = 24.dp, end = 24.dp, bottom = DIFFICULTY_SELECTOR_BOTTOM_GAP),
+                    modifier = Modifier.fillMaxWidth(),
                 )
-            }
-        }
+            },
+            onExit = onExit,
+            background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },
+        )
         return
     }
 
@@ -228,6 +276,25 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
                 onToggleNotes = { vm.onIntent(NeonSudokuIntent.ToggleNotesMode) },
                 onErase = { vm.onIntent(NeonSudokuIntent.EraseCell) },
             )
+        }
+
+        // Fuegos artificiales de "dígito agotado": puramente visual, no bloquea la
+        // interacción con el tablero (el jugador puede seguir jugando mientras
+        // estallan). `key(id)` reinicia el patrón si dos dígitos se agotan casi
+        // seguidos, en vez de continuar la secuencia de estallidos anterior.
+        digitFireworks?.let { fireworks ->
+            key(fireworks.id) {
+                FireworksOverlay(
+                    modifier = Modifier.fillMaxSize(),
+                    // 3 estallidos (no los 6 por defecto): agotar un dígito es
+                    // frecuente durante la partida —hay nueve—, así que una
+                    // ráfaga más corta lo celebra sin saturar de fuegos una
+                    // partida con varios dígitos agotados seguidos.
+                    burstCount = DIGIT_FIREWORKS_BURSTS,
+                    seed = fireworks.id,
+                    onBurst = { graph.audio.playSound(SoundEffect.SUCCESS) },
+                )
+            }
         }
 
         if (state.status == GameStatus.FINISHED && state.gameOver != null) {
@@ -345,6 +412,14 @@ private fun DifficultyChip(difficulty: SudokuDifficulty, selected: Boolean, onCl
     val shape = RoundedCornerShape(12.dp)
     Box(
         modifier = Modifier
+            // `bounceClick` (scale) va ANTES de clip/background/border —igual que
+            // `AnimatedGameButton`—: si el scale queda detrás de esos modificadores
+            // de dibujo en la cadena, su capa (graphicsLayer) los deja fuera y el
+            // borde/fondo puede quedarse pintado con el valor viejo al cambiar
+            // `selected` (visto en el emulador: el texto sí cambiaba de color pero
+            // el borde no), aunque el propio texto sí se redibuje bien al no
+            // depender de esa capa.
+            .bounceClick(onClick = onClick)
             .clip(shape)
             .background(if (selected) accent.copy(alpha = 0.22f) else LogicColors.SurfaceVariantDark)
             .border(
@@ -354,7 +429,6 @@ private fun DifficultyChip(difficulty: SudokuDifficulty, selected: Boolean, onCl
                 ),
                 shape,
             )
-            .bounceClick(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -604,11 +678,6 @@ private fun ActionKey(
 /** Lado de una tecla de dígito. */
 private val KeySize = 54.dp
 
-/** Separación del selector de dificultad respecto al fondo de la antesala: deja
- *  hueco para el CTA "Comenzar" que `GameIntroScreen` ancla abajo (mismo valor
- *  que el gap del selector de tamaño de Neon Grid 2048). */
-private val DIFFICULTY_SELECTOR_BOTTOM_GAP = 108.dp
-
 /** Hueco que el HUD deja libre a su derecha para el botón de pausa (44 dp de
  *  botón + 16 dp de margen, según `GamePauseControls`). */
 private val PauseButtonReserve = 60.dp
@@ -629,6 +698,21 @@ private const val SWEEP_MS = 600
  * `sin(π·p)` del destello, y encadenar dos easings aplanaría la propagación.
  */
 private const val WAVE_MS = 520
+
+/** Estallidos de la celebración de "dígito agotado" (menos que los 6 por
+ *  defecto de [FireworksOverlay]: hay nueve dígitos por partida, así que una
+ *  ráfaga más corta celebra sin saturar si se agotan varios seguidos). */
+private const val DIGIT_FIREWORKS_BURSTS = 2
+
+/**
+ * Tiempo de vida de la celebración de "dígito agotado" (ms) antes de desmontar
+ * [FireworksOverlay]. [FireworksOverlay] no avisa cuando termina de estallar —
+ * simplemente deja de dibujar—, así que quien lo monta decide cuándo retirarlo
+ * (mismo patrón que `MERGE_CELEBRATION_MS` en Neon Grid 2048). El valor cubre el
+ * peor caso para [DIGIT_FIREWORKS_BURSTS] estallidos (~300 ms de cadencia con
+ * jitter + ~1050 ms de vida del último) con margen.
+ */
+private const val DIGIT_FIREWORKS_MS = 1900L
 
 /** Duración del fundido entre estados de una tecla (ms). */
 private const val KEY_FADE_MS = 220

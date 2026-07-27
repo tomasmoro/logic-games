@@ -51,9 +51,15 @@ import kotlinx.serialization.Serializable
  * @property status fase de la partida (IDLE en la antesala, RUNNING jugando,
  *   PAUSED, FINISHED). Reutiliza el [GameStatus] común a todos los juegos para
  *   que la navegación y los overlays se comporten igual que en el resto.
- * @property hasSavedGame `true` si al abrir la antesala existe una partida
- *   guardada que "Comenzar" reanudará (ver [NeonSudokuSavedState]); solo cambia
- *   la etiqueta del botón, la reanudación la resuelve el ViewModel.
+ * @property savedSummary resumen legible de la partida guardada al salir
+ *   (p. ej. `"Medio · 42/81 celdas"`), o `null` si no hay ninguna pendiente. La
+ *   antesala se lo pasa a `GameIntroScreen` como
+ *   [com.example.kortexgames.ui.components.ResumeState.detail]: no-null hace que
+ *   "Continuar" ([NeonSudokuIntent.ResumeSaved]) pase a ser el CTA principal y
+ *   "Comenzar" ([NeonSudokuIntent.Start], SIEMPRE partida nueva) baje a acción
+ *   secundaria — así el jugador nunca se queda sin forma de empezar de cero
+ *   habiendo una partida activa guardada (mismo componente compartido que Neon
+ *   Grid 2048 usa para su `savedScore`).
  * @property gameOver resumen del resultado (puntaje + percentil) cuando la
  *   partida termina; `null` mientras se juega. Mismo patrón que el resto de
  *   juegos del catálogo.
@@ -67,7 +73,7 @@ data class NeonSudokuUiState(
     val difficulty: SudokuDifficulty = SudokuDifficulty.FACIL,
     val awaitingRevive: Boolean = false,
     val status: GameStatus = GameStatus.IDLE,
-    val hasSavedGame: Boolean = false,
+    val savedSummary: String? = null,
     val gameOver: GameOverInfo? = null,
 ) : UiState {
 
@@ -87,12 +93,23 @@ data class NeonSudokuUiState(
  */
 sealed interface NeonSudokuIntent : UiIntent {
 
-    /** Arranca desde la antesala (IDLE → RUNNING): reanuda la partida guardada si
-     *  existe, o sortea una plantilla nueva de la [SudokuDifficulty] elegida. */
+    /**
+     * Arranca desde la antesala: SIEMPRE sortea una plantilla nueva de la
+     * [SudokuDifficulty] elegida, aunque haya una partida guardada — es el "Comenzar"
+     * (o "Empezar de nuevo") de `GameIntroScreen`. Reanudar una guardada es un
+     * intent aparte, [ResumeSaved]: sin esa separación, un jugador con una
+     * partida activa no tendría forma de empezar una nueva (el guardado siempre
+     * ganaría), que es justo lo que este intent evita.
+     */
     data object Start : NeonSudokuIntent
 
+    /** Reanuda explícitamente la partida guardada al salir (CTA "Continuar" de la
+     *  antesala cuando [NeonSudokuUiState.savedSummary] no es null). La consume:
+     *  tras reanudar, el guardado se borra hasta la próxima salida. */
+    data object ResumeSaved : NeonSudokuIntent
+
     /** Repite partida (nueva plantilla de la misma dificultad) desde la pantalla
-     *  de resultado. A diferencia de [Start], NUNCA reanuda un guardado. */
+     *  de resultado. Igual que [Start]: nunca reanuda un guardado. */
     data object PlayAgain : NeonSudokuIntent
 
     /**
@@ -220,6 +237,23 @@ sealed interface NeonSudokuEffect : UiEffect {
         val cells: List<CellPosition>,
         val origin: CellPosition,
     ) : NeonSudokuEffect
+
+    /**
+     * Se acaban de colocar las **9 apariciones** de [digit] en el tablero, sin
+     * ningún choque entre ellas: ya no queda ninguna instancia por colocar.
+     * Agotar un dígito es un hito de la partida entera (no de una unidad
+     * puntual como [UnitsCompleted]), así que la UI celebra con **fuegos
+     * artificiales de pantalla completa** — el mismo componente que usa el
+     * resto del catálogo para un nuevo récord —, más vistoso que el destello
+     * local de una fila/columna/bloque.
+     *
+     * Se emite como mucho una vez por dígito y partida: el ViewModel lleva la
+     * cuenta para no repetir la celebración si el jugador reescribe una celda
+     * que ya tenía ese valor.
+     *
+     * @property digit dígito agotado, `1..9`.
+     */
+    data class DigitCompleted(val digit: Int) : NeonSudokuEffect
 
     /**
      * Solicita a la UI la animación de sacudida horizontal (`shake`) sobre la

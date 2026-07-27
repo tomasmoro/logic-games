@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.game.GameCategory
+import com.example.kortexgames.game.GameMotif
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -42,6 +43,11 @@ private const val EXPAND_NAV_DELAY_MS = 300L
  *
  * @param enabled si false, no responde a clicks ni anima (p. ej. juego bloqueado).
  * @param bgTopAlpha opacidad del acento en la parte superior del degradado de fondo.
+ * @param motif motivo visual propio del juego para el fondo; null = usa el de la
+ *   categoría (útil para las tarjetas de categoría, que no representan un juego).
+ * @param scrim si true, oscurece la mitad inferior de la tarjeta con un degradado
+ *   (transparente arriba → oscuro abajo) para garantizar el contraste del texto
+ *   sobre el motivo, por brillante que sea. Útil en tarjetas con texto abajo.
  * @param content contenido de la tarjeta (icono, textos…), ya con su propio padding.
  */
 @Composable
@@ -52,6 +58,8 @@ fun CategoryMotifSurface(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     bgTopAlpha: Float = 0.18f,
+    motif: GameMotif? = null,
+    scrim: Boolean = false,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -94,7 +102,24 @@ fun CategoryMotifSurface(
             category = category,
             modifier = Modifier.matchParentSize(),
             boost = glow.value,
+            motif = motif,
         )
+
+        // Velo inferior: protege la legibilidad del texto (abajo) sobre el motivo.
+        // Transparente en la mitad superior para no tapar icono ni fondo temático.
+        if (scrim) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.45f to Color.Transparent,
+                            1f to LogicColors.BackgroundDark.copy(alpha = 0.72f),
+                        ),
+                    ),
+            )
+        }
 
         // Resplandor de expansión: círculo radial que crece del centro y se apaga.
         Canvas(modifier = Modifier.matchParentSize()) {

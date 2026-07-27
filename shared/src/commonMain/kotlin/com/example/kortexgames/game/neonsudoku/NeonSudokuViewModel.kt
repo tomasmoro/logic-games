@@ -19,7 +19,6 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlin.random.Random
 import kotlin.time.TimeSource
 
 /**
@@ -46,16 +45,18 @@ import kotlin.time.TimeSource
  *    Grid 2048, vía [SavedGameStateRepository]).
  *
  * @param progress repositorio local-first para guardar el resultado + percentil.
+ * @param puzzles banco de puzzles (local-first): de aquí sale la plantilla de cada
+ *   partida nueva. Sustituye a las plantillas que antes vivían en el `enum`
+ *   [SudokuDifficulty] (ver [SudokuPuzzleRepository]).
  * @param savedGameState partida en curso guardada al salir (back / "SALIR"): la
  *   antesala la reanuda con [NeonSudokuIntent.Start]. 100% local (ver [requestExit]).
  * @param audio manager de sonido/háptica (el feedback fino se emite como [NeonSudokuEffect]).
- * @param random inyectable para pruebas deterministas de selección de plantilla.
  */
 class NeonSudokuViewModel(
     private val progress: ProgressRepository,
+    private val puzzles: SudokuPuzzleRepository,
     private val savedGameState: SavedGameStateRepository,
     private val audio: AudioAndHapticManager,
-    private val random: Random = Random.Default,
 ) : MviViewModel<NeonSudokuIntent, NeonSudokuUiState, NeonSudokuEffect>(NeonSudokuUiState()) {
 
     // --- Estado interno de la simulación (NO es estado de UI) --------------------
@@ -77,17 +78,34 @@ class NeonSudokuViewModel(
      *  partida: se limita a una por partida, como en "Burbujas de Cálculo". */
     private var reviveOffered = false
 
+    /** Guardia de re-entrada mientras [startGame] resuelve un puzzle (asíncrono):
+     *  evita que un doble toque en "Comenzar" arranque dos partidas a la vez. */
+    private var startingPuzzle = false
+
+    /** Dígitos (`1..9`) cuya celebración de "agotado" ([NeonSudokuEffect.DigitCompleted])
+     *  ya se disparó en esta partida. Sin este control, reescribir una celda que
+     *  ya tenía el dígito completo (redundante, pero el reducer lo permite) o
+     *  cualquier otra recomputación repetiría los fuegos artificiales. */
+    private val celebratedDigits = mutableSetOf<Int>()
+
     init {
-        // La antesala ofrece "Continuar" si hay una partida guardada: se observa el
-        // guardado (reactivo) para que el flag desaparezca solo al reanudar/terminar.
+        // La antesala ofrece "Continuar" (CTA principal, ver ResumeState) si hay
+        // partida guardada: se observa (reactivo) para que el resumen desaparezca
+        // solo al reanudar/terminar, igual que `savedScore` en Neon Grid 2048.
         savedGameState.observe(GameIds.NEON_SUDOKU_MATRIX)
-            .onEach { saved -> setState { copy(hasSavedGame = saved != null) } }
+            .onEach { json ->
+                val summary = json
+                    ?.let { runCatching { Json.decodeFromString<NeonSudokuSavedState>(it) }.getOrNull() }
+                    ?.let(::describeSaved)
+                setState { copy(savedSummary = summary) }
+            }
             .launchIn(viewModelScope)
     }
 
     override fun onIntent(intent: NeonSudokuIntent) {
         when (intent) {
-            NeonSudokuIntent.Start -> startOrResume()
+            NeonSudokuIntent.Start -> startGame(currentState.difficulty)
+            NeonSudokuIntent.ResumeSaved -> resumeSaved()
             NeonSudokuIntent.PlayAgain -> startGame(currentState.difficulty)
             is NeonSudokuIntent.SelectDifficulty -> onSelectDifficulty(intent.difficulty)
             NeonSudokuIntent.Revive -> onRevive()
@@ -115,11 +133,15 @@ class NeonSudokuViewModel(
     }
 
     /**
-     * Punto de entrada de la antesala ("Comenzar"): reanuda la partida guardada si
-     * existe (y la consume, para que el próximo guardado sea el de esta sesión), o
-     * arranca una nueva de la dificultad elegida. Mismo patrón que Neon Grid 2048.
+     * Punto de entrada del CTA "Continuar" ([NeonSudokuIntent.ResumeSaved]): carga
+     * la partida guardada y la consume (se borra, para que el próximo guardado sea
+     * el de esta sesión). Mismo patrón que `ResumeSaved` en Neon Grid 2048.
+     *
+     * Si el guardado ya no está —se limpió desde otro sitio entre que la antesala
+     * ofreció "Continuar" y que el jugador pulsó— cae a una partida nueva en vez de
+     * dejar el botón sin reaccionar.
      */
-    private fun startOrResume() {
+    private fun resumeSaved() {
         viewModelScope.launch {
             val saved = savedGameState.load(GameIds.NEON_SUDOKU_MATRIX)
                 ?.let { runCatching { Json.decodeFromString<NeonSudokuSavedState>(it) }.getOrNull() }
@@ -137,6 +159,14 @@ class NeonSudokuViewModel(
         totalInputs = saved.totalInputs
         conflictInputs = saved.conflictInputs
         reviveOffered = saved.reviveOffered
+        val board = Board(saved.cells)
+        // Los dígitos ya agotados en el guardado no deben volver a festejarse: se
+        // reconstruye el set a partir del propio tablero en vez de serializarlo
+        // aparte (es un dato derivado, no una fuente de verdad nueva).
+        celebratedDigits.clear()
+        for (digit in NeonSudokuConfig.MIN_DIGIT..NeonSudokuConfig.MAX_DIGIT) {
+            if (isDigitComplete(board, digit)) celebratedDigits += digit
+        }
         val selected = if (saved.selectedRow >= 0 && saved.selectedCol >= 0) {
             CellPosition(saved.selectedRow, saved.selectedCol)
         } else {
@@ -144,7 +174,7 @@ class NeonSudokuViewModel(
         }
         setState {
             NeonSudokuUiState(
-                board = Board(saved.cells),
+                board = board,
                 selectedCell = selected,
                 notesMode = saved.notesMode,
                 errorCount = saved.errorCount,
@@ -156,19 +186,45 @@ class NeonSudokuViewModel(
         startLoop()
     }
 
-    /** Sortea una plantilla de [difficulty], reinicia todo y arranca una partida limpia. */
+    /**
+     * Resumen legible de [saved] para el CTA "Continuar" de la antesala (ver
+     * KDoc de [NeonSudokuUiState.savedSummary]): dificultad + progreso de
+     * relleno, para que el jugador sepa qué retoma antes de pulsar.
+     */
+    private fun describeSaved(saved: NeonSudokuSavedState): String {
+        val filled = saved.cells.count { it.value != null }
+        return "${saved.difficulty.displayName} · $filled/${NeonSudokuConfig.CELL_COUNT} celdas"
+    }
+
+    /**
+     * Pide un puzzle de [difficulty] al banco, reinicia todo y arranca una partida
+     * limpia. Es **asíncrono** porque el banco es local-first ([SudokuPuzzleRepository]):
+     * la primera lectura toca el recurso empaquetado; las siguientes salen de caché
+     * en memoria (imperceptible). El guardia [startingPuzzle] descarta un segundo
+     * "Comenzar" mientras el primero aún resuelve el puzzle.
+     */
     private fun startGame(difficulty: SudokuDifficulty) {
-        totalInputs = 0
-        conflictInputs = 0
-        reviveOffered = false
-        val templates = difficulty.templates
-        val template = templates[random.nextInt(templates.size)]
-        // recomputeConflicts es defensivo: una plantilla bien formada nunca trae
-        // choques entre sus pistas, pero recalcular es gratis (ver su KDoc) y nos
-        // protege de una plantilla corrupta en vez de arrancar en un estado inválido.
-        val board = recomputeConflicts(Board.fromTemplate(template))
-        setState { NeonSudokuUiState(board = board, difficulty = difficulty, status = GameStatus.RUNNING) }
-        startLoop()
+        if (startingPuzzle) return
+        startingPuzzle = true
+        viewModelScope.launch {
+            // try/finally: pase lo que pase al pedir el puzzle, el guardia se libera
+            // para no dejar "Comenzar" bloqueado de forma permanente.
+            try {
+                val puzzle = puzzles.randomPuzzle(difficulty)
+                totalInputs = 0
+                conflictInputs = 0
+                reviveOffered = false
+                celebratedDigits.clear()
+                // recomputeConflicts es defensivo: un puzzle bien formado nunca trae
+                // choques entre sus pistas, pero recalcular es gratis (ver su KDoc) y nos
+                // protege de un puzzle corrupto en vez de arrancar en un estado inválido.
+                val board = recomputeConflicts(Board.fromTemplate(puzzle.puzzle))
+                setState { NeonSudokuUiState(board = board, difficulty = difficulty, status = GameStatus.RUNNING) }
+                startLoop()
+            } finally {
+                startingPuzzle = false
+            }
+        }
     }
 
     /**
@@ -339,7 +395,32 @@ class NeonSudokuViewModel(
             sendEffect(NeonSudokuEffect.Vibrate.Tick)
         }
 
+        // Dígito agotado: sus 9 apariciones ya están en el tablero sin chocar entre
+        // sí, así que no queda ninguna instancia más por colocar. Es un hito de la
+        // partida entera (no de una unidad puntual), así que la celebración es
+        // aparte y más grande (fuegos artificiales de pantalla completa, ver
+        // NeonSudokuScreen) en vez de sumarse al destello local de arriba.
+        //
+        // Solo puede volverse cierto para [number]: borrar SIEMPRE reduce el
+        // recuento de un dígito (nunca lo completa) y sobrescribir una celda con
+        // un valor distinto solo puede aumentar el recuento del dígito que se
+        // ACABA de escribir, nunca el de un tercero que la jugada no tocó.
+        if (number !in celebratedDigits && isDigitComplete(recomputedBoard, number)) {
+            celebratedDigits += number
+            sendEffect(NeonSudokuEffect.DigitCompleted(number))
+        }
+
         if (recomputedBoard.isComplete && !recomputedBoard.hasAnyConflict) finish(won = true)
+    }
+
+    /**
+     * ¿Ya no queda ninguna instancia de [digit] por colocar? Es decir: sus 9
+     * apariciones están en el tablero y ninguna choca entre sí. Dispara la
+     * celebración de "dígito agotado" ([NeonSudokuEffect.DigitCompleted]).
+     */
+    private fun isDigitComplete(board: Board, digit: Int): Boolean {
+        val cells = board.cellsWithValue(digit)
+        return cells.size == NeonSudokuConfig.BOARD_SIZE && cells.none { it.hasConflict }
     }
 
     /**

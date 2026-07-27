@@ -246,52 +246,31 @@ object NeonSudokuConfig {
 }
 
 /**
- * Niveles de dificultad de Neon Sudoku Matrix.
+ * Niveles de dificultad de Neon Sudoku Matrix (taxonomía pura).
  *
- * En Sudoku la dificultad se controla sobre todo por el **número de pistas**
- * iniciales: menos pistas ⇒ más deducción ⇒ más difícil. Cada nivel referencia
- * un banco de [templates] (strings de 81 caracteres con solución única) del que
- * se sortea la partida; la generación algorítmica queda fuera de alcance (ver
- * KDoc de [Board.fromTemplate]).
+ * ## Cómo se controla la dificultad
+ * Los puzzles se generan y **ratean offline** ([SudokuPuzzleRepository], banco en
+ * `tools/sudoku/generate_bank.py`). La calibración empírica mostró que, con
+ * generación aleatoria, la dificultad "por técnica lógica" es casi bimodal —o el
+ * puzzle cae con *singles*, o exige técnicas avanzadas—, así que el rateo combina
+ * dos ejes:
+ *  - FACIL/MEDIO/DIFICIL se diferencian por **número de pistas** (más pistas ⇒
+ *    más fácil), la palanca que el jugador percibe, y son resolubles con lógica
+ *    humana sin adivinar.
+ *  - EXPERTO se reserva para el **salto real de técnica**: puzzles que exigen
+ *    razonamiento por encima de pares/triples/X-Wing.
  *
- * Se modela como `enum` (dominio cerrado) para que el selector de la antesala
- * (FASE 4, mismo patrón que el tamaño de tablero de Neon Grid 2048) se construya
- * recorriendo [entries] y añadir un nivel sea un cambio local aquí.
+ * Antes las plantillas vivían embebidas aquí (una `List<String>` por nivel); se
+ * sacaron al repositorio para poder ampliar el banco (y servirlo desde la nube)
+ * sin tocar el dominio. El `enum` se queda solo como el conjunto cerrado de tiers
+ * que recorre el selector de la antesala (mismo patrón que el tamaño de tablero
+ * de Neon Grid 2048) y que mapea a `difficultyLevel` en el resultado.
  *
  * @property displayName etiqueta visible en el selector.
- * @property templates banco de plantillas del nivel (81 caracteres, `0` = vacía).
  */
-enum class SudokuDifficulty(val displayName: String, val templates: List<String>) {
-    FACIL(
-        "Fácil",
-        listOf(
-            "090865142500000793000003865729030000150027638800451007673584000405209300010000004",
-            "708405902192600003040021000074590186006740020200068704601000090035206847007050260",
-            "037800500026097400480256070740008029058960730600470180060700300009134800300605207",
-        ),
-    ),
-    MEDIO(
-        "Medio",
-        listOf(
-            "590007803863209170004000502031060000940103628000000000419730200300605000050900000",
-            "095040813130956070700000000503094000469008050000100900206000000387019000051000738",
-            "900475006602001070400080000820316050750820610010009000207100390060003740003000001",
-        ),
-    ),
-    DIFICIL(
-        "Difícil",
-        listOf(
-            "000006030006030109400000080800309000567804000300060020290075806005040000648000000",
-            "005600020400000000800957604010280500908070000050003009203890760009001000000402000",
-            "000024300300000502502080090007090060000200807200005009000038410980000005010002980",
-        ),
-    ),
-    EXPERTO(
-        "Experto",
-        listOf(
-            "405070000300900000810020300700001009094300106100400000030009070000000600007000028",
-            "710009200500000870030800000306000000007500038020008010000000026009080100051000007",
-            "004600058000100900200008007000014089020009000000053100000000030038005290102000000",
-        ),
-    ),
+enum class SudokuDifficulty(val displayName: String) {
+    FACIL("Fácil"),
+    MEDIO("Medio"),
+    DIFICIL("Difícil"),
+    EXPERTO("Experto"),
 }

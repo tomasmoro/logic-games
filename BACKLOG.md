@@ -215,3 +215,21 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
       vez (después quedan en caché de sesión). Lanzar `StarportLevels.forNumber
       (n+1)` en `Dispatchers.Default` al completar el nivel `n` para que "Siguiente
       nivel" abra instantáneo.
+- [ ] **Neon Sudoku Matrix — enriquecer la banda DIFICIL con más técnicas.** El
+      rater offline (`tools/sudoku/generate_bank.py`) implementa singles, pointing/
+      claiming, pares/triples y X-Wing; por encima marca EXPERTO. La calibración
+      mostró que la dificultad "por técnica" es casi bimodal, así que FACIL/MEDIO/
+      DIFICIL hoy se separan por nº de pistas y solo EXPERTO exige técnica avanzada.
+      Añadir XY-Wing y Swordfish al rater movería parte de los actuales EXPERTO a un
+      DIFICIL "de técnica" genuino y afinaría la frontera. Solo cambia la generación
+      offline + re-subir el banco (`0025_create_sudoku_puzzles.sql` / seed CSV); el
+      cliente no se toca.
+- [ ] **Neon Sudoku Matrix — test unitario de `SudokuBank.parse` y rotación.**
+      Cubrir el parseo del CSV (líneas malformadas se saltan, no abortan) y la
+      rotación "no repetir" del repositorio (`SudokuPuzzleRepositoryImpl` +
+      `selectNextByDifficulty`). La validez de los puzzles ya se garantiza offline
+      en generación; falta blindar la capa de carga en el cliente.
+- [ ] **Neon Sudoku Matrix — feature de pista usando `solution`.** El banco ya
+      guarda la solución de cada puzzle (columna `solution`, tanto en el seed
+      empaquetado como en Supabase), hoy sin usar. Habilita un botón de "pista"
+      (revelar una celda correcta) o verificación, sin re-resolver en el cliente.

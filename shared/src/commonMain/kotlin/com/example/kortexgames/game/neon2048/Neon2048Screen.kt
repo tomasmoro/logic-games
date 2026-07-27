@@ -52,6 +52,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.kortexgames.core.theme.CategoryPalette
 import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.di.AppGraph
+import com.example.kortexgames.game.GameMotif
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.ui.components.AnimatedGameButton
 import com.example.kortexgames.ui.components.FireworksOverlay
@@ -166,6 +167,7 @@ fun Neon2048Screen(graph: AppGraph, onExit: () -> Unit) {
         Box(modifier = Modifier.fillMaxSize()) {
             GameIntroScreen(
                 title = "Neon Grid 2048",
+                motif = GameMotif.NUMBER_TILES,
                 description = NEON_2048_HELP,
                 accent = CategoryPalette.MentalMath,
                 onStart = { vm.onIntent(Neon2048Intent.StartGame) },
@@ -341,6 +343,14 @@ private fun BoardSizeChip(size: Int, selected: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
     Box(
         modifier = Modifier
+            // `bounceClick` (scale) va ANTES de clip/background/border —igual que
+            // `AnimatedGameButton`—: si el scale queda detrás de esos modificadores
+            // de dibujo en la cadena, su capa (graphicsLayer) los deja fuera y el
+            // borde/fondo puede quedarse pintado con el valor viejo al cambiar
+            // `selected` (visto en el emulador: el texto sí cambiaba de color pero
+            // el borde no), aunque el propio texto sí se redibuje bien al no
+            // depender de esa capa.
+            .bounceClick(onClick = onClick)
             .clip(shape)
             .background(if (selected) accent.copy(alpha = 0.22f) else LogicColors.SurfaceVariantDark)
             .border(
@@ -350,7 +360,6 @@ private fun BoardSizeChip(size: Int, selected: Boolean, onClick: () -> Unit) {
                 ),
                 shape,
             )
-            .bounceClick(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {

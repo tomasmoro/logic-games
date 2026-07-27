@@ -49,6 +49,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.kortexgames.core.theme.CategoryPalette
 import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.di.AppGraph
+import com.example.kortexgames.game.GameMotif
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.ui.components.GameIntroScreen
 import com.example.kortexgames.ui.components.GameOverOverlay
@@ -91,6 +92,7 @@ fun HypergateScreen(graph: AppGraph, onExit: () -> Unit) {
     if (state.status == GameStatus.IDLE) {
         GameIntroScreen(
             title = "Hypergate",
+            motif = GameMotif.HYPERGATE,
             description = "Toca en cualquier parte para alternar la polaridad del escudo. Haz que su color coincida con cada proyectil justo antes del impacto: iguala para absorber, falla y chocarás.",
             accent = CategoryPalette.Reflexes,
             onStart = { vm.onIntent(HypergateIntent.Start) },

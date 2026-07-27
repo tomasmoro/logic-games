@@ -53,6 +53,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.kortexgames.core.theme.CategoryPalette
 import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.di.AppGraph
+import com.example.kortexgames.game.GameMotif
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.GameIntroScreen
@@ -157,6 +158,7 @@ fun NeonCircuitScreen(graph: AppGraph, onExit: () -> Unit) {
         var selectedLevel by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
         GameIntroScreen(
             title = "Neon Circuit Flow",
+            motif = GameMotif.CIRCUIT_FLOW,
             description = "La placa está desconectada. Arrastra desde cada nodo y tiende un cable de luz hasta su gemelo del mismo color, sin que dos cables se crucen. Conéctalos todos para energizar el circuito.",
             accent = CategoryPalette.ProblemSolving,
             icon = Icons.Rounded.Hub,
