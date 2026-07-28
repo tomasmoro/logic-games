@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.androidApplication)
@@ -30,6 +31,19 @@ android {
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
         versionName = "1.0"
+
+        // AdMob App ID → meta-data del manifest (placeholder `admobAppId`). Por defecto
+        // el App ID de PRUEBA de Google (público, seguro en dev); el real se inyecta
+        // desde secrets.properties (ADMOB_APP_ID, gitignored) al publicar, sin commitearlo.
+        val secretsFile = rootProject.file("secrets.properties")
+        val admobAppId = if (secretsFile.exists()) {
+            Properties()
+                .apply { secretsFile.inputStream().use { load(it) } }
+                .getProperty("ADMOB_APP_ID", "ca-app-pub-3940256099942544~3347511713")
+        } else {
+            "ca-app-pub-3940256099942544~3347511713"
+        }
+        manifestPlaceholders["admobAppId"] = admobAppId
     }
     packaging {
         resources {

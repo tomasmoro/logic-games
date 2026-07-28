@@ -433,7 +433,7 @@ private fun DifficultySelector(
             color = LogicColors.OnDarkMuted,
             fontWeight = FontWeight.Bold,
         )
-        // fillMaxWidth + weight(1f) por chip: los tres ocupan el mismo ancho exacto
+        // fillMaxWidth + weight(1f) por chip: todos ocupan el mismo ancho exacto
         // en vez de ajustarse a su propio contenido. Antes, "Difícil" (el texto más
         // largo: "10×14 · 37 minas") no cabía en el ancho que le tocaba por
         // contenido propio y envolvía en 3 líneas, descuadrando la tarjeta entera.
@@ -459,7 +459,7 @@ private fun DifficultySelector(
  *  La estadística va en **dos líneas cortas fijas** ("8×10" y "13 minas") en vez
  *  de un único string con "·": una línea larga se parte donde el layout decida
  *  (a veces a mitad de un número), mientras que dos líneas cortas nunca necesitan
- *  envolver, así los tres chips —de igual [modifier] con `weight(1f)`— quedan
+ *  envolver, así todos los chips —de igual [modifier] con `weight(1f)`— quedan
  *  siempre con la misma altura. */
 @Composable
 private fun DifficultyChip(

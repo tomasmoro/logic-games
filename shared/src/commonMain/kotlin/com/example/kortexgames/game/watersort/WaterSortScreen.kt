@@ -164,7 +164,7 @@ private data class LiquidBand(val colorIndex: Int, val heightSlots: Float)
 @Composable
 fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
     val vm: WaterSortViewModel = viewModel {
-        WaterSortViewModel(graph.progressRepository, graph.playerProgressRepository, graph.audio)
+        WaterSortViewModel(graph.progressRepository, graph.playerProgressRepository, graph.audio, graph.adManager)
     }
     val state by vm.state.collectAsStateWithLifecycle()
 

@@ -6,6 +6,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.kortexgames.core.ads.RewardResult
 import com.example.kortexgames.core.audio.SoundEffect
 import com.example.kortexgames.core.theme.CategoryPalette
 import com.example.kortexgames.core.theme.LogicColors
@@ -57,6 +59,7 @@ import com.example.kortexgames.ui.components.ResumeState
 import com.example.kortexgames.ui.components.ReviveAdOverlay
 import com.example.kortexgames.ui.components.SpaceBackdrop
 import com.example.kortexgames.ui.components.bounceClick
+import com.example.kortexgames.ui.components.collectPressGlow
 import com.example.kortexgames.ui.components.drawNeonTile
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
@@ -66,7 +69,8 @@ import androidx.compose.runtime.key
 private const val NEON_SUDOKU_HELP =
     "Completa la matriz 9x9: cada fila, cada columna y cada bloque 3x3 deben " +
         "contener los dígitos del 1 al 9 sin repetirse. Toca una celda, elige un " +
-        "número y activa el lápiz para anotar tus hipótesis."
+        "número y activa el lápiz para anotar tus hipótesis. Si te atascas, " +
+        "selecciona una celda y pulsa Pista para ver un anuncio y revelar su número."
 
 /**
  * Celebración de "dígito agotado" en curso (ver [NeonSudokuEffect.DigitCompleted]).
@@ -183,6 +187,20 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
         }
     }
 
+    // Pista: a diferencia de "revivir" (que ofrece un diálogo con cuenta atrás,
+    // ver ReviveAdOverlay más abajo), pulsar "Pista" YA es la confirmación del
+    // jugador — no tiene sentido preguntarle "¿ver anuncio?" otra vez. Por eso el
+    // anuncio se lanza DIRECTO en cuanto el ViewModel marca `awaitingHint`, sin
+    // ningún overlay de por medio. Se relanza cada vez que `awaitingHint` pasa de
+    // `false` a `true` (la key); el resultado se traduce al intent que corresponda.
+    LaunchedEffect(state.awaitingHint) {
+        if (!state.awaitingHint) return@LaunchedEffect
+        when (graph.adManager.showRewardedAd()) {
+            RewardResult.EARNED -> vm.onIntent(NeonSudokuIntent.ConfirmHint)
+            RewardResult.DISMISSED, RewardResult.UNAVAILABLE -> vm.onIntent(NeonSudokuIntent.CancelHint)
+        }
+    }
+
     // Antesala mientras el juego está en IDLE, igual que el resto de juegos.
     //
     // El selector de dificultad se pasa como `configContent` de `GameIntroScreen`:
@@ -272,9 +290,11 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
             NeonSudokuNumpad(
                 board = state.board,
                 notesMode = state.notesMode,
+                hintAvailable = state.hintAvailable,
                 onInput = { vm.onIntent(NeonSudokuIntent.InputNumber(it)) },
                 onToggleNotes = { vm.onIntent(NeonSudokuIntent.ToggleNotesMode) },
                 onErase = { vm.onIntent(NeonSudokuIntent.EraseCell) },
+                onRequestHint = { vm.onIntent(NeonSudokuIntent.RequestHint) },
             )
         }
 
@@ -520,14 +540,19 @@ private fun formatElapsed(elapsedMs: Long): String {
  *
  * @param board tablero actual; de él se derivan las nueve cuentas de dígitos.
  * @param notesMode si el lápiz está activo (enciende su tecla).
+ * @param hintAvailable si hay algo que revelar en la celda seleccionada (ver
+ *   [NeonSudokuUiState.hintAvailable]); deshabilita la tecla de pista en vez de
+ *   dejarla pulsable sin ningún efecto.
  */
 @Composable
 private fun NeonSudokuNumpad(
     board: Board,
     notesMode: Boolean,
+    hintAvailable: Boolean,
     onInput: (Int) -> Unit,
     onToggleNotes: () -> Unit,
     onErase: () -> Unit,
+    onRequestHint: () -> Unit,
 ) {
     val counts = remember(board) {
         (NeonSudokuConfig.MIN_DIGIT..NeonSudokuConfig.MAX_DIGIT)
@@ -555,6 +580,14 @@ private fun NeonSudokuNumpad(
                 active = false,
                 contentDescription = "Borrar la celda seleccionada",
                 onClick = onErase,
+            )
+            ActionKey(
+                icon = KortexIcons.Hint,
+                label = "Pista",
+                active = false,
+                enabled = hintAvailable,
+                contentDescription = "Ver un anuncio y revelar el número correcto de la celda seleccionada",
+                onClick = onRequestHint,
             )
         }
 
@@ -592,6 +625,11 @@ private fun DigitKey(digit: Int, exhausted: Boolean, onClick: () -> Unit) {
         animationSpec = tween(KEY_FADE_MS),
         label = "digitKeyActive",
     )
+    // Interaction source hoisteado: lo lee el propio tile (pressGlow, brillo del
+    // tubo) y bounceClick (rebote de escala), para que ambos feedbacks respondan
+    // al mismo toque.
+    val interaction = remember { MutableInteractionSource() }
+    val pressGlow by interaction.collectPressGlow()
     val shape = RoundedCornerShape(16.dp)
     Box(
         modifier = Modifier
@@ -600,6 +638,7 @@ private fun DigitKey(digit: Int, exhausted: Boolean, onClick: () -> Unit) {
                 drawNeonTile(
                     baseColor = CategoryPalette.Logic,
                     activeAmt = activeAmt,
+                    pressAmt = pressGlow,
                     cornerRadius = 16.dp,
                     sparks = false,
                     baseMargin = 4.dp,
@@ -607,7 +646,7 @@ private fun DigitKey(digit: Int, exhausted: Boolean, onClick: () -> Unit) {
                 )
             }
             .clip(shape)
-            .bounceClick(onClick = onClick),
+            .bounceClick(interactionSource = interaction, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -620,10 +659,15 @@ private fun DigitKey(digit: Int, exhausted: Boolean, onClick: () -> Unit) {
 }
 
 /**
- * Tecla de acción (lápiz / borrar): mismo tubo neón que [DigitKey] pero con
- * icono vectorial y etiqueta. El estado "encendido" del lápiz se comunica por
- * partida doble —tubo pleno + halo del icono ([NeonIcon] con `glow`)— para que
- * se lea de un vistazo si el siguiente número irá como nota o como valor.
+ * Tecla de acción (lápiz / borrar / pista): mismo tubo neón que [DigitKey] pero
+ * con icono vectorial y etiqueta. El estado "encendido" del lápiz se comunica
+ * por partida doble —tubo pleno + halo del icono ([NeonIcon] con `glow`)— para
+ * que se lea de un vistazo si el siguiente número irá como nota o como valor.
+ *
+ * @param enabled si es `false` (p. ej. la pista sin celda válida seleccionada,
+ *   ver [NeonSudokuUiState.hintAvailable]) el tubo se atenúa por debajo del
+ *   reposo normal y deja de reaccionar al toque, en vez de quedar pulsable sin
+ *   ningún efecto — la app no debe ofrecer una acción que luego ignora.
  */
 @Composable
 private fun ActionKey(
@@ -632,13 +676,24 @@ private fun ActionKey(
     active: Boolean,
     contentDescription: String,
     onClick: () -> Unit,
+    enabled: Boolean = true,
 ) {
     val activeAmt by animateFloatAsState(
-        targetValue = if (active) KEY_ON_AMT else KEY_IDLE_AMT,
+        targetValue = when {
+            !enabled -> KEY_DISABLED_AMT
+            active -> KEY_ON_AMT
+            else -> KEY_IDLE_AMT
+        },
         animationSpec = tween(KEY_FADE_MS),
         label = "actionKeyActive",
     )
-    val tint = if (active) CategoryPalette.Logic else LogicColors.OnDarkMuted
+    val interaction = remember { MutableInteractionSource() }
+    val pressGlow by interaction.collectPressGlow()
+    val tint = when {
+        !enabled -> LogicColors.OnDarkMuted.copy(alpha = 0.4f)
+        active -> CategoryPalette.Logic
+        else -> LogicColors.OnDarkMuted
+    }
     val shape = RoundedCornerShape(16.dp)
     Row(
         modifier = Modifier
@@ -646,6 +701,7 @@ private fun ActionKey(
                 drawNeonTile(
                     baseColor = CategoryPalette.Logic,
                     activeAmt = activeAmt,
+                    pressAmt = pressGlow,
                     cornerRadius = 16.dp,
                     sparks = false,
                     baseMargin = 4.dp,
@@ -653,7 +709,7 @@ private fun ActionKey(
                 )
             }
             .clip(shape)
-            .bounceClick(onClick = onClick)
+            .bounceClick(enabled = enabled, interactionSource = interaction, onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -728,3 +784,8 @@ private const val KEY_ON_AMT = 0.9f
 
 /** Encendido del tubo de una tecla de acción en reposo. */
 private const val KEY_IDLE_AMT = 0.3f
+
+/** Encendido del tubo de una tecla de acción deshabilitada (p. ej. "Pista" sin
+ *  celda válida seleccionada): por debajo del reposo normal, para que se lea
+ *  como apagada y no como una acción disponible más. */
+private const val KEY_DISABLED_AMT = 0.12f

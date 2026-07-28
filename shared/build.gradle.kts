@@ -96,6 +96,12 @@ kotlin {
             implementation(libs.androidx.credentials)
             implementation(libs.androidx.credentials.playServicesAuth)
             implementation(libs.google.googleid)
+            // Anuncios: SDK de AdMob (presentadores reales en core/ads *.android.kt).
+            // Su AAR aporta al merge del manifest lo que el SDK necesita; el App ID
+            // va como meta-data en el manifest de androidApp.
+            implementation(libs.play.services.ads)
+            // Consentimiento GDPR/EEA (UMP): formulario previo al primer anuncio.
+            implementation(libs.user.messaging.platform)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)

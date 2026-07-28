@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import com.example.kortexgames.core.ads.AdConsentManager
 import com.example.kortexgames.data.remote.auth.CurrentActivityHolder
 import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.ui.App
@@ -19,25 +20,33 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // Consentimiento GDPR/UMP: se pide aquí (hay Activity para el formulario) y, al
+        // resolverse, inicializa el SDK de anuncios. Debe ocurrir antes del primer
+        // anuncio; el primer intersticial recién puede darse a los 3 min, así que hay
+        // tiempo de sobra. Idempotente: no re-inicializa en recreaciones de la Activity.
+        AdConsentManager.gatherConsentAndInitialize(this)
         setContent { App(graph) }
     }
 
     /**
      * Publica esta Activity como la "actual" para que el login con Google
-     * (Credential Manager) tenga un contexto de UI donde mostrar el selector.
+     * (Credential Manager) tenga un contexto de UI donde mostrar el selector, y
+     * reanuda el contador de anuncios: cuenta tiempo mientras la app está en primer
+     * plano (no solo mientras se juega).
      */
     override fun onResume() {
         super.onResume()
         CurrentActivityHolder.set(this)
+        graph.adManager.onAppForeground()
     }
 
     /**
-     * Al perder el foco (menús del sistema, background) pausamos el conteo de
-     * juego activo del AdManager: los anuncios solo cuentan tiempo jugando.
+     * Al pasar a segundo plano (otra app, pantalla apagada) pausamos el contador de
+     * anuncios: el tiempo solo corre mientras la app está en primer plano.
      */
     override fun onPause() {
         super.onPause()
-        graph.adManager.onEnterMenuOrPause()
+        graph.adManager.onAppBackground()
     }
 
     /** Suelta la referencia a esta Activity para no filtrarla tras destruirse. */

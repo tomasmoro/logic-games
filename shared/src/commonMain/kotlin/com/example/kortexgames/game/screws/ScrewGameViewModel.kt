@@ -1,6 +1,7 @@
 package com.example.kortexgames.game.screws
 
 import androidx.lifecycle.viewModelScope
+import com.example.kortexgames.core.ads.AdManager
 import com.example.kortexgames.core.audio.AudioAndHapticManager
 import com.example.kortexgames.core.audio.HapticFeedback
 import com.example.kortexgames.core.audio.SoundEffect
@@ -33,6 +34,7 @@ class ScrewGameViewModel(
     private val progress: ProgressRepository,
     private val playerProgress: PlayerProgressRepository,
     audio: AudioAndHapticManager,
+    private val adManager: AdManager,
 ) : MviViewModel<ScrewGameIntent, ScrewGameUiState, ScrewGameEffect>(ScrewGameUiState()) {
 
     // El motor recibe `audio` por contrato de BaseGameEngine pero NO lo usa:
@@ -62,7 +64,12 @@ class ScrewGameViewModel(
             ScrewGameIntent.Resume -> engine.resume()
             is ScrewGameIntent.PlayLevel -> playLevel(intent.level)
             ScrewGameIntent.PlayAgain -> playLevel(currentState.currentLevel)
-            ScrewGameIntent.NextLevel -> playLevel(currentState.currentLevel + 1)
+            ScrewGameIntent.NextLevel -> {
+                // Breakpoint de avance de nivel (solo juegos LEVELED): cobra un
+                // intersticial pendiente sin cortar la partida. No-op si no hay ninguno.
+                adManager.onAdBreakpoint()
+                playLevel(currentState.currentLevel + 1)
+            }
             ScrewGameIntent.ChooseLevel -> setState {
                 copy(phase = LeveledGamePhase.LEVEL_SELECT, gameOver = null)
             }

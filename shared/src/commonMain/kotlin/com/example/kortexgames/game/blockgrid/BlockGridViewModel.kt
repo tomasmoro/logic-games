@@ -66,12 +66,25 @@ class BlockGridViewModel(
             // siempre explícita del jugador (antesala Continuar vs. Empezar de nuevo).
             BlockGridIntent.StartGame,
             BlockGridIntent.PlayAgain -> {
-                setState { copy(gameOver = null, drag = null) }
+                setState { copy(gameOver = null, drag = null, awaitingRevive = false) }
                 viewModelScope.launch { savedGameState.clear(GameIds.NEON_BLOCK_GRID) }
                 engine.start()
             }
 
             BlockGridIntent.ResumeSaved -> resumeSaved()
+
+            // Revivir: el overlay ya resolvió el anuncio recompensado. Aceptar limpia el
+            // tablero y sigue la corrida; rechazar (o agotarse el tiempo) la termina. En
+            // ambos casos se cierra el overlay (awaitingRevive = false).
+            BlockGridIntent.Revive -> {
+                setState { copy(awaitingRevive = false) }
+                engine.grantRevive()
+            }
+
+            BlockGridIntent.DeclineRevive -> {
+                setState { copy(awaitingRevive = false) }
+                engine.declineRevive()
+            }
 
             is BlockGridIntent.DragStarted -> {
                 setState { copy(drag = DragState(pieceId = intent.pieceId)) }
@@ -141,6 +154,9 @@ class BlockGridViewModel(
             // La reposición es consecuencia natural de colocar la 3.ª pieza; un
             // SFX propio competiría con el de la colocación que la causó.
             BlockGridEvent.HandRefilled -> Unit
+            // Tablero lleno pero con segunda oportunidad: abre el overlay de revivir. No
+            // suena nada aquí; la aparición del overlay (con su propia entrada) es el aviso.
+            BlockGridEvent.ReviveOffered -> setState { copy(awaitingRevive = true) }
             // El sonido de fin de partida se emite en onFinished, tras persistir:
             // así acompaña a la aparición del overlay de resultados.
             BlockGridEvent.GameOverReached -> Unit
@@ -160,7 +176,7 @@ class BlockGridViewModel(
         viewModelScope.launch {
             val saved = savedGameState.load(GameIds.NEON_BLOCK_GRID)?.let(::decodeSaved) ?: return@launch
             savedGameState.clear(GameIds.NEON_BLOCK_GRID)
-            setState { copy(gameOver = null, drag = null) }
+            setState { copy(gameOver = null, drag = null, awaitingRevive = false) }
             engine.resumeFrom(saved)
         }
     }
@@ -174,7 +190,10 @@ class BlockGridViewModel(
      */
     fun requestExit(onExit: () -> Unit) {
         val status = currentState.status
-        if (status != GameStatus.RUNNING && status != GameStatus.PAUSED) {
+        // Durante la oferta de revivir el tablero está lleno (partida de hecho perdida):
+        // guardarlo dejaría una corrida sin jugadas posibles al reanudar. Se sale sin
+        // guardar (se abandona la oferta), como en cualquier estado no jugable.
+        if (currentState.awaitingRevive || (status != GameStatus.RUNNING && status != GameStatus.PAUSED)) {
             onExit()
             return
         }

@@ -87,6 +87,7 @@ fun NeonLexiconScreen(graph: AppGraph, onExit: () -> Unit) {
             graph.playerProgressRepository,
             graph.savedGameStateRepository,
             graph.audio,
+            graph.adManager,
         )
     }
     val state by vm.state.collectAsStateWithLifecycle()

@@ -187,6 +187,59 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
     con estado desbloqueado/bloqueado + barra de progreso). Falta también mapear el
     `icon_key`/slug a un `ImageVector` (Material Rounded, nunca emoji, CLAUDE.md §9.5).
 
+## Anuncios (AdMob)
+- [x] **Modelo de tiempo del `AdManager` (Fase 0).** HECHO. El contador ya no cuenta
+      solo el juego activo: corre **desde que la app entra a primer plano**
+      (`onAppForeground`/`onAppBackground`, cableado en `MainActivity`) e incluye
+      menús. Al cruzar los 3 min NO interrumpe la partida: marca un intersticial
+      *pendiente* y lo cobra en el próximo **breakpoint** (`onAdBreakpoint`). Único
+      hook central hoy: salir de un juego, detectado en `App.kt` vía
+      `Routes.isGameRoute` (arreglado de paso: la lista a mano omitía `NEON_DEFUSER`).
+      Seam de intersticial simétrico al de rewarded (`InterstitialAdPresenter` +
+      `SimulatedInterstitialAdPresenter` para dev), presentado por un colector único
+      en `App.kt`.
+- [x] **Breakpoint de "avanzar de nivel" (juegos LEVELED).** HECHO. Los 8 juegos
+      LEVELED (Crucigrama, Water Sort, Energy Flow, Word Connect, Neon Screws, Neon
+      Lexicon, Starport, Neon Circuit) llaman `adManager.onAdBreakpoint()` en su intent
+      `NextLevel`, antes de `playLevel(currentLevel + 1)`: al avanzar de nivel (sin salir
+      de la ruta, que el hook central de `App.kt` no cubre) se cobra el intersticial
+      pendiente. Los ENDLESS no aplican (no avanzan de nivel; su corte es salir del
+      juego). `onAdBreakpoint` es no-op si no hay anuncio pendiente. El `AdManager` se
+      inyecta en cada ViewModel LEVELED (constructor) desde su `Screen` (`graph.adManager`).
+      Filtro escalable de "es LEVELED": `GameProgressions.forId(gameId).kind`.
+      Pendiente menor: unificar el patrón (hoy es un one-liner replicado por juego) si
+      surge una base común de ViewModel LEVELED.
+- [ ] **Hook de foreground/background en iOS.** Hoy `onAppForeground`/`onAppBackground`
+      solo los llama `MainActivity` (Android). En iOS el contador arranca en foreground
+      y no se pausa al ir a background (el `MainViewController` no observa el lifecycle
+      de la escena). Suscribirse a `UIApplication` willResignActive/didBecomeActive y
+      reenviar al `AdManager`. Impacto bajo (las corrutinas se estrangulan en background)
+      pero conviene para exactitud del contador.
+- [x] **SDK real de AdMob en Android (pasos A2–A6).** HECHO. `play-services-ads`
+      (25.4.0) en el catálogo + `androidMain` de `shared`; App ID como `meta-data` del
+      manifest vía placeholder `admobAppId` (por defecto el App ID de PRUEBA de Google,
+      real desde `secrets.properties`/`ADMOB_APP_ID`). Seam `expect/actual`
+      `installPlatformAdPresenters(adManager, context)`: el `actual` de Android inicializa
+      `MobileAds` y registra `AdMobInterstitialAdPresenter`/`AdMobRewardedAdPresenter`
+      (cargan bajo demanda en `Dispatchers.Main`, presentan con la Activity de
+      `CurrentActivityHolder`, mapean cierre→resultado); el de iOS mantiene los simulados.
+      IDs de PRUEBA en `AdMobConfig` (androidMain) hasta publicar. Verificado:
+      `:androidApp:assembleDebug` en verde con el App ID en el manifest mergeado.
+      (El `MobileAds.initialize` se movió de este seam a `AdConsentManager`, ver A7.)
+- [x] **Consentimiento GDPR/UMP en Android (paso A7).** HECHO. `user-messaging-platform`
+      (4.0.0) + `AdConsentManager` (androidMain): `requestConsentInfoUpdate` →
+      `loadAndShowConsentFormIfRequired` → inicializa `MobileAds` solo cuando
+      `canRequestAds()`. Lo dispara `MainActivity.onCreate` (el formulario necesita una
+      Activity). `installPlatformAdPresenters` ya NO inicializa el SDK (solo registra
+      presentadores). Nota dev: para forzar el formulario fuera de la UE, añadir un
+      `ConsentDebugSettings` con geografía EEA + hashed id del dispositivo (por-dispositivo,
+      no fijado en código). Verificado con `:androidApp:assembleDebug`.
+- [ ] **AdMob iOS (Parte B) + precarga.** Falta: el puente Swift + CocoaPods/SPM para
+      `GADInterstitialAd`/`GADRewardedAd` (reemplazar el `actual` iOS que hoy usa los
+      simulados) **y su propio flujo UMP** en iOS; y **precargar** `InterstitialAd`/
+      `RewardedAd` en vez de cargar en cada `show()` para quitar latencia. Al publicar:
+      cambiar los IDs de PRUEBA de `AdMobConfig` por los reales.
+
 ## Técnico / limpieza
 - [ ] **Automatizar particiones de `user_progress`.** La tabla está particionada
   por mes sobre `created_at`, pero solo existen las particiones jul/ago/sep 2026
@@ -199,16 +252,11 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
 
 ## Extras
 
-- [ ] **Mejorar niveles de crucigrama y Word Connect** (HACERLO MANUAL) Menos letras igual cantidad de 
-      palabras.
 - [ ] **Crear torneos de juegos y rankings**
 - [ ] **Neon Circuit Flow — SFX de "estática" por celda.** El avance de cable
       (`CellAdvanced`) solo da háptica; el catálogo `SoundEffect` no tiene aún un
       sonido de estática suave. Añadir el asset y cablearlo en
       `NeonCircuitViewModel.onEngineEvent`.
-- [ ] **Neon Circuit Flow — seed en Supabase.** Falta la migración que inserta el
-      juego (`GameIds.NEON_CIRCUIT`) en la tabla `games` para que persista score y
-      percentiles, como las `0013/0014/0015` de los últimos juegos.
 - [ ] **Starport — pre-generar el siguiente nivel en background.** La generación
       procedural (BFS del solver) corre síncrona en `onStart`: los niveles 10×10
       más densos tardan ~300 ms en JVM de escritorio (más en móvil) la primera
@@ -229,7 +277,19 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
       rotación "no repetir" del repositorio (`SudokuPuzzleRepositoryImpl` +
       `selectNextByDifficulty`). La validez de los puzzles ya se garantiza offline
       en generación; falta blindar la capa de carga en el cliente.
-- [ ] **Neon Sudoku Matrix — feature de pista usando `solution`.** El banco ya
-      guarda la solución de cada puzzle (columna `solution`, tanto en el seed
-      empaquetado como en Supabase), hoy sin usar. Habilita un botón de "pista"
-      (revelar una celda correcta) o verificación, sin re-resolver en el cliente.
+- [x] **Neon Sudoku Matrix — feature de pista usando `solution`.** HECHO. La
+      validación de celdas dejó de comparar por duplicados de fila/columna/bloque
+      (`recomputeConflicts`, eliminada) y ahora compara cada valor escrito
+      directamente contra `SudokuPuzzle.solution` (`solutionDigitAt` en
+      `NeonSudokuViewModel`): un dígito mal colocado se marca al instante en su
+      propia celda, sin esperar a que el resto del grupo se complete ni obligar al
+      jugador a deshacer partidas enteras para encontrar el error. Además, botón
+      "Pista" en el teclado (deshabilitado si la celda seleccionada no aplica, ver
+      `NeonSudokuUiState.hintAvailable`): al pulsarlo se lanza DIRECTO el anuncio
+      recompensado (sin diálogo de confirmación previo — pulsar el botón ya es la
+      confirmación, a diferencia de "revivir") y, si se gana la recompensa, revela
+      el dígito correcto de la celda elegida (capturada en `hintTargetPosition`
+      del ViewModel, no en la selección "en vivo", por si cambia mientras el
+      anuncio carga). Sin límite por partida — cada pista cuesta un anuncio.
+      `NeonSudokuSavedState` persiste ahora también la solución para poder
+      reanudar partidas guardadas.

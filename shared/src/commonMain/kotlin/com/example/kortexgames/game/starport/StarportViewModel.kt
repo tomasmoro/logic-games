@@ -1,6 +1,7 @@
 package com.example.kortexgames.game.starport
 
 import androidx.lifecycle.viewModelScope
+import com.example.kortexgames.core.ads.AdManager
 import com.example.kortexgames.core.audio.AudioAndHapticManager
 import com.example.kortexgames.core.audio.HapticFeedback
 import com.example.kortexgames.core.audio.SoundEffect
@@ -30,6 +31,7 @@ class StarportViewModel(
     private val progress: ProgressRepository,
     private val playerProgress: PlayerProgressRepository,
     audio: AudioAndHapticManager,
+    private val adManager: AdManager,
 ) : MviViewModel<StarportIntent, StarportUiState, StarportEffect>(StarportUiState()) {
 
     // El motor recibe `audio` por contrato de BaseGameEngine pero NO lo usa:
@@ -59,7 +61,12 @@ class StarportViewModel(
             StarportIntent.Pause -> engine.pause()
             StarportIntent.Resume -> engine.resume()
             StarportIntent.PlayAgain -> playLevel(currentState.currentLevel)
-            StarportIntent.NextLevel -> playLevel(currentState.currentLevel + 1)
+            StarportIntent.NextLevel -> {
+                // Breakpoint de avance de nivel (solo juegos LEVELED): cobra un
+                // intersticial pendiente sin cortar la partida. No-op si no hay ninguno.
+                adManager.onAdBreakpoint()
+                playLevel(currentState.currentLevel + 1)
+            }
             StarportIntent.ChooseLevel -> setState {
                 copy(phase = LeveledGamePhase.LEVEL_SELECT, gameOver = null)
             }

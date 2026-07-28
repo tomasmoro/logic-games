@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -90,8 +91,15 @@ import kotlin.math.ceil
  *        limitar la oferta a una por partida es responsabilidad del juego.
  * @param onDecline se invoca al rechazar, agotarse la cuenta atrás o fallar el anuncio:
  *        el juego debe proceder a su fin de partida normal.
- * @param rewardLabel qué se gana, en minúsculas para encajar en la frase (p. ej.
- *        "una vida extra", "un tubo más"). Personaliza el trato por juego.
+ * @param rewardLabel qué se gana, en minúsculas para encajar en la frase por defecto
+ *        (p. ej. "una vida extra", "un tubo más"). Personaliza el trato por juego. Se
+ *        ignora si se pasa un [body] propio.
+ * @param body texto explicativo del trato. Por defecto, la frase de "revivir" derivada
+ *        de [rewardLabel]; se sobreescribe cuando el trato NO es revivir y la frase
+ *        genérica no aplica (p. ej. una pista que revela un número, no una vida).
+ * @param icon icono central dentro del anillo de cuenta atrás. Por defecto un corazón
+ *        (semántica de "vida" al revivir); se cambia según el trato (p. ej. una bombilla
+ *        de pista) para no prometer una vida que la oferta no da.
  * @param accent color de acento (anillo de cuenta atrás y halo del icono).
  * @param audio manager para el feedback inmediato (tap/recompensa); opcional.
  * @param countdownSeconds segundos de la oferta antes de auto-rechazar.
@@ -104,6 +112,8 @@ fun ReviveAdOverlay(
     modifier: Modifier = Modifier,
     title: String = "¿Otra oportunidad?",
     rewardLabel: String = "una vida extra",
+    body: String = "Mira un anuncio y continúa con $rewardLabel.",
+    icon: ImageVector = KortexIcons.Heart,
     accent: Color = LogicColors.NeonGreen,
     audio: AudioAndHapticManager? = null,
     countdownSeconds: Int = 6,
@@ -185,12 +195,14 @@ fun ReviveAdOverlay(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            // Corazón dentro del anillo de cuenta atrás: comunica de un vistazo "vida"
-            // + "te queda poco tiempo para decidir".
-            CountdownHeart(
+            // Icono dentro del anillo de cuenta atrás: comunica de un vistazo el trato
+            // (corazón = vida al revivir; otro icono según el juego) + "te queda poco
+            // tiempo para decidir".
+            CountdownIcon(
                 progress = progress.value,
                 totalSeconds = countdownSeconds,
                 accent = accent,
+                icon = icon,
             )
 
             Text(
@@ -201,7 +213,7 @@ fun ReviveAdOverlay(
                 textAlign = TextAlign.Center,
             )
             Text(
-                "Mira un anuncio y continúa con $rewardLabel.",
+                body,
                 style = MaterialTheme.typography.bodyLarge,
                 color = LogicColors.OnDarkMuted,
                 textAlign = TextAlign.Center,
@@ -280,17 +292,18 @@ fun ReviveAdOverlay(
 private val CountdownRingSize = 96.dp
 
 /**
- * Corazón de "vida" rodeado por un **anillo de cuenta atrás** que se vacía con
+ * [icon] del trato rodeado por un **anillo de cuenta atrás** que se vacía con
  * [progress] (1→0). El arco restante va en [accent] con extremos redondeados; el
  * "hueco" ya consumido queda como pista tenue de superficie elevada. En el centro,
- * un [NeonIcon] de corazón con halo. Comunica sin texto: "esto te devuelve una vida,
- * pero el tiempo corre".
+ * un [NeonIcon] con halo. Comunica sin texto: "esto te da [el premio], pero el tiempo
+ * corre". El icono lo elige el juego (corazón para revivir, otro para tratos distintos).
  *
  * @param progress fracción de tiempo restante (1 = recién ofrecido, 0 = agotado).
  * @param totalSeconds segundos totales de la oferta; escala el rótulo numérico.
+ * @param icon icono central del trato (ver [ReviveAdOverlay]).
  */
 @Composable
-private fun CountdownHeart(progress: Float, totalSeconds: Int, accent: Color) {
+private fun CountdownIcon(progress: Float, totalSeconds: Int, accent: Color, icon: ImageVector) {
     Box(
         modifier = Modifier.size(CountdownRingSize),
         contentAlignment = Alignment.Center,
@@ -323,7 +336,7 @@ private fun CountdownHeart(progress: Float, totalSeconds: Int, accent: Color) {
         }
         // Segundos restantes bajo el corazón: refuerzo numérico de la urgencia.
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            NeonIcon(icon = KortexIcons.Heart, tint = accent, size = 34.dp)
+            NeonIcon(icon = icon, tint = accent, size = 34.dp)
             Text(
                 "${ceil(progress * totalSeconds).toInt().coerceAtLeast(0)}",
                 style = MaterialTheme.typography.labelLarge,

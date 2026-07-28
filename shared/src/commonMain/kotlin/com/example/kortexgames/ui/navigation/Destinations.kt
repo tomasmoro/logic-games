@@ -78,6 +78,15 @@ object Routes {
     }
 
     /**
+     * ¿La ruta es una **pantalla de juego** a pantalla completa? Fuente única de esta
+     * pregunta: todas las rutas de juego comparten el prefijo `"game/"`, así que un
+     * juego nuevo queda cubierto automáticamente sin tocar esta función ni las que la
+     * usan (ocultar la barra inferior, contar tiempo/breakpoints de anuncios, etc.).
+     * Evita listas de rutas mantenidas a mano que se desincronizan al sumar juegos.
+     */
+    fun isGameRoute(route: String?): Boolean = route?.startsWith("game/") == true
+
+    /**
      * Ruta de un juego jugable elegido **al azar** (para el botón de "juego
      * aleatorio"). Solo considera juegos jugables con ruta; null si no hay ninguno.
      */

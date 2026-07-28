@@ -309,10 +309,13 @@ object DefuserConfig {
  *
  * Las densidades de referencia del Buscaminas clásico son ~12% (principiante),
  * ~16% (intermedio) y ~21% (experto). Aquí se usan valores **deliberadamente por
- * encima** de esa escala (~17%, ~22%, ~26%) porque las partidas resultaban
+ * encima** de esa escala (~16%, ~22%, ~26%, ~24%) porque las partidas resultaban
  * demasiado fáciles: con poca densidad el primer toque abre media pantalla en
- * cascada y el resto se resuelve casi sin pensar. Los paneles, en cambio, se
- * mantienen estrechos para que quepan cómodos en vertical en un móvil.
+ * cascada y el resto se resuelve casi sin pensar. El nivel EXPERTO no sigue la
+ * densidad creciente estricta de los anteriores: prioriza un panel más grande
+ * (más celdas que recorrer y memorizar) sobre empujar aún más el porcentaje de
+ * minas. Los paneles, en cambio, se mantienen estrechos para que quepan cómodos
+ * en vertical en un móvil.
  *
  * Se modela como `enum` (dominio cerrado) para que el selector de la antesala se
  * construya recorriendo [entries] y añadir un nivel sea un cambio local aquí.
@@ -329,9 +332,10 @@ enum class MineDifficulty(
     val rows: Int,
     val mineCount: Int,
 ) {
-    FACIL("Fácil", columns = 8, rows = 10, mineCount = 13),      // ~16 %
-    MEDIO("Medio", columns = 9, rows = 12, mineCount = 24),      // ~22 %
-    DIFICIL("Difícil", columns = 10, rows = 14, mineCount = 37); // ~26 %
+    FACIL("Fácil", columns = 8, rows = 10, mineCount = 13),        // ~16 %
+    MEDIO("Medio", columns = 9, rows = 12, mineCount = 24),        // ~22 %
+    DIFICIL("Difícil", columns = 10, rows = 14, mineCount = 37),   // ~26 %
+    EXPERTO("Experto", columns = 11, rows = 16, mineCount = 42);   // ~24 %
 
     /** Total de celdas del panel. */
     val cellCount: Int get() = columns * rows

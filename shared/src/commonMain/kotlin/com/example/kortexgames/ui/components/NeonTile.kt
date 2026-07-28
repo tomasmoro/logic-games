@@ -47,6 +47,10 @@ import kotlin.random.Random
  *   fundido de piezas que se desvanecen (limpieza de líneas).
  * @param scale factor de escala del tubo alrededor de su propio centro (1 = tamaño
  *   normal); sirve para el encogimiento de piezas que se desvanecen.
+ * @param pressAmt 0..1, feedback táctil **independiente** de [activeAmt]: aclara el
+ *   trazo hacia blanco y sube halos + núcleo mientras el jugador mantiene el dedo
+ *   sobre el tile. Pensado para alimentarse con `InteractionSource.collectPressGlow()`
+ *   (`ModifierExt.kt`) desde cualquier tile clicable sin duplicar esta lógica de brillo.
  */
 fun DrawScope.drawNeonTile(
     baseColor: Color,
@@ -59,15 +63,19 @@ fun DrawScope.drawNeonTile(
     rectSize: Size = size,
     alpha: Float = 1f,
     scale: Float = 1f,
+    pressAmt: Float = 0f,
 ) {
     if (alpha <= 0f) return
+    val press = pressAmt.coerceIn(0f, 1f)
     val corner = CornerRadius(cornerRadius.toPx() * scale, cornerRadius.toPx() * scale)
 
     // Borde: en reposo un neón atenuado (tubo "en espera"); encendido, color pleno.
+    // Al presionar, se aclara un poco más hacia blanco por encima de ese color pleno
+    // (no depende de activeAmt: un tile todavía apagado también debe "responder" al tacto).
     val idle = lerp(baseColor, LogicColors.SurfaceVariantDark, 0.38f)
-    val edge = lerp(idle, baseColor, activeAmt)
+    val edge = lerp(lerp(idle, baseColor, activeAmt), Color.White, 0.35f * press)
 
-    val stroke = (2.4.dp + 1.8.dp * activeAmt).toPx() * strokeScale
+    val stroke = (2.4.dp + 1.8.dp * activeAmt).toPx() * strokeScale * (1f + 0.12f * press)
     // Margen para que los halos quepan dentro de los límites del tile (crece al encender).
     val margin = (baseMargin + 2.dp * activeAmt).toPx()
     val fullSize = Size(rectSize.width - margin * 2f, rectSize.height - margin * 2f)
@@ -94,9 +102,9 @@ fun DrawScope.drawNeonTile(
         )
     }
 
-    // Halo exterior ancho y translúcido (respira con el encendido).
+    // Halo exterior ancho y translúcido (respira con el encendido, se aviva al presionar).
     drawRoundRect(
-        color = edge.copy(alpha = 0.30f * (0.35f + 0.65f * activeAmt) * alpha),
+        color = edge.copy(alpha = (0.30f * (0.35f + 0.65f * activeAmt) * (1f + 0.6f * press)).coerceAtMost(1f) * alpha),
         topLeft = topLeft,
         size = shrunkSize,
         cornerRadius = corner,
@@ -104,7 +112,7 @@ fun DrawScope.drawNeonTile(
     )
     // Halo intermedio: da cuerpo al resplandor.
     drawRoundRect(
-        color = edge.copy(alpha = 0.55f * (0.45f + 0.55f * activeAmt) * alpha),
+        color = edge.copy(alpha = (0.55f * (0.45f + 0.55f * activeAmt) * (1f + 0.4f * press)).coerceAtMost(1f) * alpha),
         topLeft = topLeft,
         size = shrunkSize,
         cornerRadius = corner,
@@ -118,10 +126,12 @@ fun DrawScope.drawNeonTile(
         cornerRadius = corner,
         style = Stroke(width = stroke),
     )
-    // Núcleo blanco interior del tubo al encender (el look "prendido" del neón real).
-    if (activeAmt > 0f) {
+    // Núcleo blanco interior: se prende al encender y, además, sube directamente con la
+    // presión aunque el tile siga apagado (es el feedback táctil inmediato del toque).
+    val coreAlpha = (0.55f * activeAmt + 0.5f * press).coerceIn(0f, 1f) * alpha
+    if (coreAlpha > 0f) {
         drawRoundRect(
-            color = Color.White.copy(alpha = 0.55f * activeAmt * alpha),
+            color = Color.White.copy(alpha = coreAlpha),
             topLeft = topLeft,
             size = shrunkSize,
             cornerRadius = corner,

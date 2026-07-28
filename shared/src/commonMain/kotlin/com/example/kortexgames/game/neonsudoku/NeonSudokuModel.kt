@@ -62,10 +62,17 @@ data class CellPosition(val row: Int, val col: Int) {
  *   jugador anota como hipótesis. Solo tiene sentido visual cuando [value] es
  *   `null`; se conserva aunque [value] no sea null por simplicidad de estado
  *   (el motor las descarta al escribir un valor definitivo, FASE 2).
- * @property hasConflict `true` cuando el motor de validación (FASE 2) detecta que
- *   [value] choca con otra celda de su misma fila, columna o bloque. Se
- *   recalcula tras cada escritura porque un choque es una propiedad relacional
- *   (depende de las demás celdas), no algo que la celda pueda saber por sí sola.
+ * @property hasConflict `true` cuando [value] no coincide con el dígito de la
+ *   solución del puzzle en esta posición ([SudokuPuzzle.solution]). Pese al
+ *   nombre (heredado de una primera versión que detectaba duplicados por fila/
+ *   columna/bloque), la corrección de una celda es hoy una propiedad **propia**:
+ *   se compara solo contra la solución, nunca contra las demás celdas escritas.
+ *   Esto es deliberado (ver KDoc de [NeonSudokuViewModel]): con la regla clásica
+ *   de duplicados, un dígito erróneo podía no marcarse hasta que el jugador
+ *   completaba correctamente el resto del grupo, obligándolo a deshacer partidas
+ *   enteras para encontrar el fallo real. Comparar contra la solución da
+ *   feedback inmediato en la propia celda, sin re-resolver el tablero en el
+ *   cliente (la solución ya viene calculada del banco offline).
  */
 @Serializable
 data class SudokuCell(
@@ -151,7 +158,7 @@ data class Board(private val cells: List<SudokuCell>) {
      *  indicador de progreso del HUD (FASE 3). */
     val filledCount: Int get() = cells.count { !it.isEmpty }
 
-    /** `true` si alguna celda está marcada con choque (ver [SudokuCell.hasConflict]). */
+    /** `true` si alguna celda escrita no coincide con la solución (ver [SudokuCell.hasConflict]). */
     val hasAnyConflict: Boolean get() = cells.any { it.hasConflict }
 
     /** Nuevo [Board] con la celda en [position] reemplazada por [cell]. Preserva

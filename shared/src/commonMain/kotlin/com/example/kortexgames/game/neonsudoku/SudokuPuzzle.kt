@@ -18,9 +18,13 @@ package com.example.kortexgames.game.neonsudoku
  * @property difficulty tier a la que el rater lo asignó (banco y selector).
  * @property puzzle las 81 celdas iniciales, fila a fila: dígitos `1-9` son pistas
  *   fijas, `0` celdas vacías. Es lo que consume [Board.fromTemplate].
- * @property solution la solución completa (81 dígitos `1-9`), única. No se usa
- *   para validar la partida (eso lo hace la detección de choques del ViewModel),
- *   pero se conserva porque habilita pistas/verificación a futuro sin re-resolver.
+ * @property solution la solución completa (81 dígitos `1-9`), única. Es la fuente
+ *   de verdad que usa [com.example.kortexgames.game.neonsudoku.NeonSudokuViewModel]
+ *   para: (1) marcar [SudokuCell.hasConflict] comparando cada valor escrito
+ *   directamente contra su dígito de solución (no por duplicados de fila/columna/
+ *   bloque), y (2) revelar el dígito correcto de una celda al conceder una pista
+ *   (anuncio recompensado) — ninguno de los dos re-resuelve el tablero en el
+ *   cliente, ambos leen esta cadena ya calculada offline.
  */
 data class SudokuPuzzle(
     val id: String,

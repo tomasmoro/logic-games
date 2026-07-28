@@ -12,6 +12,14 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
+
+        <!-- AdMob App ID (lo exige el SDK; sin él, MobileAds.initialize crashea).
+             El valor lo inyecta el placeholder `admobAppId` de build.gradle.kts:
+             por defecto el App ID de PRUEBA de Google, el real desde secrets.properties. -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="${admobAppId}" />
+
         <activity
             android:exported="true"
             android:name=".MainActivity">

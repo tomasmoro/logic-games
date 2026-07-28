@@ -18,6 +18,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -74,6 +75,7 @@ import com.example.kortexgames.ui.components.NeonIcon
 import com.example.kortexgames.ui.components.ResumeState
 import com.example.kortexgames.ui.components.SpaceBackdrop
 import com.example.kortexgames.ui.components.bounceClick
+import com.example.kortexgames.ui.components.collectPressGlow
 import com.example.kortexgames.ui.components.drawNeonTile
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -121,6 +123,7 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
             graph.playerProgressRepository,
             graph.savedGameStateRepository,
             graph.audio,
+            graph.adManager,
         )
     }
     val state by vm.state.collectAsStateWithLifecycle()
@@ -413,13 +416,17 @@ private fun WordActionButton(
         animationSpec = tween(180),
         label = "actionAlpha",
     )
+    val interaction = remember { MutableInteractionSource() }
+    val pressGlow by interaction.collectPressGlow()
     Box(
         modifier = Modifier
             .size(48.dp)
             .alpha(alpha)
-            .drawBehind { drawNeonTile(tint, activeAmt = 0.7f, cornerRadius = 14.dp, sparks = false, baseMargin = 5.dp) }
+            .drawBehind {
+                drawNeonTile(tint, activeAmt = 0.7f, pressAmt = pressGlow, cornerRadius = 14.dp, sparks = false, baseMargin = 5.dp)
+            }
             .clip(shape)
-            .bounceClick(enabled = enabled, onClick = onClick),
+            .bounceClick(enabled = enabled, interactionSource = interaction, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         NeonIcon(icon = icon, tint = tint, size = 22.dp, glow = false, contentDescription = contentDescription)
@@ -665,12 +672,16 @@ private fun LetterBank(
 @Composable
 private fun LetterKey(letter: Char, accent: Color, onClick: () -> Unit) {
     val shape = RoundedCornerShape(16.dp)
+    val interaction = remember { MutableInteractionSource() }
+    val pressGlow by interaction.collectPressGlow()
     Box(
         modifier = Modifier
             .size(BankLetterSize)
-            .drawBehind { drawNeonTile(accent, activeAmt = 0.85f, cornerRadius = 16.dp, sparks = false, baseMargin = 5.dp) }
+            .drawBehind {
+                drawNeonTile(accent, activeAmt = 0.85f, pressAmt = pressGlow, cornerRadius = 16.dp, sparks = false, baseMargin = 5.dp)
+            }
             .clip(shape)
-            .bounceClick(onClick = onClick),
+            .bounceClick(interactionSource = interaction, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(

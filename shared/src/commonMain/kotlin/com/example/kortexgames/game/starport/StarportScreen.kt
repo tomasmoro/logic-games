@@ -109,7 +109,7 @@ private const val TRAIL_CELLS = 0.9f
 @Composable
 fun StarportScreen(graph: AppGraph, onExit: () -> Unit) {
     val vm: StarportViewModel = viewModel {
-        StarportViewModel(graph.progressRepository, graph.playerProgressRepository, graph.audio)
+        StarportViewModel(graph.progressRepository, graph.playerProgressRepository, graph.audio, graph.adManager)
     }
     val state by vm.state.collectAsStateWithLifecycle()
 

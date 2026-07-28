@@ -1,6 +1,7 @@
 package com.example.kortexgames.game.energyflow
 
 import androidx.lifecycle.viewModelScope
+import com.example.kortexgames.core.ads.AdManager
 import com.example.kortexgames.core.audio.AudioAndHapticManager
 import com.example.kortexgames.core.audio.HapticFeedback
 import com.example.kortexgames.core.audio.SoundEffect
@@ -76,6 +77,7 @@ class EnergyFlowViewModel(
     private val progress: ProgressRepository,
     private val playerProgress: PlayerProgressRepository,
     private val audio: AudioAndHapticManager,
+    private val adManager: AdManager,
 ) : MviViewModel<EnergyFlowIntent, EnergyFlowUiState, EnergyFlowEffect>(EnergyFlowUiState()) {
 
     private val engine = EnergyFlowEngine(viewModelScope, audio)
@@ -100,7 +102,12 @@ class EnergyFlowViewModel(
             EnergyFlowIntent.Resume -> engine.resume()
             is EnergyFlowIntent.PlayLevel -> playLevel(intent.level)
             EnergyFlowIntent.PlayAgain -> playLevel(currentState.currentLevel)
-            EnergyFlowIntent.NextLevel -> playLevel(currentState.currentLevel + 1)
+            EnergyFlowIntent.NextLevel -> {
+                // Breakpoint de avance de nivel (solo juegos LEVELED): cobra un
+                // intersticial pendiente sin cortar la partida. No-op si no hay ninguno.
+                adManager.onAdBreakpoint()
+                playLevel(currentState.currentLevel + 1)
+            }
             EnergyFlowIntent.ChooseLevel -> setState {
                 copy(phase = LeveledGamePhase.LEVEL_SELECT, gameOver = null)
             }

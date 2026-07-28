@@ -173,6 +173,7 @@ data class NeonLexiconLevelSpec(
     val rows: Int,
     val cols: Int,
     val words: List<String>,
+    val traps: List<String> = emptyList()
 ) {
     init {
         require(rows > 0 && cols > 0) { "La rejilla debe tener tamaño positivo." }
@@ -223,12 +224,235 @@ object NeonLexiconGenerator {
     // Dificultad creciente: rejillas y nº de palabras que van a más. El set es
     // finito y luego cicla (igual que el Crucigrama) para no cortar el progreso.
     private val levelSpecs: List<NeonLexiconLevelSpec> = listOf(
-        NeonLexiconLevelSpec(8, 8, listOf("SOL", "LUNA", "MAR", "RIO", "CIELO")),
-        NeonLexiconLevelSpec(9, 9, listOf("GATO", "PERRO", "PEZ", "AVE", "RANA", "OSO")),
-        NeonLexiconLevelSpec(10, 10, listOf("VERDE", "AZUL", "ROJO", "ROSA", "GRIS", "NEGRO")),
-        NeonLexiconLevelSpec(10, 10, listOf("LUNES", "MARTES", "JUEVES", "SABADO", "DOMINGO")),
-        NeonLexiconLevelSpec(11, 11, listOf("PIANO", "VIOLIN", "TAMBOR", "ARPA", "FLAUTA", "GUITARRA")),
-        NeonLexiconLevelSpec(12, 12, listOf("ESPANA", "FRANCIA", "ITALIA", "PERU", "CHILE", "BRASIL", "CANADA")),
+        NeonLexiconLevelSpec(
+            rows = 7,
+            cols = 7,
+            words = listOf("PERA", "LIMON", "COCO", "UVA", "KIWI"),
+            traps = listOf("PE", "PER", "LI", "LIM", "CO", "WI", "KI")
+        ),
+        NeonLexiconLevelSpec(
+            8,
+            8,
+            listOf("SOL", "LUNA", "MAR", "RIO", "CIELO"),
+            listOf("LUN", "CIEL")
+        ),
+        NeonLexiconLevelSpec(
+            rows = 8,
+            cols = 8,
+            words = listOf("PIANO", "FLAUTA", "BAJO", "CORO", "RITMO"),
+            traps = listOf("PI", "PIA", "FLA", "BA", "BAJ", "CO", "RI")
+        ),
+        NeonLexiconLevelSpec(
+            rows = 8,
+            cols = 8,
+            words = listOf("TENIS", "FUTBOL", "REMO", "BOXEO", "GOLF"),
+            traps = listOf("TE", "TEN", "FU", "FUT", "RE", "REM", "BO", "GO")
+        ),
+        NeonLexiconLevelSpec(
+            9,
+            9,
+            listOf("GATO", "PERRO", "PEZ", "AVE", "RANA", "OSO"),
+            listOf("GAT", "PER")
+        ),
+        NeonLexiconLevelSpec(
+            rows = 9,
+            cols = 9,
+            words = listOf("CAFE", "EXPRESO", "LECHE", "MOKA", "GRANO", "TARTA"),
+            traps = listOf("CAF", "EXP", "LEC", "MOK", "GRA", "TAR", "EX", "LE")
+        ),
+        NeonLexiconLevelSpec(
+            rows = 9,
+            cols = 9,
+            words = listOf("ARBOL", "HOJA", "RIO", "FLOR", "BOSQUE", "PRADO"),
+            traps = listOf("AR", "ARB", "HO", "HOJ", "RI", "FLO", "BOS", "PRA")
+        ),
+        NeonLexiconLevelSpec(
+            10,
+            10,
+            listOf("VERDE", "AZUL", "ROJO", "ROSA", "GRIS", "NEGRO"),
+            listOf("VER", "AZU")
+        ),
+        NeonLexiconLevelSpec(
+            10,
+            10,
+            listOf("LUNES", "MARTES", "JUEVES", "SABADO", "DOMINGO"),
+            listOf("LUN", "MAR")
+        ),
+        NeonLexiconLevelSpec(
+            rows = 10,
+            cols = 10,
+            words = listOf("GALAXIA", "PLANETA", "COMETA", "METEORO", "LUNA"),
+            traps = listOf("LAXI", "PLAET", "MEORO", "COMATO")
+        ),
+        NeonLexiconLevelSpec(
+            rows = 10,
+            cols = 10,
+            words = listOf("ACTOR", "FILM", "GUION", "LUCES", "RODAJE", "CORTE"),
+            traps = listOf("AC", "ACT", "FI", "FIL", "GUI", "LUC", "ROD", "COR")
+        ),
+        NeonLexiconLevelSpec(
+            rows = 10,
+            cols = 10,
+            words = listOf("REDES", "DATOS", "CLAVE", "PIXEL", "BOTON", "CHIP"),
+            traps = listOf("RED", "DAT", "CLA", "PIX", "BOT", "CHI", "RE", "PI")
+        ),
+        NeonLexiconLevelSpec(
+            11,
+            11,
+            listOf("PIANO", "VIOLIN", "TAMBOR", "ARPA", "FLAUTA", "GUITARRA"),
+            listOf("PIA", "VIO", "FLA", "TARRA")
+        ),
+        NeonLexiconLevelSpec(
+            rows = 11,
+            cols = 11,
+            words = listOf("SOLAR", "LUNA", "ORBITA", "ASTRO", "ROVER", "POLO"),
+            traps = listOf("SOL", "LUN", "ORB", "AST", "ROV", "POL", "SO", "OR")
+        ),
+        NeonLexiconLevelSpec(
+            rows = 11,
+            cols = 11,
+            words = listOf("COSTA", "MONTE", "ISLA", "VALLE", "OCEANO", "LAGO"),
+            traps = listOf("COS", "MON", "ISL", "VAL", "OCE", "LAG", "CO", "MO")
+        ),
+        NeonLexiconLevelSpec(
+            12,
+            12,
+            listOf("ESPANA", "FRANCIA", "ITALIA", "PERU", "CHILE", "BRASIL", "CANADA"),
+            listOf("ESP", "FRA", "ILE", "NADA")
+        ),
+        NeonLexiconLevelSpec(
+            rows = 12,
+            cols = 12,
+            words = listOf("CASCO", "RUTA", "VIAJE", "MOTOR", "RUEDA", "PAISAJE"),
+            traps = listOf("CAS", "RU", "VIA", "MOTR", "EDAS", "PAIS")
+        ),
+        NeonLexiconLevelSpec(
+            rows = 12,
+            cols = 12,
+            words = listOf("CAMARA", "VIDEO", "AUDIO", "LUCES", "TOMA", "EDICION", "CLIP"),
+            traps = listOf(
+                "CAMA",
+                "VID",
+                "AUD",
+                "LUCR",
+                "OMA"
+            )
+        ),
+        NeonLexiconLevelSpec(
+            rows = 12,
+            cols = 12,
+            words = listOf("NORTE", "SUR", "QUEBRADA", "GLACIAR", "VALLE", "SIERRAS", "LLANURA"),
+            traps = listOf(
+                "NOR",
+                "SU",
+                "UEBR",
+                "GLA",
+                "LLE",
+                "RRA"
+            )
+        ),
+        NeonLexiconLevelSpec(
+            rows = 13,
+            cols = 13,
+            words = listOf("CARPA", "FUEGO", "BOSQUE", "MAPA", "LINTERNA", "BOLSA", "BRUJULA"),
+            traps = listOf(
+                "CAR",
+                "FUE",
+                "QUE",
+                "MAP",
+                "TERN",
+                "UJUL"
+            )
+        ),
+        NeonLexiconLevelSpec(
+            rows = 13,
+            cols = 13,
+            words = listOf("CADENA", "FRENOS", "ACEITE", "FILTRO", "EMBRAGUE", "BUJIA", "ESCAPE"),
+            traps = listOf(
+                "ADEN",
+                "ESCA",
+                "FIL",
+                "BRA",
+                "FREN"
+            )
+        ),
+        NeonLexiconLevelSpec(
+            rows = 13,
+            cols = 13,
+            words = listOf("SERVIDOR", "CLIENTE", "NUBE", "TOKEN", "CACHE", "ROUTER", "SISTEMA"),
+            traps = listOf(
+                "IDO",
+                "CLI",
+                "OKE",
+                "CHE",
+                "OUT",
+                "SIS"
+            )
+        ),
+        NeonLexiconLevelSpec(
+            rows = 13,
+            cols = 13,
+            words = listOf(
+                "DIRECTOR",
+                "MONTAJE",
+                "RODAJE",
+                "ENFOQUE",
+                "ESCENA",
+                "SONIDO",
+                "ENCADRE",
+                "GUION"
+            ),
+            traps = listOf("RECT", "AJE", "RODA", "QUE", "SCEN", "IDO", "CAD")
+        ),
+        NeonLexiconLevelSpec(
+            rows = 13,
+            cols = 13,
+            words = listOf(
+                "OLIMPO",
+                "MEDUSA",
+                "ORACULO",
+                "MINOTAURO",
+                "CENTAURO",
+                "HERCULES",
+                "TITANES",
+                "TROYA"
+            ),
+            traps = listOf(
+                "IMP",
+                "MED",
+                "CUL",
+                "MIN",
+                "ENTA",
+                "HER",
+                "OYA",
+                "TAU",
+                "ORA"
+            )
+        ),
+        NeonLexiconLevelSpec(
+            rows = 13,
+            cols = 13,
+            words = listOf(
+                "CYBORG",
+                "HOLOGRAMA",
+                "SINTETICO",
+                "MATRIZ",
+                "HACKER",
+                "AVATAR",
+                "CIRCUITO",
+                "NEURONAL"
+            ),
+            traps = listOf(
+                "YB",
+                "GRAM",
+                "TET",
+                "MAT",
+                "HA",
+                "HA",
+                "CK"
+            )
+        )
+
     )
 
     /**

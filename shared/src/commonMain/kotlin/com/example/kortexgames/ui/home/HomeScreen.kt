@@ -36,7 +36,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -51,7 +50,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.kortexgames.core.ads.AdEvent
 import com.example.kortexgames.core.theme.LogicColors
 import com.example.kortexgames.core.theme.LogicGradients
 import com.example.kortexgames.di.AppGraph
@@ -109,12 +107,8 @@ fun HomeScreen(
     // Nombre amigable: el modo invitado no tiene nombre → saludo genérico cálido.
     val playerName = if (isGuest) "Jugador" else "Campeón"
 
-    // Anuncio cada 3 min de juego activo (si no es premium).
-    LaunchedEffect(Unit) {
-        graph.adManager.adEvents.collect { event ->
-            if (event is AdEvent.ShowInterstitial) snackbar.showSnackbar("Mostrar anuncio intersticial")
-        }
-    }
+    // Los intersticiales los gobierna el AdManager y los presenta un colector único en
+    // App.kt (se muestran en un breakpoint, no en Home): esta pantalla ya no los toca.
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },

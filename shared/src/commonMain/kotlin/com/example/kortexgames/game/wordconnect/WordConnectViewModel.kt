@@ -1,6 +1,7 @@
 package com.example.kortexgames.game.wordconnect
 
 import androidx.lifecycle.viewModelScope
+import com.example.kortexgames.core.ads.AdManager
 import com.example.kortexgames.core.audio.AudioAndHapticManager
 import com.example.kortexgames.core.audio.HapticFeedback
 import com.example.kortexgames.core.audio.SoundEffect
@@ -56,6 +57,7 @@ class WordConnectViewModel(
     private val progress: ProgressRepository,
     playerProgress: PlayerProgressRepository,
     private val audio: AudioAndHapticManager,
+    private val adManager: AdManager,
 ) : MviViewModel<WordConnectIntent, WordConnectUiState, WordConnectEffect>(WordConnectUiState()) {
 
     private val engine = WordConnectEngine(viewModelScope, audio)
@@ -79,7 +81,12 @@ class WordConnectViewModel(
             WordConnectIntent.EndTrace -> engine.endTrace()
             WordConnectIntent.Pause -> engine.pause()
             WordConnectIntent.Resume -> engine.resume()
-            WordConnectIntent.NextLevel -> playLevel(currentState.currentLevel + 1)
+            WordConnectIntent.NextLevel -> {
+                // Breakpoint de avance de nivel (solo juegos LEVELED): cobra un
+                // intersticial pendiente sin cortar la partida. No-op si no hay ninguno.
+                adManager.onAdBreakpoint()
+                playLevel(currentState.currentLevel + 1)
+            }
             WordConnectIntent.ChooseLevel -> setState {
                 copy(phase = LeveledGamePhase.LEVEL_SELECT, gameOver = null)
             }

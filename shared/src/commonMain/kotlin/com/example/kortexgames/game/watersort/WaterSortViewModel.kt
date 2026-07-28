@@ -1,6 +1,7 @@
 package com.example.kortexgames.game.watersort
 
 import androidx.lifecycle.viewModelScope
+import com.example.kortexgames.core.ads.AdManager
 import com.example.kortexgames.core.audio.AudioAndHapticManager
 import com.example.kortexgames.core.audio.HapticFeedback
 import com.example.kortexgames.core.audio.SoundEffect
@@ -108,6 +109,7 @@ class WaterSortViewModel(
     private val progress: ProgressRepository,
     private val playerProgress: PlayerProgressRepository,
     private val audio: AudioAndHapticManager,
+    private val adManager: AdManager,
 ) : MviViewModel<WaterSortIntent, WaterSortUiState, WaterSortEffect>(WaterSortUiState()) {
 
     private val engine = WaterSortEngine(viewModelScope, audio)
@@ -135,7 +137,12 @@ class WaterSortViewModel(
             WaterSortIntent.ExtraTubeRewarded -> engine.addExtraTube()
             is WaterSortIntent.PlayLevel -> playLevel(intent.level)
             WaterSortIntent.PlayAgain -> playLevel(currentState.currentLevel)
-            WaterSortIntent.NextLevel -> playLevel(currentState.currentLevel + 1)
+            WaterSortIntent.NextLevel -> {
+                // Breakpoint de avance de nivel (solo juegos LEVELED): cobra un
+                // intersticial pendiente sin cortar la partida. No-op si no hay ninguno.
+                adManager.onAdBreakpoint()
+                playLevel(currentState.currentLevel + 1)
+            }
             WaterSortIntent.ChooseLevel -> setState {
                 copy(phase = LeveledGamePhase.LEVEL_SELECT, gameOver = null)
             }

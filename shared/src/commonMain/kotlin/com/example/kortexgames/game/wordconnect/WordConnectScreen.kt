@@ -156,7 +156,7 @@ private fun DrawScope.drawBrickWall() {
 @Composable
 fun WordConnectScreen(graph: AppGraph, onExit: () -> Unit) {
     val vm: WordConnectViewModel = viewModel {
-        WordConnectViewModel(graph.progressRepository, graph.playerProgressRepository, graph.audio)
+        WordConnectViewModel(graph.progressRepository, graph.playerProgressRepository, graph.audio, graph.adManager)
     }
     val state by vm.state.collectAsStateWithLifecycle()
     val game = state.game

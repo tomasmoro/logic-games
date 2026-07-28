@@ -1,6 +1,7 @@
 package com.example.kortexgames.game.wordsearch
 
 import androidx.lifecycle.viewModelScope
+import com.example.kortexgames.core.ads.AdManager
 import com.example.kortexgames.core.audio.AudioAndHapticManager
 import com.example.kortexgames.core.audio.HapticFeedback
 import com.example.kortexgames.core.audio.SoundEffect
@@ -35,6 +36,7 @@ class NeonLexiconViewModel(
     playerProgress: PlayerProgressRepository,
     private val savedGameState: SavedGameStateRepository,
     private val audio: AudioAndHapticManager,
+    private val adManager: AdManager,
 ) : MviViewModel<NeonLexiconIntent, NeonLexiconUiState, NeonLexiconEffect>(NeonLexiconUiState()) {
 
     private val engine = NeonLexiconEngine(viewModelScope, audio)
@@ -64,7 +66,12 @@ class NeonLexiconViewModel(
             NeonLexiconIntent.PlayAgain -> playLevel(currentState.currentLevel)
             is NeonLexiconIntent.PlayLevel -> playLevel(intent.level)
             NeonLexiconIntent.ResumeSaved -> resumeSaved()
-            NeonLexiconIntent.NextLevel -> playLevel(currentState.currentLevel + 1)
+            NeonLexiconIntent.NextLevel -> {
+                // Breakpoint de avance de nivel (solo juegos LEVELED): cobra un
+                // intersticial pendiente sin cortar la partida. No-op si no hay ninguno.
+                adManager.onAdBreakpoint()
+                playLevel(currentState.currentLevel + 1)
+            }
 
             is NeonLexiconIntent.StartDrag -> engine.beginSelection(intent.row, intent.col)
             is NeonLexiconIntent.UpdateDrag -> engine.moveSelection(intent.row, intent.col)

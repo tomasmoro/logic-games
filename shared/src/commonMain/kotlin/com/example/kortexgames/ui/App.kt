@@ -19,7 +19,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -114,22 +116,24 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean) {
         val backStackEntry by navController.currentBackStackEntryAsState()
         val currentRoute = backStackEntry?.destination?.route
 
-        // El AdManager solo cuenta tiempo dentro de un juego.
-         LaunchedEffect(currentRoute) {
-            if (currentRoute == Routes.MEMORY ||
-                currentRoute == Routes.WATER_SORT || currentRoute == Routes.BUBBLE_MATH ||
-                currentRoute == Routes.ENERGY_FLOW || currentRoute == Routes.POLARITY_COLLISION ||
-                currentRoute == Routes.CRUCIGRAMA_NEON || currentRoute == Routes.WORD_CONNECT ||
-                currentRoute == Routes.NEON_SCREWS || currentRoute == Routes.NEON_BLOCK_GRID ||
-                currentRoute == Routes.NEON_LEXICON || currentRoute == Routes.STARPORT_ESCAPE ||
-                currentRoute == Routes.NEON_CIRCUIT || currentRoute == Routes.HYPERGATE ||
-                currentRoute == Routes.NEON_PULSE || currentRoute == Routes.NEON_2048 ||
-                currentRoute == Routes.NEON_SUDOKU
-            ) {
-                graph.adManager.onEnterGameplay()
-            } else {
-                graph.adManager.onEnterMenuOrPause()
+        // Anuncios — breakpoint de "salir de un juego": el contador de intersticiales
+        // corre desde que la app entra a primer plano (lo gobierna el lifecycle de
+        // plataforma), no solo mientras se juega. Aquí detectamos el único momento
+        // seguro para cobrar un intersticial pendiente sin cortar la partida: cuando la
+        // ruta anterior era un juego y la nueva no (el usuario volvió al menú). Es un
+        // hook central: cubre los 30 juegos vía Routes.isGameRoute, sin listas a mano.
+        var previousRoute by remember { mutableStateOf<String?>(null) }
+        LaunchedEffect(currentRoute) {
+            if (Routes.isGameRoute(previousRoute) && !Routes.isGameRoute(currentRoute)) {
+                graph.adManager.onAdBreakpoint()
             }
+            previousRoute = currentRoute
+        }
+
+        // Colector único de intersticiales: cuando un breakpoint marca que toca
+        // anuncio, lo presenta (delega en el presentador de plataforma del AdManager).
+        LaunchedEffect(Unit) {
+            graph.adManager.adEvents.collect { graph.adManager.showInterstitialAd() }
         }
 
         Scaffold(

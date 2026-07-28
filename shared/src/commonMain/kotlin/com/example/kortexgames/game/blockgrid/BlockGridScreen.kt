@@ -67,6 +67,7 @@ import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.ResumeState
+import com.example.kortexgames.ui.components.ReviveAdOverlay
 import com.example.kortexgames.ui.components.SpaceBackdrop
 import com.example.kortexgames.ui.components.alphaIf
 import com.example.kortexgames.ui.components.bounceClick
@@ -375,6 +376,24 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
                 FireworksCelebration(lines = c.lines, showGarlands = c.showGarlands, onDone = { combo = null })
                 ComboBurst(lines = c.lines, onDone = {})
             }
+        }
+
+        // Segunda oportunidad: al llenarse el tablero, ofrece limpiarlo viendo un
+        // anuncio antes del game-over. El scrim del overlay bloquea el tablero mientras
+        // se decide; al aceptar se limpia y sigue la corrida, al rechazar cae al
+        // game-over normal. Icono de "refrescar" (no un corazón): el trato es limpiar
+        // el tablero, no una vida.
+        if (state.awaitingRevive) {
+            ReviveAdOverlay(
+                adManager = graph.adManager,
+                onRevive = { vm.onIntent(BlockGridIntent.Revive) },
+                onDecline = { vm.onIntent(BlockGridIntent.DeclineRevive) },
+                rewardLabel = "el tablero limpio",
+                body = "Mira un anuncio y limpia el tablero para seguir jugando.",
+                icon = KortexIcons.Refresh,
+                accent = CategoryPalette.SpatialVision,
+                audio = graph.audio,
+            )
         }
 
         if (state.status == GameStatus.FINISHED && state.gameOver != null) {

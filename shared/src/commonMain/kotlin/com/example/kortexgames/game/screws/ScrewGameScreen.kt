@@ -122,7 +122,7 @@ private val PlateAccents: List<Color> = listOf(
 @Composable
 fun ScrewGameScreen(graph: AppGraph, onExit: () -> Unit) {
     val vm: ScrewGameViewModel = viewModel {
-        ScrewGameViewModel(graph.progressRepository, graph.playerProgressRepository, graph.audio)
+        ScrewGameViewModel(graph.progressRepository, graph.playerProgressRepository, graph.audio, graph.adManager)
     }
     val state by vm.state.collectAsStateWithLifecycle()
 

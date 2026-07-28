@@ -127,7 +127,7 @@ private fun WireColor.toAccent(): Color = when (this) {
 @Composable
 fun NeonCircuitScreen(graph: AppGraph, onExit: () -> Unit) {
     val vm: NeonCircuitViewModel = viewModel {
-        NeonCircuitViewModel(graph.progressRepository, graph.playerProgressRepository, graph.audio)
+        NeonCircuitViewModel(graph.progressRepository, graph.playerProgressRepository, graph.audio, graph.adManager)
     }
     val state by vm.state.collectAsStateWithLifecycle()
 

@@ -48,6 +48,13 @@ import kotlinx.serialization.Serializable
  *   continuar". El juego sigue en [GameStatus.RUNNING] (no FINISHED) pero con el
  *   cronómetro congelado, igual que "Burbujas de Cálculo": así, si acepta, se
  *   reanuda sin recrear estado.
+ * @property awaitingHint `true` mientras se resuelve un anuncio de pista pedido
+ *   con [NeonSudokuIntent.RequestHint]: a diferencia de [awaitingRevive], la UI
+ *   NO muestra ningún diálogo de confirmación — pulsar "Pista" ya es la
+ *   confirmación del jugador, así que el anuncio se lanza directo (ver
+ *   `NeonSudokuScreen`). El cronómetro se congela igual mientras se resuelve, y
+ *   el juego nunca está en riesgo de terminar aquí — decida lo que decida el
+ *   anuncio, la partida sigue.
  * @property status fase de la partida (IDLE en la antesala, RUNNING jugando,
  *   PAUSED, FINISHED). Reutiliza el [GameStatus] común a todos los juegos para
  *   que la navegación y los overlays se comporten igual que en el resto.
@@ -72,6 +79,7 @@ data class NeonSudokuUiState(
     val elapsedMs: Long = 0L,
     val difficulty: SudokuDifficulty = SudokuDifficulty.FACIL,
     val awaitingRevive: Boolean = false,
+    val awaitingHint: Boolean = false,
     val status: GameStatus = GameStatus.IDLE,
     val savedSummary: String? = null,
     val gameOver: GameOverInfo? = null,
@@ -85,6 +93,23 @@ data class NeonSudokuUiState(
      */
     val highlightedNumber: Int?
         get() = selectedCell?.let { board.cellAt(it).value }
+
+    /**
+     * `true` si hay algo que revelar en la celda seleccionada: hay partida en
+     * curso, no hay ya una pista en vuelo ([awaitingHint] — evita pedir dos
+     * anuncios a la vez si el jugador toca "Pista" otra vez mientras el primero
+     * carga), hay una celda tocada, no es una pista fija de la plantilla, y su
+     * valor actual no es ya el correcto (vacía, o con [SudokuCell.hasConflict]).
+     * Sobre una celda ya correcta no hay pista que ofrecer — la UI usa esto para
+     * deshabilitar el botón de pista en vez de dejarlo pulsable sin efecto.
+     */
+    val hintAvailable: Boolean
+        get() {
+            if (status != GameStatus.RUNNING || awaitingHint) return false
+            val position = selectedCell ?: return false
+            val cell = board.cellAt(position)
+            return !cell.isFixed && (cell.value == null || cell.hasConflict)
+        }
 }
 
 /**
@@ -162,6 +187,28 @@ sealed interface NeonSudokuIntent : UiIntent {
     data object EraseCell : NeonSudokuIntent
 
     /**
+     * El jugador pulsó "Pista" con [NeonSudokuUiState.hintAvailable] a `true`:
+     * pulsar el botón YA es la confirmación (a diferencia de [Revive], no hay
+     * diálogo de "¿ver anuncio?" de por medio), así que esto solo marca
+     * [NeonSudokuUiState.awaitingHint] para que la UI lance el anuncio
+     * recompensado directamente (ver `NeonSudokuScreen`). No revela nada por sí
+     * solo; el ViewModel ignora el intent (no-op) si la celda seleccionada ya no
+     * cumple las condiciones de [NeonSudokuUiState.hintAvailable] — la UI ya
+     * debería tener el botón deshabilitado en ese caso, esto es solo el cierre
+     * defensivo del contrato.
+     */
+    data object RequestHint : NeonSudokuIntent
+
+    /** El anuncio recompensado de la pista se vio completo: revela el dígito de
+     *  la solución en la celda que estaba seleccionada al pedirla. A diferencia
+     *  de [Revive], la partida NUNCA termina aquí — solo reanuda el cronómetro. */
+    data object ConfirmHint : NeonSudokuIntent
+
+    /** El anuncio de la pista se cerró antes de terminar, o no había disponible:
+     *  no revela nada y reanuda el cronómetro. */
+    data object CancelHint : NeonSudokuIntent
+
+    /**
      * Pulso del cronómetro de partida. Avanza [deltaMillis] milisegundos el
      * tiempo transcurrido. Se modela como intent (y no como método interno) para
      * mantener el ciclo MVI unidireccional puro, igual que el resto de juegos
@@ -187,10 +234,11 @@ sealed interface NeonSudokuEffect : UiEffect {
      * [com.example.kortexgames.core.audio.AudioAndHapticManager].
      *
      * Atajos semánticos del juego:
-     *  - [Input] → dígito escrito o nota añadida/quitada sin choque.
-     *  - [Error] → el número escrito choca con fila/columna/bloque.
+     *  - [Input] → dígito escrito o nota añadida/quitada, coincide con la solución.
+     *  - [Error] → el número escrito no coincide con la solución.
      *  - [UnitComplete] → se completó una fila, columna o bloque 3x3.
-     *  - [LevelComplete] → tablero completado sin choques (victoria).
+     *  - [LevelComplete] → tablero completado sin errores (victoria).
+     *  - [Hint] → una pista reveló el dígito correcto de una celda.
      */
     data class PlaySound(val sound: SoundEffect) : NeonSudokuEffect {
         companion object {
@@ -198,6 +246,7 @@ sealed interface NeonSudokuEffect : UiEffect {
             val Error = PlaySound(SoundEffect.ERROR)
             val UnitComplete = PlaySound(SoundEffect.SUCCESS)
             val LevelComplete = PlaySound(SoundEffect.LEVEL_UP)
+            val Hint = PlaySound(SoundEffect.SUCCESS)
         }
     }
 
@@ -298,6 +347,13 @@ sealed interface NeonSudokuEffect : UiEffect {
  *   ofrecerla dos veces tras reanudar).
  * @property totalInputs / @property conflictInputs contadores de precisión, para
  *   que el `accuracyPercentage` del resultado siga siendo correcto tras reanudar.
+ * @property solution la solución del puzzle en curso (81 dígitos), la MISMA
+ *   cadena que [SudokuPuzzle.solution]: sin persistirla aquí, reanudar una
+ *   partida guardada dejaría al ViewModel sin forma de validar celdas o revelar
+ *   pistas (no re-resuelve el tablero, solo lee esta cadena ya calculada). Un
+ *   guardado de una versión anterior a esta pista no la tenía: se serializa con
+ *   `""` por compatibilidad, así que un guardado así de viejo nunca debería
+ *   sobrevivir a un "SALIR" nuevo (se sobrescribe con la partida actual).
  */
 @Serializable
 data class NeonSudokuSavedState(
@@ -311,4 +367,5 @@ data class NeonSudokuSavedState(
     val reviveOffered: Boolean,
     val totalInputs: Int,
     val conflictInputs: Int,
+    val solution: String = "",
 )

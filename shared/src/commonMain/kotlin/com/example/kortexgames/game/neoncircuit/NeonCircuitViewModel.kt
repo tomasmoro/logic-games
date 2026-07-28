@@ -1,6 +1,7 @@
 package com.example.kortexgames.game.neoncircuit
 
 import androidx.lifecycle.viewModelScope
+import com.example.kortexgames.core.ads.AdManager
 import com.example.kortexgames.core.audio.AudioAndHapticManager
 import com.example.kortexgames.core.audio.HapticFeedback
 import com.example.kortexgames.core.audio.SoundEffect
@@ -30,6 +31,7 @@ class NeonCircuitViewModel(
     private val progress: ProgressRepository,
     private val playerProgress: PlayerProgressRepository,
     audio: AudioAndHapticManager,
+    private val adManager: AdManager,
 ) : MviViewModel<NeonCircuitIntent, NeonCircuitUiState, NeonCircuitEffect>(NeonCircuitUiState()) {
 
     // El motor recibe `audio` por contrato de BaseGameEngine pero NO lo usa: todo
@@ -58,7 +60,12 @@ class NeonCircuitViewModel(
             NeonCircuitIntent.Pause -> engine.pause()
             NeonCircuitIntent.Resume -> engine.resume()
             NeonCircuitIntent.PlayAgain -> playLevel(currentState.currentLevel)
-            NeonCircuitIntent.NextLevel -> playLevel(currentState.currentLevel + 1)
+            NeonCircuitIntent.NextLevel -> {
+                // Breakpoint de avance de nivel (solo juegos LEVELED): cobra un
+                // intersticial pendiente sin cortar la partida. No-op si no hay ninguno.
+                adManager.onAdBreakpoint()
+                playLevel(currentState.currentLevel + 1)
+            }
             NeonCircuitIntent.ChooseLevel -> setState {
                 copy(phase = LeveledGamePhase.LEVEL_SELECT, gameOver = null)
             }

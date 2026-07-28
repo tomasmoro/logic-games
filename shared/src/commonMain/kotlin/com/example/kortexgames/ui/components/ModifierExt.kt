@@ -1,5 +1,6 @@
 package com.example.kortexgames.ui.components
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -10,9 +11,14 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -81,19 +87,24 @@ fun Modifier.dashedBorder(
  * reduce la escala del componente (95 % por defecto) y al soltar rebota con
  * física de resorte: se siente "con peso" y da feedback inmediato sin ripple.
  *
- * Gestiona su propio [MutableInteractionSource]; úsalo en cualquier elemento
- * pulsable (tarjetas, íconos, botones custom). Para botones con degradado ya
- * existe [AnimatedGameButton], que aplica este mismo principio.
+ * Gestiona su propio [MutableInteractionSource] por defecto; úsalo en cualquier
+ * elemento pulsable (tarjetas, íconos, botones custom). Para botones con degradado
+ * ya existe [AnimatedGameButton], que aplica este mismo principio.
  *
  * @param pressedScale escala mientras está presionado (0f..1f).
+ * @param interactionSource opcional: pásalo cuando el propio composable necesite
+ *   leer `pressed` también (p. ej. subir el brillo de un [drawNeonTile] con
+ *   [collectPressGlow] mientras se mantiene pulsado). Si se omite, se crea uno
+ *   interno como antes — no rompe a los llamadores existentes.
  * @param onClick acción; buen sitio para disparar SoundEffect.TAP + háptica.
  */
 fun Modifier.bounceClick(
     enabled: Boolean = true,
     pressedScale: Float = 0.95f,
+    interactionSource: MutableInteractionSource? = null,
     onClick: () -> Unit,
 ): Modifier = composed {
-    val interaction = remember { MutableInteractionSource() }
+    val interaction = interactionSource ?: remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     // Spring de baja rigidez + bounce medio: la vuelta a 1f "rebota" suavemente.
     val scale by animateFloatAsState(
@@ -107,6 +118,36 @@ fun Modifier.bounceClick(
     this
         .scale(scale)
         .clickableNoRipple(interaction, enabled = enabled, onClick = onClick)
+}
+
+/**
+ * Progreso de brillo por presión (0 = reposo, 1 = presionado a fondo), listo para
+ * pasar como `pressAmt` a [drawNeonTile]. Es la **fuente única** de la curva de
+ * animación de este feedback: cualquier tile neón clicable la reutiliza en vez de
+ * reimplementar su propio manejo de `collectIsPressedAsState`.
+ *
+ * Sube a 1 con [Animatable.snapTo] (instantáneo, sin interpolar) en vez de un
+ * `spring`/`tween`: muchos tiles (p. ej. las letras del banco en Crucigrama) se
+ * **retiran de la composición en el mismo click** que los presiona —el jugador
+ * consume la letra al tocarla—, así que si el encendido tardase varios frames en
+ * subir, el tile podía desaparecer antes de que llegara a verse. Solo el apagado
+ * ([fadeOutMillis]) se anima, para los tiles que sí permanecen en pantalla.
+ *
+ * Requiere el mismo [InteractionSource] que se le pasa a [bounceClick] (o al
+ * `clickable` del tile) para que ambos reaccionen al mismo toque.
+ */
+@Composable
+fun InteractionSource.collectPressGlow(fadeOutMillis: Int = 180): State<Float> {
+    val pressed by collectIsPressedAsState()
+    val glow = remember { Animatable(0f) }
+    LaunchedEffect(pressed) {
+        if (pressed) {
+            glow.snapTo(1f)
+        } else {
+            glow.animateTo(0f, animationSpec = tween(fadeOutMillis))
+        }
+    }
+    return remember { derivedStateOf { glow.value } }
 }
 
 /**

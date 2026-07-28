@@ -18,6 +18,7 @@ import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.MusicOff
@@ -100,6 +101,9 @@ object KortexIcons {
 
     /** Lápiz: modo "notas" / anotaciones a mano alzada (Neon Sudoku Matrix). */
     val Pencil: ImageVector = Icons.Rounded.Edit
+
+    /** Bombilla: pista (revela la celda correcta a cambio de un anuncio). */
+    val Hint: ImageVector = Icons.Rounded.Lightbulb
 
     /** Pausa: detiene la partida y abre el menú de pausa (común a todos los juegos). */
     val Pause: ImageVector = Icons.Rounded.Pause

@@ -155,41 +155,43 @@ fun Neon2048Screen(graph: AppGraph, onExit: () -> Unit) {
 
     // Antesala mientras el juego está en IDLE, igual que el resto de juegos.
     //
-    // El selector de tamaño de tablero NO se añade dentro de `GameIntroScreen`
-    // (componente compartido por los ~30 juegos del catálogo, sin conocimiento de
-    // que 2048 tiene tableros variables): se superpone por fuera, en un `Box` que
-    // envuelve la antesala sin tocar su código. Al ir DESPUÉS en el árbol de
-    // composición, se dibuja por encima (mismo patrón que `GameOverOverlay` o
-    // `GamePauseControls` sobre la pantalla de juego, más abajo en este archivo).
-    // Se ancla justo encima del CTA "Comenzar" —que `GameIntroScreen` fija al
-    // fondo— dejando el hueco de padding necesario para no taparlo.
+    // El selector de tamaño de tablero se pasa como `configContent` de
+    // `GameIntroScreen`: se pinta DENTRO del propio bloque de acciones, justo
+    // encima del CTA principal (no superpuesto por fuera con un padding fijo
+    // calculado a ojo, que es como lo hacía esta pantalla antes). Ese padding
+    // fijo se descuadraba en cuanto `resume` añadía su resumen + "Empezar de
+    // nuevo" debajo del CTA: el bloque crecía, el CTA se desplazaba hacia
+    // arriba, y el selector —anclado a una distancia fija del fondo de la
+    // pantalla, ajena a ese crecimiento— terminaba solapándolo (ver
+    // `NeonSudokuScreen`, que usa el mismo mecanismo con su selector de
+    // dificultad). `configContent` vive en el flujo normal de la Column, así
+    // que crece y se encoge con el resto del bloque y nunca puede
+    // desalinearse, sea cual sea la altura de lo que haya debajo.
     if (state.status == GameStatus.IDLE) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            GameIntroScreen(
-                title = "Neon Grid 2048",
-                motif = GameMotif.NUMBER_TILES,
-                description = NEON_2048_HELP,
-                accent = CategoryPalette.MentalMath,
-                onStart = { vm.onIntent(Neon2048Intent.StartGame) },
-                // Corrida a medias guardada al salir: la antesala la ofrece como CTA
-                // principal, con su puntuación para que el jugador sepa qué retoma.
-                resume = state.savedScore?.let { score ->
-                    ResumeState(
-                        onResume = { vm.onIntent(Neon2048Intent.ResumeSaved) },
-                        detail = "$score pts en curso",
-                    )
-                },
-                onExit = onExit,
-                background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },
-            )
-            BoardSizeSelector(
-                selected = state.boardSize,
-                onSelect = { vm.onIntent(Neon2048Intent.SelectBoardSize(it)) },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(start = 24.dp, end = 24.dp, bottom = SIZE_SELECTOR_BOTTOM_GAP),
-            )
-        }
+        GameIntroScreen(
+            title = "Neon Grid 2048",
+            motif = GameMotif.NUMBER_TILES,
+            description = NEON_2048_HELP,
+            accent = CategoryPalette.MentalMath,
+            onStart = { vm.onIntent(Neon2048Intent.StartGame) },
+            // Corrida a medias guardada al salir: la antesala la ofrece como CTA
+            // principal, con su puntuación para que el jugador sepa qué retoma.
+            resume = state.savedScore?.let { score ->
+                ResumeState(
+                    onResume = { vm.onIntent(Neon2048Intent.ResumeSaved) },
+                    detail = "$score pts en curso",
+                )
+            },
+            configContent = {
+                BoardSizeSelector(
+                    selected = state.boardSize,
+                    onSelect = { vm.onIntent(Neon2048Intent.SelectBoardSize(it)) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            onExit = onExit,
+            background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },
+        )
         return
     }
 
@@ -301,9 +303,8 @@ fun Neon2048Screen(graph: AppGraph, onExit: () -> Unit) {
  * [Neon2048Config], no en esta función.
  *
  * Se dibuja como tarjeta con fondo propio (y no "al aire" sobre el fondo de la
- * antesala) porque flota superpuesta sobre [GameIntroScreen] — ver el comentario
- * en la llamada, dentro de [Neon2048Screen] — y necesita leerse como un elemento
- * intencional, no como un error de layout.
+ * antesala) para que se lea como un bloque de configuración propio dentro del
+ * `configContent` de [GameIntroScreen], no como parte del cuerpo de la pantalla.
  *
  * @param selected tamaño actualmente elegido (resaltado).
  * @param onSelect se invoca con el tamaño tocado.
@@ -825,18 +826,6 @@ private fun WinOverlay(onContinue: () -> Unit, onRestart: () -> Unit) {
 }
 
 // --- Constantes de render (el balance del juego vive en Neon2048Config) --------
-
-/**
- * Separación entre el borde inferior de [BoardSizeSelector] y el CTA "Comenzar"
- * de [GameIntroScreen]. Ese CTA vive fuera de nuestro control (es del componente
- * compartido): el valor se calibró para el tamaño real de su botón —contentPadding
- * vertical 18dp + fila de icono/texto ~24dp de alto, envueltos en 20dp de padding
- * exterior, ≈100dp de footprint total desde el borde de la pantalla— más un
- * respiro visual. Es un acoplamiento "blando": si ese botón cambia de tamaño en
- * el futuro, en el peor caso el selector queda con más o menos aire, nunca lo
- * tapa por completo ni rompe la interacción.
- */
-private val SIZE_SELECTOR_BOTTOM_GAP = 108.dp
 
 /** Margen interior del tablero (el "marco" alrededor de la rejilla). */
 private val BOARD_PADDING = 10.dp

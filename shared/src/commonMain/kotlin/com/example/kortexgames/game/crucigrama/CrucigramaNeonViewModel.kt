@@ -1,6 +1,7 @@
 package com.example.kortexgames.game.crucigrama
 
 import androidx.lifecycle.viewModelScope
+import com.example.kortexgames.core.ads.AdManager
 import com.example.kortexgames.core.audio.AudioAndHapticManager
 import com.example.kortexgames.core.audio.HapticFeedback
 import com.example.kortexgames.core.audio.SoundEffect
@@ -80,6 +81,7 @@ class CrucigramaNeonViewModel(
     playerProgress: PlayerProgressRepository,
     private val savedGameState: SavedGameStateRepository,
     private val audio: AudioAndHapticManager,
+    private val adManager: AdManager,
 ) : MviViewModel<CrucigramaNeonIntent, CrucigramaNeonUiState, CrucigramaNeonEffect>(CrucigramaNeonUiState()) {
 
     private val engine = CrucigramaNeonEngine(viewModelScope, audio)
@@ -110,7 +112,14 @@ class CrucigramaNeonViewModel(
             CrucigramaNeonIntent.ClearWord -> engine.clearBuffer()
             CrucigramaNeonIntent.Pause -> engine.pause()
             CrucigramaNeonIntent.Resume -> engine.resume()
-            CrucigramaNeonIntent.NextLevel -> playLevel(currentState.currentLevel + 1)
+            CrucigramaNeonIntent.NextLevel -> {
+                // Breakpoint de "avanzar de nivel": único momento (aparte de salir del
+                // juego, ver App.kt) donde se cobra un intersticial pendiente sin cortar
+                // la partida. Solo aplica a juegos LEVELED como este; los ENDLESS no
+                // avanzan de nivel. onAdBreakpoint es no-op si no hay anuncio pendiente.
+                adManager.onAdBreakpoint()
+                playLevel(currentState.currentLevel + 1)
+            }
             CrucigramaNeonIntent.ChooseLevel -> setState {
                 copy(phase = LeveledGamePhase.LEVEL_SELECT, gameOver = null, revealedHint = null)
             }

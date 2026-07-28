@@ -73,6 +73,12 @@ data class DragState(
  * @property status ciclo de vida estándar de partida (IDLE→RUNNING→FINISHED).
  * @property gameOver datos de la pantalla de resultado (récord, percentil);
  *           null mientras se juega.
+ * @property awaitingRevive true mientras se ofrece "revivir viendo un anuncio" tras
+ *           llenarse el tablero. El [status] sigue [GameStatus.RUNNING] (la partida no
+ *           terminó todavía): la UI muestra el overlay de revivir; al aceptar se limpia
+ *           el tablero y la corrida continúa, al rechazar (o agotarse el tiempo) termina.
+ *           Es estado de UI (transitorio), por eso vive aquí y no en el estado
+ *           serializable del motor ([BlockGridGameState]).
  * @property savedScore puntuación de la corrida guardada al salir, o null si no hay
  *           ninguna pendiente. Solo relevante en la antesala (IDLE), donde se ofrece
  *           como "Continuar" (ver [com.example.kortexgames.ui.components.ResumeState]).
@@ -85,6 +91,7 @@ data class BlockGridUiState(
     val linesCleared: Int = 0,
     val status: GameStatus = GameStatus.IDLE,
     val gameOver: GameOverInfo? = null,
+    val awaitingRevive: Boolean = false,
     val savedScore: Int? = null,
 ) : UiState
 
@@ -132,6 +139,16 @@ sealed interface BlockGridIntent : UiIntent {
 
     data object Pause : BlockGridIntent
     data object Resume : BlockGridIntent
+
+    /**
+     * El anuncio recompensado concedió el trato: **limpia el tablero** y continúa la
+     * corrida (conserva puntos y líneas). La oferta es de una sola vez por sesión de
+     * juego: al usarla no se vuelve a ofrecer, ni siquiera en una partida nueva.
+     */
+    data object Revive : BlockGridIntent
+
+    /** Se rechazó la oferta de revivir (o el anuncio no se completó): fin de partida. */
+    data object DeclineRevive : BlockGridIntent
 
     /** Desde la pantalla de resultado: nueva partida. */
     data object PlayAgain : BlockGridIntent

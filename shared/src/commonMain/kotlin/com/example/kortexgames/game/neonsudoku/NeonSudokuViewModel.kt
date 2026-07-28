@@ -36,13 +36,33 @@ import kotlin.time.TimeSource
  *  - Cargar una plantilla (según [SudokuDifficulty]) y arrancar/pausar/reanudar.
  *  - **Reducir** la selección de celda, la entrada de dígitos (valor o nota) y el
  *    borrado, respetando el "Modo Notas" y las celdas fijas.
- *  - **Validar choques** tras cada escritura/borrado ([recomputeConflicts]).
+ *  - **Validar cada celda** comparándola contra la solución del puzzle
+ *    ([solutionDigitAt]) al escribir un valor definitivo.
  *  - Gestionar la regla de errores: a [NeonSudokuConfig.MAX_ERRORS] ofrecer la
  *    segunda oportunidad (anuncio) una vez, o terminar en derrota.
- *  - Detectar la victoria (tablero completo sin choques) y persistir el
+ *  - Ofrecer **pistas** ([NeonSudokuIntent.RequestHint]): a cambio de un anuncio
+ *    recompensado, revela el dígito de la solución en la celda elegida por el
+ *    jugador (tantas veces por partida como anuncios vea).
+ *  - Detectar la victoria (tablero completo sin errores) y persistir el
  *    [GameResult] con estrategia local-first.
  *  - **Guardar/reanudar** la partida en curso al salir (mismo mecanismo que Neon
  *    Grid 2048, vía [SavedGameStateRepository]).
+ *
+ * ## Validación contra la solución, no contra duplicados
+ * La primera versión marcaba [SudokuCell.hasConflict] con la regla clásica de
+ * Sudoku: un valor "choca" si se repite en su fila, columna o bloque 3x3. El
+ * problema es que esa regla es **relacional y tardía**: un dígito mal colocado en
+ * una celda que aún no tiene ningún vecino repetido no se marca hasta que el
+ * jugador completa el resto del grupo con los valores correctos — en ese punto ya
+ * jugó varias celdas más y el error real puede quedar enterrado varios movimientos
+ * atrás, obligándolo a peinar el tablero entero para encontrarlo.
+ *
+ * Como el banco de puzzles ya trae la solución única calculada offline
+ * ([SudokuPuzzle.solution]), no hace falta esa regla: [solutionDigitAt] compara
+ * cada valor escrito directamente contra su dígito correcto. Es a la vez más
+ * simple (sin conteos por fila/columna/bloque, sin recorrer el tablero completo
+ * en cada tecla) y da feedback inmediato y localizado — el jugador nunca tiene
+ * que deshacer partidas enteras para corregir un solo número.
  *
  * @param progress repositorio local-first para guardar el resultado + percentil.
  * @param puzzles banco de puzzles (local-first): de aquí sale la plantilla de cada
@@ -70,6 +90,13 @@ class NeonSudokuViewModel(
      *  precisa, monótona e inmune a cambios de hora/zona horaria). */
     private var lastMark: TimeSource.Monotonic.ValueTimeMark? = null
 
+    /** Solución del puzzle en curso (81 dígitos `1-9`, fila a fila), la misma
+     *  cadena de [SudokuPuzzle.solution]. Fuente de verdad de [solutionDigitAt]:
+     *  vive aquí (no en el [NeonSudokuUiState]) porque es un dato de simulación
+     *  que la UI no dibuja directamente, igual que [totalInputs]. Se restaura al
+     *  reanudar una partida guardada (ver [resumeFrom] y [NeonSudokuSavedState.solution]). */
+    private var solution: String = ""
+
     // Estadísticas para la precisión final (accuracy) del GameResult.
     private var totalInputs = 0      // dígitos definitivos escritos (no notas)
     private var conflictInputs = 0   // de esos, cuántos generaron un choque
@@ -77,6 +104,16 @@ class NeonSudokuViewModel(
     /** Si la segunda oportunidad (revivir con anuncio) ya se ofreció en esta
      *  partida: se limita a una por partida, como en "Burbujas de Cálculo". */
     private var reviveOffered = false
+
+    /** Celda pedida como pista al pulsar "Pista" ([onRequestHint]), capturada en
+     *  el momento de la pulsación. A diferencia de [awaitingRevive], el anuncio
+     *  de la pista NO bloquea el tablero (se lanza directo, sin diálogo de
+     *  confirmación — ver `NeonSudokuScreen`), así que el jugador puede seguir
+     *  tocando/escribiendo mientras se resuelve. Guardar la celda aquí (en vez de
+     *  releer [NeonSudokuUiState.selectedCell] al resolver el anuncio) evita que
+     *  un cambio de selección durante la espera revele el número en una celda
+     *  distinta de la que el jugador realmente eligió. */
+    private var hintTargetPosition: CellPosition? = null
 
     /** Guardia de re-entrada mientras [startGame] resuelve un puzzle (asíncrono):
      *  evita que un doble toque en "Comenzar" arranque dos partidas a la vez. */
@@ -116,6 +153,9 @@ class NeonSudokuViewModel(
             is NeonSudokuIntent.InputNumber -> onInputNumber(intent.number)
             NeonSudokuIntent.ToggleNotesMode -> onToggleNotesMode()
             NeonSudokuIntent.EraseCell -> onEraseCell()
+            NeonSudokuIntent.RequestHint -> onRequestHint()
+            NeonSudokuIntent.ConfirmHint -> onConfirmHint()
+            NeonSudokuIntent.CancelHint -> onCancelHint()
             is NeonSudokuIntent.Tick -> onTick(intent.deltaMillis)
         }
     }
@@ -159,6 +199,7 @@ class NeonSudokuViewModel(
         totalInputs = saved.totalInputs
         conflictInputs = saved.conflictInputs
         reviveOffered = saved.reviveOffered
+        solution = saved.solution
         val board = Board(saved.cells)
         // Los dígitos ya agotados en el guardado no deben volver a festejarse: se
         // reconstruye el set a partir del propio tablero en vez de serializarlo
@@ -215,10 +256,12 @@ class NeonSudokuViewModel(
                 conflictInputs = 0
                 reviveOffered = false
                 celebratedDigits.clear()
-                // recomputeConflicts es defensivo: un puzzle bien formado nunca trae
-                // choques entre sus pistas, pero recalcular es gratis (ver su KDoc) y nos
-                // protege de un puzzle corrupto en vez de arrancar en un estado inválido.
-                val board = recomputeConflicts(Board.fromTemplate(puzzle.puzzle))
+                solution = puzzle.solution
+                // Sin recompute defensivo: las pistas fijas de la plantilla nacen con
+                // hasConflict = false (ver Board.fromTemplate) y, al no comparase entre
+                // sí sino contra `solution` (ver KDoc de clase), no hay ningún estado
+                // relacional que recalcular al arrancar.
+                val board = Board.fromTemplate(puzzle.puzzle)
                 setState { NeonSudokuUiState(board = board, difficulty = difficulty, status = GameStatus.RUNNING) }
                 startLoop()
             } finally {
@@ -258,6 +301,7 @@ class NeonSudokuViewModel(
             reviveOffered = reviveOffered,
             totalInputs = totalInputs,
             conflictInputs = conflictInputs,
+            solution = solution,
         )
         viewModelScope.launch {
             savedGameState.save(GameIds.NEON_SUDOKU_MATRIX, Json.encodeToString(saved))
@@ -334,11 +378,11 @@ class NeonSudokuViewModel(
      * de rango ahí solo puede deberse a un bug de la UI, no a una jugada válida
      * que debamos rechazar con feedback.
      *
-     * Al escribir un valor definitivo (fuera de Modo Notas) se recalculan los
-     * choques de **todo el tablero** ([recomputeConflicts]): un solo dígito puede
-     * resolver o crear conflictos en celdas que no son la tocada (p. ej. al
-     * corregir un valor que antes chocaba). Solo se penaliza (choque + sonido de
-     * error + sacudida) si la celda recién escrita queda marcada con choque.
+     * Al escribir un valor definitivo (fuera de Modo Notas) se compara
+     * directamente contra [solutionDigitAt] (ver KDoc de clase: por qué no se
+     * valida por duplicados de fila/columna/bloque). Solo se penaliza (choque +
+     * sonido de error + sacudida) si el dígito escrito no es el correcto para
+     * esa celda; un acierto delega la celebración/victoria en [applyCorrectPlacement].
      */
     private fun onInputNumber(number: Int) {
         val s = currentState
@@ -360,32 +404,52 @@ class NeonSudokuViewModel(
         }
 
         totalInputs++
-        val written = cell.copy(value = number, notes = emptySet())
-        val recomputedBoard = recomputeConflicts(s.board.replacing(position, written))
-        val conflict = recomputedBoard.cellAt(position).hasConflict
+        val correct = number == solutionDigitAt(position)
+        val written = cell.copy(value = number, notes = emptySet(), hasConflict = !correct)
+        val newBoard = s.board.replacing(position, written)
 
-        if (conflict) {
+        if (!correct) {
             conflictInputs++
             val newErrorCount = s.errorCount + 1
-            setState { copy(board = recomputedBoard, errorCount = newErrorCount) }
+            setState { copy(board = newBoard, errorCount = newErrorCount) }
             sendEffect(NeonSudokuEffect.PlaySound.Error)
             sendEffect(NeonSudokuEffect.Vibrate.Heavy)
             sendEffect(NeonSudokuEffect.ShakeCell(position))
             // Regla "3 strikes": al agotar los errores permitidos, o bien se ofrece
             // la segunda oportunidad (una vez por partida) o se pierde. Se comprueba
-            // antes de la victoria porque una jugada que choca nunca completa bien.
+            // antes de la victoria porque una jugada errónea nunca completa bien.
             if (newErrorCount >= NeonSudokuConfig.MAX_ERRORS) {
                 if (reviveOffered) finish(won = false) else offerRevive()
             }
             return
         }
 
-        setState { copy(board = recomputedBoard) }
+        applyCorrectPlacement(newBoard, position, number)
+    }
+
+    /**
+     * Dígito `1..9` de la solución del puzzle en [position]. Única lectura de
+     * [solution] del ViewModel: tanto [onInputNumber] (¿el dígito escrito es el
+     * correcto?) como [onConfirmHint] (¿cuál es el correcto, para revelarlo?)
+     * pasan por aquí.
+     */
+    private fun solutionDigitAt(position: CellPosition): Int =
+        solution[position.row * NeonSudokuConfig.BOARD_SIZE + position.col].digitToInt()
+
+    /**
+     * Aplica a [board] un dígito ya confirmado como **correcto** en [position]
+     * (venga de que el jugador lo escribió bien en [onInputNumber], o de que una
+     * pista lo reveló en [onConfirmHint]) y dispara el mismo feedback/celebración
+     * en ambos casos: no hay motivo para que el juego reaccione distinto a un
+     * acierto según de dónde vino el dígito.
+     */
+    private fun applyCorrectPlacement(newBoard: Board, position: CellPosition, digit: Int) {
+        setState { copy(board = newBoard) }
 
         // Celebración de unidad completada: pisa al feedback de escritura normal
         // (mismo criterio que Neon Grid 2048 con la fusión sobre el movimiento),
         // para no encadenar dos sonidos en 100 ms.
-        val completedCells = completedUnitsAt(recomputedBoard, position)
+        val completedCells = completedUnitsAt(newBoard, position)
         if (completedCells.isNotEmpty()) {
             sendEffect(NeonSudokuEffect.PlaySound.UnitComplete)
             sendEffect(NeonSudokuEffect.Vibrate.Success)
@@ -395,28 +459,29 @@ class NeonSudokuViewModel(
             sendEffect(NeonSudokuEffect.Vibrate.Tick)
         }
 
-        // Dígito agotado: sus 9 apariciones ya están en el tablero sin chocar entre
-        // sí, así que no queda ninguna instancia más por colocar. Es un hito de la
-        // partida entera (no de una unidad puntual), así que la celebración es
-        // aparte y más grande (fuegos artificiales de pantalla completa, ver
+        // Dígito agotado: sus 9 apariciones ya están en el tablero y ninguna es
+        // errónea, así que no queda ninguna instancia más por colocar. Es un hito
+        // de la partida entera (no de una unidad puntual), así que la celebración
+        // es aparte y más grande (fuegos artificiales de pantalla completa, ver
         // NeonSudokuScreen) en vez de sumarse al destello local de arriba.
         //
-        // Solo puede volverse cierto para [number]: borrar SIEMPRE reduce el
-        // recuento de un dígito (nunca lo completa) y sobrescribir una celda con
-        // un valor distinto solo puede aumentar el recuento del dígito que se
-        // ACABA de escribir, nunca el de un tercero que la jugada no tocó.
-        if (number !in celebratedDigits && isDigitComplete(recomputedBoard, number)) {
-            celebratedDigits += number
-            sendEffect(NeonSudokuEffect.DigitCompleted(number))
+        // Solo puede volverse cierto para [digit]: borrar SIEMPRE reduce el
+        // recuento de un dígito (nunca lo completa) y escribir/revelar una celda
+        // solo puede aumentar el recuento del dígito que se ACABA de colocar,
+        // nunca el de un tercero que la jugada no tocó.
+        if (digit !in celebratedDigits && isDigitComplete(newBoard, digit)) {
+            celebratedDigits += digit
+            sendEffect(NeonSudokuEffect.DigitCompleted(digit))
         }
 
-        if (recomputedBoard.isComplete && !recomputedBoard.hasAnyConflict) finish(won = true)
+        if (newBoard.isComplete && !newBoard.hasAnyConflict) finish(won = true)
     }
 
     /**
      * ¿Ya no queda ninguna instancia de [digit] por colocar? Es decir: sus 9
-     * apariciones están en el tablero y ninguna choca entre sí. Dispara la
-     * celebración de "dígito agotado" ([NeonSudokuEffect.DigitCompleted]).
+     * apariciones están en el tablero y todas coinciden con la solución (ninguna
+     * está mal colocada). Dispara la celebración de "dígito agotado"
+     * ([NeonSudokuEffect.DigitCompleted]).
      */
     private fun isDigitComplete(board: Board, digit: Int): Boolean {
         val cells = board.cellsWithValue(digit)
@@ -425,7 +490,7 @@ class NeonSudokuViewModel(
 
     /**
      * Celdas de las unidades (fila, columna y/o bloque 3x3) que la jugada sobre
-     * [position] acaba de **completar**: llenas y sin ningún choque.
+     * [position] acaba de **completar**: llenas y sin ningún valor erróneo.
      *
      * Solo se miran las tres unidades que contienen [position]: son las únicas
      * que la jugada pudo cambiar. Y no hace falta comparar con el estado
@@ -481,8 +546,10 @@ class NeonSudokuViewModel(
     }
 
     /** Borra valor y notas de la celda seleccionada. No-op sobre celdas fijas o
-     *  ya vacías. Recalcula choques: borrar puede resolver el choque de OTRA
-     *  celda de la misma fila/columna/bloque, no solo el de la propia. */
+     *  ya vacías. A diferencia de la primera versión, borrar ya NO puede afectar
+     *  a ninguna otra celda: con la validación contra [solution] (ver KDoc de
+     *  clase) la corrección de cada celda es independiente de sus vecinas, así
+     *  que basta con limpiar la propia. */
     private fun onEraseCell() {
         val s = currentState
         if (s.status != GameStatus.RUNNING) return
@@ -492,69 +559,77 @@ class NeonSudokuViewModel(
         if (cell.value == null && cell.notes.isEmpty()) return
 
         val erased = cell.copy(value = null, notes = emptySet(), hasConflict = false)
-        val recomputedBoard = recomputeConflicts(s.board.replacing(position, erased))
-        setState { copy(board = recomputedBoard) }
+        setState { copy(board = s.board.replacing(position, erased)) }
         sendEffect(NeonSudokuEffect.PlaySound.Input)
     }
 
     // ---------------------------------------------------------------------------
-    // Motor de validación de choques
+    // Pista (anuncio recompensado)
     // ---------------------------------------------------------------------------
 
     /**
-     * Recalcula [SudokuCell.hasConflict] para las 81 celdas del tablero.
-     *
-     * ## La estructura: conteos por grupo, no comparación por pares
-     *
-     * La forma ingenua sería, por cada celda rellena, comparar su valor contra
-     * las otras 20 celdas de su fila+columna+bloque (`O(N)` por celda, `O(N²)`
-     * sobre las 81) — y repetirlo en cada tecla pulsada.
-     *
-     * En su lugar se hace **una sola pasada** sobre el tablero construyendo tres
-     * tablas de conteo `grupo -> (dígito -> nº de apariciones)`:
-     * [rowCounts], [colCounts] y [blockCounts], cada una `Array(9) { IntArray(10) }`
-     * (índice `0` de cada `IntArray` sin usar; los dígitos son `1..9`). Esa pasada
-     * es `O(81)` = `O(N)`.
-     *
-     * Con las tablas ya construidas, decidir si la celda `(row, col)` con valor
-     * `v` choca es una lectura directa — `O(1)` — en cada una de las tres tablas:
-     * `rowCounts[row][v] > 1 || colCounts[col][v] > 1 || blockCounts[block][v] > 1`.
-     * Una segunda pasada `O(81)` aplica esa lectura a las 81 celdas para construir
-     * el tablero resultante. Total: `O(N)` con `N` = nº de celdas, en vez de
-     * `O(N²)`, y sin más estructura que dos arrays de enteros por dimensión —
-     * no hace falta un `Set`/`Map` por grupo ni recorrer vecinos celda a celda.
-     *
-     * Se recalculan las 81 celdas (y no solo la tocada) porque un choque es una
-     * propiedad **relacional**: escribir o borrar un dígito puede resolver o
-     * crear un choque en una celda que no es la que cambió (ver KDoc de
-     * [onEraseCell]/[onInputNumber]).
+     * El jugador pulsó "Pista": si [NeonSudokuUiState.hintAvailable] es `true`
+     * captura la celda elegida ([hintTargetPosition]), congela el cronómetro
+     * (igual que [offerRevive]) y marca [NeonSudokuUiState.awaitingHint] para que
+     * la UI lance el anuncio recompensado DIRECTAMENTE — a diferencia de
+     * "revivir", pulsar el botón ya es la confirmación del jugador, así que no
+     * hay diálogo de por medio (ver `NeonSudokuScreen`). Fuera de esas
+     * condiciones, no-op — la UI ya debería tener el botón deshabilitado (ver
+     * KDoc del intent).
      */
-    private fun recomputeConflicts(board: Board): Board {
-        val rowCounts = Array(NeonSudokuConfig.BOARD_SIZE) { IntArray(NeonSudokuConfig.BOARD_SIZE + 1) }
-        val colCounts = Array(NeonSudokuConfig.BOARD_SIZE) { IntArray(NeonSudokuConfig.BOARD_SIZE + 1) }
-        val blockCounts = Array(NeonSudokuConfig.BOARD_SIZE) { IntArray(NeonSudokuConfig.BOARD_SIZE + 1) }
+    private fun onRequestHint() {
+        val s = currentState
+        if (!s.hintAvailable) return
+        hintTargetPosition = s.selectedCell
+        loopJob?.cancel()
+        loopJob = null
+        setState { copy(awaitingHint = true) }
+    }
 
-        for (row in 0 until NeonSudokuConfig.BOARD_SIZE) {
-            for (col in 0 until NeonSudokuConfig.BOARD_SIZE) {
-                val value = board.cellAt(row, col).value ?: continue
-                val block = CellPosition(row, col).blockIndex
-                rowCounts[row][value]++
-                colCounts[col][value]++
-                blockCounts[block][value]++
+    /**
+     * El anuncio se vio completo: revela en [hintTargetPosition] (la celda
+     * capturada al pedir la pista, NO [NeonSudokuUiState.selectedCell] — el
+     * tablero sigue interactivo mientras se resuelve el anuncio, así que la
+     * selección pudo cambiar mientras tanto) el dígito de [solutionDigitAt], y
+     * reutiliza [applyCorrectPlacement] para que una pista dispare exactamente
+     * el mismo feedback/celebración/chequeo de victoria que acertar a mano.
+     *
+     * Vuelve a comprobar la celda contra el tablero ACTUAL antes de revelar
+     * nada: si el jugador la corrigió (o la sobrescribió) por su cuenta mientras
+     * esperaba el anuncio, ya no hay nada que revelar ahí.
+     *
+     * Siempre reanuda el cronómetro salvo que la pista complete el tablero: en
+     * ese caso [applyCorrectPlacement] ya llamó a [finish], que lo dejó parado.
+     */
+    private fun onConfirmHint() {
+        if (!currentState.awaitingHint) return
+        setState { copy(awaitingHint = false) }
+
+        val position = hintTargetPosition
+        hintTargetPosition = null
+        if (position != null) {
+            val s = currentState
+            val cell = s.board.cellAt(position)
+            if (!cell.isFixed && (cell.value == null || cell.hasConflict)) {
+                val digit = solutionDigitAt(position)
+                val revealed = cell.copy(value = digit, notes = emptySet(), hasConflict = false)
+                val newBoard = s.board.replacing(position, revealed)
+                sendEffect(NeonSudokuEffect.PlaySound.Hint)
+                sendEffect(NeonSudokuEffect.Vibrate.Success)
+                applyCorrectPlacement(newBoard, position, digit)
             }
         }
 
-        val newCells = (0 until NeonSudokuConfig.CELL_COUNT).map { index ->
-            val row = index / NeonSudokuConfig.BOARD_SIZE
-            val col = index % NeonSudokuConfig.BOARD_SIZE
-            val cell = board.cellAt(row, col)
-            val value = cell.value
-            val block = CellPosition(row, col).blockIndex
-            val conflict = value != null &&
-                (rowCounts[row][value] > 1 || colCounts[col][value] > 1 || blockCounts[block][value] > 1)
-            if (cell.hasConflict == conflict) cell else cell.copy(hasConflict = conflict)
-        }
-        return Board(newCells)
+        if (currentState.status == GameStatus.RUNNING) startLoop()
+    }
+
+    /** El anuncio de la pista se cerró antes de terminar, o no había disponible:
+     *  no revela nada y reanuda el cronómetro. */
+    private fun onCancelHint() {
+        if (!currentState.awaitingHint) return
+        hintTargetPosition = null
+        setState { copy(awaitingHint = false) }
+        startLoop()
     }
 
     // ---------------------------------------------------------------------------

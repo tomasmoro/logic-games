@@ -62,6 +62,16 @@ class BlockGridEngine(
     /** Estado a restaurar en el próximo [onStart]; lo consume [resumeFrom]. */
     private var pendingResume: BlockGridGameState? = null
 
+    /**
+     * true una vez que el jugador **usó** la segunda oportunidad (vio el anuncio y
+     * revivió) en esta sesión de juego. La oferta de revivir es de **una sola vez**:
+     * tras consumirla no se vuelve a ofrecer, ni siquiera al empezar una partida nueva
+     * ("Jugar de nuevo"). Por eso **NO** se reinicia en [onStart] — persiste mientras
+     * viva el motor (la sesión en la pantalla). Rechazar la oferta NO la consume (el
+     * jugador no vio el anuncio), así que una partida posterior puede volver a ofrecerla.
+     */
+    private var reviveConsumed = false
+
     override fun onStart() {
         val resume = pendingResume
         if (resume != null) {
@@ -186,11 +196,39 @@ class BlockGridEngine(
         _events.trySend(BlockGridEvent.PiecePlaced)
         if (lineCount > 0) _events.trySend(BlockGridEvent.LinesCleared(lineCount, isPerfectClear))
 
-        // 6. Game Over contra la mano repuesta.
+        // 6. Game Over contra la mano repuesta. Antes de terminar, ofrece revivir (una
+        //    sola vez por sesión, limpiar el tablero viendo un anuncio); si ya se
+        //    consumió la segunda oportunidad, el fin de partida es definitivo.
         if (newHand.none { _state.value.board.canPlaceAnywhere(it.shape) }) {
-            _events.trySend(BlockGridEvent.GameOverReached)
-            finish()
+            if (reviveConsumed) {
+                _events.trySend(BlockGridEvent.GameOverReached)
+                finish()
+            } else {
+                _events.trySend(BlockGridEvent.ReviveOffered)
+            }
         }
+    }
+
+    /**
+     * El anuncio recompensado concedió el trato: **limpia el tablero** (lo vacía) y la
+     * corrida continúa con la mano actual —que en un tablero vacío siempre cabe—
+     * conservando puntos y líneas. Marca la segunda oportunidad como **consumida**: no
+     * se vuelve a ofrecer en el resto de la sesión (tampoco en una partida nueva).
+     */
+    fun grantRevive() {
+        reviveConsumed = true
+        _state.update { it.copy(board = BoardGrid()) }
+    }
+
+    /**
+     * El jugador rechazó la oferta (o el anuncio se cerró / no había): fin de partida
+     * real. Emite [BlockGridEvent.GameOverReached] y finaliza, publicando el resultado.
+     * No consume la segunda oportunidad (no vio el anuncio): una partida posterior de
+     * esta misma sesión aún podría ofrecerla.
+     */
+    fun declineRevive() {
+        _events.trySend(BlockGridEvent.GameOverReached)
+        finish()
     }
 
     /** La UI terminó de animar la limpieza: las celdas Clearing se vacían. */
@@ -291,7 +329,15 @@ sealed interface BlockGridEvent {
     /** La mano se agotó y se repartieron piezas nuevas. */
     data object HandRefilled : BlockGridEvent
 
-    /** Ninguna pieza de la mano cabe: fin de partida. */
+    /**
+     * Ninguna pieza de la mano cabe y **aún no se consumió** la segunda oportunidad:
+     * el motor pausa el desenlace y ofrece revivir viendo un anuncio (limpiar el
+     * tablero). El ViewModel muestra el overlay; se sale por [grantRevive] o
+     * [declineRevive]. La partida NO termina aquí (a diferencia de [GameOverReached]).
+     */
+    data object ReviveOffered : BlockGridEvent
+
+    /** Ninguna pieza cabe y la segunda oportunidad ya se consumió (o no aplica): fin de partida. */
     data object GameOverReached : BlockGridEvent
 }
 
