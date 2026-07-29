@@ -58,9 +58,12 @@ import com.example.kortexgames.ui.components.AnimatedGameButton
 import com.example.kortexgames.ui.components.FireworksOverlay
 import com.example.kortexgames.ui.components.GameExitGuard
 import com.example.kortexgames.ui.components.GameIntroScreen
+import com.example.kortexgames.game.GameHelpContent
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
+import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.ResumeState
+import com.example.kortexgames.ui.components.ReviveAdOverlay
 import com.example.kortexgames.ui.components.SpaceBackdrop
 import com.example.kortexgames.ui.components.bounceClick
 import com.example.kortexgames.ui.components.drawNeonTile
@@ -169,6 +172,7 @@ fun Neon2048Screen(graph: AppGraph, onExit: () -> Unit) {
     // desalinearse, sea cual sea la altura de lo que haya debajo.
     if (state.status == GameStatus.IDLE) {
         GameIntroScreen(
+            help = GameHelpContent.neon2048,
             title = "Neon Grid 2048",
             motif = GameMotif.NUMBER_TILES,
             description = NEON_2048_HELP,
@@ -259,6 +263,25 @@ fun Neon2048Screen(graph: AppGraph, onExit: () -> Unit) {
             )
         }
 
+        // Segunda oportunidad: al quedarse sin movimientos, ofrece limpiar las fichas
+        // 2 y 4 viendo un anuncio antes del game-over. El scrim del overlay bloquea el
+        // tablero mientras se decide; al aceptar se despejan esas fichas y sigue la
+        // corrida, al rechazar cae al game-over normal. Icono de "refrescar": el trato
+        // es despejar el tablero, no una vida.
+        if (state.awaitingRevive) {
+            ReviveAdOverlay(
+                adManager = graph.adManager,
+                onRevive = { vm.onIntent(Neon2048Intent.Revive) },
+                onDecline = { vm.onIntent(Neon2048Intent.DeclineRevive) },
+                title = "¿Sin movimientos?",
+                rewardLabel = "las fichas 2 y 4 despejadas",
+                body = "Mira un anuncio y limpiamos todas las fichas 2 y 4 para que sigas jugando.",
+                icon = KortexIcons.Refresh,
+                accent = CategoryPalette.MentalMath,
+                audio = graph.audio,
+            )
+        }
+
         state.gameOver?.let { info ->
             GameOverOverlay(
                 info = info,
@@ -276,7 +299,7 @@ fun Neon2048Screen(graph: AppGraph, onExit: () -> Unit) {
             onResume = { vm.onIntent(Neon2048Intent.Resume) },
             onExit = exitWithSave,
             gameTitle = "Neon Grid 2048",
-            helpText = NEON_2048_HELP,
+            help = GameHelpContent.neon2048,
             accent = CategoryPalette.MentalMath,
             exitKeepsProgress = true,
         )

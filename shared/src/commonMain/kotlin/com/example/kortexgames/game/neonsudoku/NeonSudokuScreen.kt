@@ -51,6 +51,7 @@ import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.ui.components.FireworksOverlay
 import com.example.kortexgames.ui.components.GameExitGuard
 import com.example.kortexgames.ui.components.GameIntroScreen
+import com.example.kortexgames.game.GameHelpContent
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
@@ -222,6 +223,7 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
     // nueva, que es el bug original que esto corrige.
     if (state.status == GameStatus.IDLE) {
         GameIntroScreen(
+            help = GameHelpContent.neonSudoku,
             title = "Neon Sudoku Matrix",
             motif = GameMotif.SUDOKU_GRID,
             description = NEON_SUDOKU_HELP,
@@ -340,7 +342,7 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
             onResume = { vm.onIntent(NeonSudokuIntent.Resume) },
             onExit = exitWithSave,
             gameTitle = "Neon Sudoku Matrix",
-            helpText = NEON_SUDOKU_HELP,
+            help = GameHelpContent.neonSudoku,
             accent = CategoryPalette.Logic,
             exitKeepsProgress = true,
         )

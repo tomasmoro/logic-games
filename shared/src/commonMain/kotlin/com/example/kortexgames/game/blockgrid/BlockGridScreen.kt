@@ -63,6 +63,7 @@ import com.example.kortexgames.game.GameMotif
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.ui.components.GameExitGuard
 import com.example.kortexgames.ui.components.GameIntroScreen
+import com.example.kortexgames.game.GameHelpContent
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
@@ -205,6 +206,7 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
     // Antesala del juego: mientras no ha arrancado (IDLE) se muestra la intro.
     if (state.status == GameStatus.IDLE) {
         GameIntroScreen(
+            help = GameHelpContent.blockGrid,
             title = "Tetris Neón",
             motif = GameMotif.TETROMINO,
             description = "Arrastra las piezas al tablero y completa filas o columnas para romperlas. La partida termina cuando ninguna pieza cabe.",
@@ -415,7 +417,7 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
             onResume = { vm.onIntent(BlockGridIntent.Resume) },
             onExit = exitWithSave,
             gameTitle = "Tetris Neón",
-            helpText = "Arrastra las piezas al tablero y completa filas o columnas para romperlas. La partida termina cuando ninguna pieza cabe.",
+            help = GameHelpContent.blockGrid,
             accent = CategoryPalette.SpatialVision,
             exitKeepsProgress = true,
         )

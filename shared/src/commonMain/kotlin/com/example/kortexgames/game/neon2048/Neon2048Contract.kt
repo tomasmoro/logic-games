@@ -61,6 +61,11 @@ import kotlinx.serialization.Serializable
  *   posterior a la victoria.
  * @property gameOver resumen del resultado (récord + percentil) cuando la
  *   partida termina; null mientras se juega. Mismo patrón que el resto de juegos.
+ * @property awaitingRevive true mientras se ofrece revivir viendo un anuncio tras
+ *   quedarse sin movimientos. El [status] sigue [GameStatus.RUNNING] (la partida aún no
+ *   terminó): la UI muestra el overlay de revivir; al aceptar se **limpian las fichas 2
+ *   y 4** y la corrida continúa, al rechazar (o agotarse el tiempo) termina. Es estado
+ *   de UI transitorio, por eso no viaja en el guardado serializable ([Neon2048SavedState]).
  * @property boardSize lado del tablero elegido en la antesala (ver
  *   [Neon2048Intent.SelectBoardSize] y [Neon2048Config.BOARD_SIZE_OPTIONS]).
  *   Se conserva entre partidas —incluida [Neon2048Intent.RestartGame]— porque es
@@ -79,6 +84,7 @@ data class Neon2048UiState(
     val hasWon: Boolean = false,
     val keepPlaying: Boolean = false,
     val gameOver: GameOverInfo? = null,
+    val awaitingRevive: Boolean = false,
     val boardSize: Int = Neon2048Config.DEFAULT_BOARD_SIZE,
     val savedScore: Int? = null,
 ) : UiState {
@@ -167,6 +173,16 @@ sealed interface Neon2048Intent : UiIntent {
 
     /** Reinicia la partida (desde el HUD o desde el overlay de victoria/derrota). */
     data object RestartGame : Neon2048Intent
+
+    /**
+     * El anuncio recompensado concedió el trato: **limpia todas las fichas 2 y 4** y
+     * continúa la corrida. La oferta es de una sola vez por sesión de juego (al usarla
+     * no se vuelve a ofrecer, ni siquiera en una partida nueva).
+     */
+    data object Revive : Neon2048Intent
+
+    /** Se rechazó la oferta de revivir (o el anuncio no se completó): fin de partida. */
+    data object DeclineRevive : Neon2048Intent
 
     /**
      * Tras alcanzar 2048, el jugador elige seguir jugando: cierra el overlay y

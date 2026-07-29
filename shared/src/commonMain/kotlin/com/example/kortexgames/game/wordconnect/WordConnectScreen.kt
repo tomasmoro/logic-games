@@ -70,6 +70,7 @@ import com.example.kortexgames.game.GameMotif
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.GameIntroScreen
+import com.example.kortexgames.game.GameHelpContent
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.LevelStripState
@@ -165,6 +166,7 @@ fun WordConnectScreen(graph: AppGraph, onExit: () -> Unit) {
     if (state.phase == LeveledGamePhase.LEVEL_SELECT) {
         var selectedLevel by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
         GameIntroScreen(
+            help = GameHelpContent.wordConnect,
             title = "Palabras Conectadas",
             motif = GameMotif.WORD_WHEEL,
             description = "Une las letras de la rueda arrastrando el dedo para formar palabras. " +
@@ -260,7 +262,7 @@ fun WordConnectScreen(graph: AppGraph, onExit: () -> Unit) {
             onResume = { vm.onIntent(WordConnectIntent.Resume) },
             onExit = onExit,
             gameTitle = "Palabras Conectadas",
-            helpText = "Une las letras de la rueda arrastrando el dedo para formar palabras y descubre todas las del panel.",
+            help = GameHelpContent.wordConnect,
             accent = accent,
         )
     }

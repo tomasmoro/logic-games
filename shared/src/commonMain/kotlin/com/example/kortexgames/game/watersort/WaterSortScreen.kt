@@ -74,6 +74,7 @@ import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.ArcadeBrickBackground
 import com.example.kortexgames.ui.components.GameIntroScreen
+import com.example.kortexgames.game.GameHelpContent
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
@@ -174,6 +175,7 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
     if (state.phase == LeveledGamePhase.LEVEL_SELECT) {
         var selectedLevel by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
         GameIntroScreen(
+            help = GameHelpContent.waterSort,
             title = "Ordena las Pociones",
             description = "Vierte colores iguales hasta dejar cada tubo de un solo color.",
             accent = CategoryPalette.Logic,
@@ -458,7 +460,7 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
             onResume = { vm.onIntent(WaterSortIntent.Resume) },
             onExit = onExit,
             gameTitle = "Ordena las Pociones",
-            helpText = "Vierte colores iguales hasta dejar cada tubo de un solo color.",
+            help = GameHelpContent.waterSort,
             accent = CategoryPalette.Logic,
         )
     }

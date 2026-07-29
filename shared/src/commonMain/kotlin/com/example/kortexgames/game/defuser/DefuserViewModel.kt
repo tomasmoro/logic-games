@@ -103,6 +103,9 @@ class DefuserViewModel(
             is DefuserIntent.ToggleFlag -> onToggleFlag(intent.position)
             DefuserIntent.Revive -> onRevive()
             DefuserIntent.DeclineRevive -> onDeclineRevive()
+            DefuserIntent.RequestScan -> onRequestScan()
+            DefuserIntent.ConfirmScan -> onConfirmScan()
+            DefuserIntent.CancelScan -> onCancelScan()
             DefuserIntent.Pause -> pause()
             DefuserIntent.Resume -> resume()
             is DefuserIntent.Tick -> onTick(intent.deltaMillis)
@@ -154,6 +157,7 @@ class DefuserViewModel(
                 minesArmed = saved.minesArmed,
                 elapsedMs = saved.elapsedMs,
                 difficulty = saved.difficulty,
+                scanUsesRemaining = saved.scanUsesRemaining,
             )
         }
         if (saved.minesArmed) startLoop()
@@ -207,6 +211,7 @@ class DefuserViewModel(
             elapsedMs = s.elapsedMs,
             difficulty = s.difficulty,
             reviveOffered = reviveOffered,
+            scanUsesRemaining = s.scanUsesRemaining,
         )
         viewModelScope.launch {
             savedGameState.save(GameIds.NEON_DEFUSER, Json.encodeToString(saved))
@@ -279,7 +284,16 @@ class DefuserViewModel(
      */
     private fun onReveal(position: CellPosition) {
         val s = currentState
-        if (s.status != GameStatus.RUNNING || s.awaitingRevive) return
+        // Modo escáner: el toque inspecciona la celda en vez de jugarla (ver
+        // [onScanReveal]). Se comprueba ANTES de los guardas de abajo porque durante
+        // el escaneo la partida sigue en RUNNING y es justo cuando debe interceptar.
+        if (s.scanning) {
+            onScanReveal(position)
+            return
+        }
+        // Se ignora el toque mientras se decide revivir o mientras corre el anuncio
+        // del escáner: en ambos casos hay un anuncio/overlay por encima del tablero.
+        if (s.status != GameStatus.RUNNING || s.awaitingRevive || s.awaitingScanAd) return
         val target = s.board.cellAt(position) ?: return
         if (target.state != MineCellState.HIDDEN) return
 
@@ -324,7 +338,9 @@ class DefuserViewModel(
      */
     private fun onToggleFlag(position: CellPosition) {
         val s = currentState
-        if (s.status != GameStatus.RUNNING || s.awaitingRevive) return
+        // Sin escudos mientras corre el anuncio del escáner o se está eligiendo celda
+        // a inspeccionar: en modo escáner el toque prolongado no debe marcar nada.
+        if (s.status != GameStatus.RUNNING || s.awaitingRevive || s.awaitingScanAd || s.scanning) return
         val cell = s.board.cellAt(position) ?: return
         if (cell.state == MineCellState.REVEALED || cell.isDefused) return
 
@@ -533,6 +549,95 @@ class DefuserViewModel(
         pendingMine = null
         setState { copy(awaitingRevive = false) }
         loseGame(currentState.board)
+    }
+
+    // ---------------------------------------------------------------------------
+    // Escáner de minas (rewarded): inspeccionar una celda a elección
+    // ---------------------------------------------------------------------------
+
+    /**
+     * El jugador pulsó el botón del escáner: solicita el anuncio recompensado que le
+     * dará una inspección. Aquí solo se marca [DefuserUiState.awaitingScanAd] para que
+     * la UI lance el rewarded (mismo patrón directo que la pista de Neon Sudoku, sin
+     * overlay intermedio: pulsar el botón YA es la confirmación). Revalida
+     * [DefuserUiState.canRequestScan] para que un doble toque o un estado inválido no
+     * cuele una segunda petición. NO descuenta usos todavía: el uso se cobra solo si
+     * el anuncio se ve completo ([onConfirmScan]).
+     */
+    private fun onRequestScan() {
+        if (!currentState.canRequestScan) return
+        setState { copy(awaitingScanAd = true) }
+    }
+
+    /**
+     * El anuncio del escáner se vio completo: se descuenta un uso y se entra en **modo
+     * selección** ([DefuserUiState.scanning]). A partir de aquí, el próximo
+     * [DefuserIntent.RevealCell] sobre una celda oculta la inspecciona ([onScanReveal]).
+     * El cronómetro sigue corriendo (igual que con la pista de Neon Sudoku): la ayuda
+     * cuesta un anuncio, no congela la partida.
+     */
+    private fun onConfirmScan() {
+        if (!currentState.awaitingScanAd) return
+        setState {
+            copy(
+                awaitingScanAd = false,
+                scanning = true,
+                scanUsesRemaining = (scanUsesRemaining - 1).coerceAtLeast(0),
+            )
+        }
+        sendEffect(DefuserEffect.PlaySound.ScanArmed)
+        sendEffect(DefuserEffect.Vibrate.Light)
+    }
+
+    /**
+     * Cancela el escáner. Cubre dos casos con la misma limpieza de estado:
+     *  - El anuncio se cerró antes de recompensar o no había disponible: se estaba en
+     *    [DefuserUiState.awaitingScanAd] y **no** se llegó a descontar uso.
+     *  - El jugador abandonó el modo selección tras ver el anuncio: se estaba en
+     *    [DefuserUiState.scanning] y el uso ya se gastó (el anuncio se vio); no se
+     *    reembolsa, porque la recompensa —la inspección— ya se concedió aunque no la
+     *    aprovechara.
+     */
+    private fun onCancelScan() {
+        if (!currentState.awaitingScanAd && !currentState.scanning) return
+        setState { copy(awaitingScanAd = false, scanning = false) }
+    }
+
+    /**
+     * Inspecciona la celda [position] elegida por el jugador en modo escáner. Solo
+     * actúa sobre celdas **ocultas** (una ya revelada no tiene nada que inspeccionar,
+     * y una con escudo ya es una sospecha del propio jugador): un toque sobre otra
+     * cosa se ignora y el modo selección sigue activo para reintentar.
+     *
+     * Dos desenlaces, ambos cierran el modo selección:
+     *  - **Mina:** queda neutralizada —escudo permanente [MineCell.isDefused]— con la
+     *    misma mecánica que [onRevive] (no puede volver a explotar ni desmarcarse),
+     *    así el jugador convierte un anuncio en una amenaza retirada del tablero.
+     *  - **Segura:** se abre con la cascada normal ([revealCascade]); si con eso se
+     *    despejan todas las celdas seguras, es victoria, igual que un toque normal.
+     */
+    private fun onScanReveal(position: CellPosition) {
+        val target = currentState.board.cellAt(position)
+        if (target == null || target.state != MineCellState.HIDDEN) return
+
+        setState { copy(scanning = false) }
+
+        if (target.hasMine) {
+            // Misma neutralización que revivir: escudo permanente que ya no mata.
+            val defused = currentState.board.replacing(
+                target.copy(state = MineCellState.FLAGGED, isDefused = true),
+            )
+            setState { copy(board = defused) }
+            sendEffect(DefuserEffect.PlaySound.ScanMine)
+            sendEffect(DefuserEffect.Vibrate.Medium)
+        } else {
+            val revealedBoard = revealCascade(currentState.board, position)
+            val newlyRevealed = revealedBoard.revealedCount - currentState.board.revealedCount
+            setState { copy(board = revealedBoard) }
+            sendEffect(if (newlyRevealed > 1) DefuserEffect.PlaySound.Cascade else DefuserEffect.PlaySound.Reveal)
+            sendEffect(DefuserEffect.Vibrate.Light)
+            if (revealedBoard.isCleared) win(revealedBoard)
+        }
     }
 
     /**

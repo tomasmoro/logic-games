@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
+import kotlin.concurrent.Volatile
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -69,7 +70,7 @@ fun interface InterstitialAdPresenter {
  *
  *  - **El contador corre desde que la app entra a primer plano**, NO solo mientras se
  *    juega. Se pausa al pasar a background ([onAppBackground]) y se reanuda al volver
- *    ([onAppForeground]). Así los 3 min ([interval]) cuentan tiempo real de uso.
+ *    ([onAppForeground]). Así los 7 min ([interval]) cuentan tiempo real de uso.
  *  - **Nunca se interrumpe la partida.** Al cruzar el umbral NO se muestra el anuncio
  *    de inmediato: se marca uno "pendiente" y se cobra en el próximo **breakpoint**
  *    natural ([onAdBreakpoint]) — salir de un juego o avanzar/terminar de nivel — donde
@@ -91,7 +92,7 @@ fun interface InterstitialAdPresenter {
 class AdManager(
     private val scope: CoroutineScope,
     private val isPremium: () -> Boolean,
-    private val interval: Duration = 3.minutes,
+    private val interval: Duration = 7.minutes,
     private val tick: Duration = 1.seconds,
 ) {
     private val _adEvents = MutableSharedFlow<AdEvent>(extraBufferCapacity = 1)
@@ -115,22 +116,42 @@ class AdManager(
      * true mientras la app está en primer plano. Es la **puerta del contador**: el
      * tiempo solo se acumula en foreground (el usuario está usando la app). Arranca en
      * `true` porque el grafo se construye cuando la app ya está abierta.
+     *
+     * `@Volatile`: lo escribe el hilo de UI (lifecycle de la Activity) y lo lee el loop
+     * en `Dispatchers.Default`; sin la barrera de memoria el loop podría no ver el cambio.
      */
+    @Volatile
     private var foreground: Boolean = true
 
     /**
      * Hay un intersticial "debiendo": el contador cruzó el umbral pero aún no hubo un
      * breakpoint seguro donde mostrarlo. Es un booleano (no una cola): por larga que sea
      * la sesión sin breakpoints, solo se debe UN anuncio, nunca una ráfaga acumulada.
+     *
+     * `@Volatile`: lo pone el loop (Default) y lo leen/limpian el loop y el hilo de UI
+     * (onAdBreakpoint / showInterstitialAd); la visibilidad entre hilos es imprescindible.
      */
+    @Volatile
     private var pendingInterstitial: Boolean = false
 
     /**
      * Un intersticial ya está en curso (emitido/mostrándose). Evita disparar dos
      * anuncios solapados si llegan breakpoints seguidos antes de que el primero cierre.
      */
+    @Volatile
     private var showingInterstitial: Boolean = false
 
+    /**
+     * Petición de reinicio de la cadencia tras mostrar un anuncio. La pone el hilo de UI
+     * ([showInterstitialAd]) y la **consume el loop**, que así queda como ÚNICO escritor
+     * de [accumulated]: evita la carrera lectura-modificación-escritura (y el problema de
+     * visibilidad) que había al poner `accumulated = 0` desde otro hilo — esa era la
+     * causa de que "el temporizador no se reseteara" y el anuncio saliera en cada breakpoint.
+     */
+    @Volatile
+    private var resetRequested: Boolean = false
+
+    /** Solo lo muta el loop (ver [resetRequested]); no se escribe desde otros hilos. */
     private var accumulated: Duration = Duration.ZERO
     private var loopJob: Job? = null
 
@@ -149,6 +170,16 @@ class AdManager(
             val now = timeSource.markNow()
             val elapsed = (now - lastMark)
             lastMark = now
+
+            // Reinicio pedido tras mostrar un anuncio: arranca una cadencia nueva y limpia
+            // (descarta el tiempo transcurrido durante el anuncio). Es el único punto donde
+            // `accumulated` vuelve a cero por un anuncio, garantizando un solo escritor.
+            if (resetRequested) {
+                resetRequested = false
+                accumulated = Duration.ZERO
+                pendingInterstitial = false
+                continue
+            }
 
             // Premium: nunca acumula ni debe anuncios; se resetea por si cambió de plan.
             if (isPremium()) {
@@ -232,7 +263,9 @@ class AdManager(
         } finally {
             pendingInterstitial = false
             showingInterstitial = false
-            accumulated = Duration.ZERO       // reinicia la cadencia tras mostrar
+            // El reinicio de `accumulated` lo hace el loop (único escritor) al consumir
+            // esta bandera; así la cadencia se reinicia de verdad tras cada anuncio.
+            resetRequested = true
         }
     }
 
@@ -253,8 +286,11 @@ class AdManager(
         return rewardedAdPresenter?.show() ?: RewardResult.UNAVAILABLE
     }
 
-    /** Reinicia el contador (p. ej. tras mostrar un anuncio manualmente). */
-    fun reset() { accumulated = Duration.ZERO }
+    /**
+     * Reinicia el contador (p. ej. tras mostrar un anuncio manualmente). Se hace vía la
+     * bandera para respetar el "único escritor" de [accumulated] (seguro desde cualquier hilo).
+     */
+    fun reset() { resetRequested = true }
 
     /** Tiempo restante hasta que se deba el próximo anuncio (útil para debug/telemetría). */
     fun timeUntilNextAd(): Duration = (interval - accumulated).coerceAtLeast(Duration.ZERO)

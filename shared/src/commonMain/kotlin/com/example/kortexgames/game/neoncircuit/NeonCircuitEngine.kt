@@ -84,6 +84,14 @@ class NeonCircuitEngine(
      */
     private var cutCount = 0
 
+    /**
+     * ¿Ya se mostró en este nivel el aviso de "conecta todo Y rellena el tablero"?
+     * Se avisa UNA sola vez por nivel: el primer momento en que el jugador une
+     * todos los pares pero deja huecos vacíos (cree que ganó pero falta llenar).
+     * Repetirlo en cada reintento sería ruido; la regla se aprende con verla una vez.
+     */
+    private var fillHintShown = false
+
     /** Arranca el nivel elegido en el selector (o el siguiente desde el resultado). */
     fun startAtLevel(level: Int) {
         currentLevel = level.coerceAtLeast(1)
@@ -93,6 +101,7 @@ class NeonCircuitEngine(
     override fun onStart() {
         val level = NeonCircuitLevels.forNumber(currentLevel)
         cutCount = 0
+        fillHintShown = false
         _state.value = NeonCircuitGameState.from(level)
     }
 
@@ -119,6 +128,31 @@ class NeonCircuitEngine(
             put(color, WirePath(color, listOf(cell)))
         }
         _state.value = s.copy(paths = newPaths, activeColor = color)
+        _events.trySend(NeonCircuitEvent.NodeGrabbed)
+    }
+
+    /**
+     * El jugador posó el dedo sobre una celda ya cableada de [color] (no un nodo)
+     * para **retomar** ese trazo a medias. Se recorta el cable hasta [cell] —que
+     * pasa a ser la nueva punta— y se reactiva el canal, para poder seguir
+     * tendiéndolo desde ahí sin reempezar desde el nodo.
+     *
+     * Recortar en el punto agarrado (en vez de solo continuar desde la punta)
+     * unifica dos gestos en uno: agarrar por la punta deja el cable intacto (la
+     * sublista es el cable entero) y agarrar por un punto intermedio descarta el
+     * tramo sobrante — igual que en Flow. Si [cell] no pertenece al cable de
+     * [color] (estado ya cambiado), se ignora para no trazar "en el aire".
+     */
+    fun onPathResumed(color: WireColor, cell: GridPosition) {
+        val s = _state.value
+        if (status.value != GameStatus.RUNNING || s.solved) return
+        val path = s.paths[color] ?: return
+        val i = path.cells.indexOf(cell)
+        if (i < 0) return
+
+        // subList(0, i + 1): conserva de origen a la celda agarrada (incluida).
+        val resumed = path.copy(cells = path.cells.subList(0, i + 1).toList())
+        _state.value = s.copy(paths = s.paths + (color to resumed), activeColor = color)
         _events.trySend(NeonCircuitEvent.NodeGrabbed)
     }
 
@@ -182,9 +216,17 @@ class NeonCircuitEngine(
             // partida donde solo los pares están unidos pero quedan huecos libres.
             // El tablero lleno sigue influyendo en el score (bonus) pero aquí lo
             // hacemos parte de la condición de fin para exigir soluciones "completas".
-            if (next.connectedCount == next.pairCount && next.isBoardFull) {
-                _state.value = next.copy(solved = true, activeColor = null)
-                finish()
+            if (next.connectedCount == next.pairCount) {
+                if (next.isBoardFull) {
+                    _state.value = next.copy(solved = true, activeColor = null)
+                    finish()
+                } else if (!fillHintShown) {
+                    // Unió todos los pares pero quedan celdas vacías: no es victoria.
+                    // Se avisa (una vez, ver [fillHintShown]) para que entienda que
+                    // debe rellenar TODO el tablero, no solo conectar los pares.
+                    fillHintShown = true
+                    _events.trySend(NeonCircuitEvent.BoardNotFull)
+                }
             }
         }
     }
@@ -259,4 +301,10 @@ sealed interface NeonCircuitEvent {
 
     /** Un par quedó conectado: la UI hace palpitar ese cable. */
     data class PairConnected(val color: WireColor) : NeonCircuitEvent
+
+    /**
+     * Todos los pares están conectados pero el tablero NO está lleno: la UI muestra
+     * el cartel que explica que hay que rellenar todas las casillas para ganar.
+     */
+    data object BoardNotFull : NeonCircuitEvent
 }

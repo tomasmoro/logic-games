@@ -39,6 +39,7 @@ import com.example.kortexgames.game.GameMotif
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.ui.components.ArcadeBrickBackground
 import com.example.kortexgames.ui.components.GameIntroScreen
+import com.example.kortexgames.game.GameHelpContent
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.clickableNoRipple
@@ -82,6 +83,7 @@ fun SequenceMemoryScreen(graph: AppGraph, onExit: () -> Unit) {
     // además, que la secuencia se reproduzca (con sonido) antes de que el jugador empiece.
     if (state.status == GameStatus.IDLE) {
         GameIntroScreen(
+            help = GameHelpContent.sequenceMemory,
             title = "Memoria de Secuencias",
             description = "Observa la secuencia de notas y repítela en orden. Cada acierto la hace más larga.",
             accent = CategoryPalette.Memory,
@@ -183,7 +185,7 @@ fun SequenceMemoryScreen(graph: AppGraph, onExit: () -> Unit) {
             onResume = { vm.onIntent(SequenceMemoryIntent.Resume) },
             onExit = onExit,
             gameTitle = "Memoria de Secuencias",
-            helpText = "Observa la secuencia de notas y repítela en orden. Cada acierto la hace más larga.",
+            help = GameHelpContent.sequenceMemory,
             accent = CategoryPalette.Memory,
         )
     }

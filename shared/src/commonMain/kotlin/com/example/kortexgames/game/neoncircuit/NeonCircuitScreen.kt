@@ -1,6 +1,7 @@
 package com.example.kortexgames.game.neoncircuit
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -10,17 +11,23 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material3.Icon
@@ -35,8 +42,10 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -46,6 +55,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -57,12 +67,15 @@ import com.example.kortexgames.game.GameMotif
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.GameIntroScreen
+import com.example.kortexgames.game.GameHelpContent
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.LevelStripState
+import com.example.kortexgames.ui.components.NeonIcon
 import com.example.kortexgames.ui.components.SpaceBackdrop
 import com.example.kortexgames.ui.components.bounceClick
+import com.example.kortexgames.ui.components.softGlow
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -105,6 +118,7 @@ private fun WireColor.toAccent(): Color = when (this) {
     WireColor.VIOLET -> LogicColors.Violet
     WireColor.BLUE -> LogicColors.Blue
     WireColor.CORAL -> LogicColors.Coral
+    WireColor.LIME -> LogicColors.Lime
 }
 
 /**
@@ -137,6 +151,10 @@ fun NeonCircuitScreen(graph: AppGraph, onExit: () -> Unit) {
     val pulse = remember { Animatable(0f) }
     var pulseColor by remember { mutableStateOf<WireColor?>(null) }
 
+    // Cartel "rellena todo el tablero": estado LOCAL de la UI (el Effect solo lo
+    // abre; cerrarlo con la X es asunto de la pantalla, no del motor).
+    var showFillHint by remember { mutableStateOf(false) }
+
     // Único punto donde los Effects se vuelven sonido/vibración/animación.
     LaunchedEffect(Unit) {
         vm.effect.collect { effect ->
@@ -149,6 +167,7 @@ fun NeonCircuitScreen(graph: AppGraph, onExit: () -> Unit) {
                     // spring poco amortiguado = un par de latidos antes de calmarse.
                     pulse.animateTo(0f, spring(dampingRatio = 0.42f, stiffness = 380f))
                 }
+                NeonCircuitEffect.ShowFillHint -> showFillHint = true
             }
         }
     }
@@ -157,6 +176,7 @@ fun NeonCircuitScreen(graph: AppGraph, onExit: () -> Unit) {
         // Arranca en la frontera (récord + 1) y se resetea si el récord sube.
         var selectedLevel by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
         GameIntroScreen(
+            help = GameHelpContent.neonCircuit,
             title = "Neon Circuit Flow",
             motif = GameMotif.CIRCUIT_FLOW,
             description = "La placa está desconectada. Arrastra desde cada nodo y tiende un cable de luz hasta su gemelo del mismo color, sin que dos cables se crucen. Conéctalos todos para energizar el circuito.",
@@ -215,6 +235,13 @@ fun NeonCircuitScreen(graph: AppGraph, onExit: () -> Unit) {
             )
         }
 
+        // Cartel neón: se conectaron todos los pares pero faltan casillas por
+        // rellenar. Se dibuja al final del Box (encima del tablero) y su scrim
+        // intercepta los gestos para que no lleguen a la placa de debajo.
+        if (showFillHint) {
+            FillBoardHintDialog(onDismiss = { showFillHint = false })
+        }
+
         // Botón de pausa + menú (Reanudar / audio / ayuda / Salir), común a todos los juegos.
         GamePauseControls(
             status = state.status,
@@ -223,8 +250,8 @@ fun NeonCircuitScreen(graph: AppGraph, onExit: () -> Unit) {
             onPause = { vm.onIntent(NeonCircuitIntent.Pause) },
             onResume = { vm.onIntent(NeonCircuitIntent.Resume) },
             onExit = onExit,
-            gameTitle = "Neon Circuit Flow",
-            helpText = "Arrastra desde cada nodo y tiende un cable hasta su gemelo del mismo color, sin que dos cables se crucen. Conéctalos todos para energizar el circuito.",
+            gameTitle = "Conectores",
+            help = GameHelpContent.neonCircuit,
             accent = CategoryPalette.ProblemSolving,
         )
     }
@@ -348,9 +375,16 @@ private fun CircuitBoard(
                     detectDragGestures(
                         onDragStart = { offset ->
                             val cell = offsetToCell(offset)
-                            // Solo se arranca trazo si el dedo posó sobre un nodo.
-                            latestGame.nodeAt(cell)?.let { node ->
-                                onIntent(NeonCircuitIntent.StartPath(node.color, cell))
+                            val node = latestGame.nodeAt(cell)
+                            when {
+                                // Sobre un nodo → arranca (o reinicia) su trazo.
+                                node != null ->
+                                    onIntent(NeonCircuitIntent.StartPath(node.color, cell))
+                                // Sobre una celda ya cableada → retoma ese cable a
+                                // medias desde ahí (no obliga a reempezar del nodo).
+                                else -> latestGame.occupancy[cell]?.let { color ->
+                                    onIntent(NeonCircuitIntent.ResumePath(color, cell))
+                                }
                             }
                         },
                         onDrag = { change, _ ->
@@ -544,5 +578,186 @@ private fun DrawScope.drawNode(node: Node, cellPx: Float, connected: Boolean) {
             center = center,
             style = Stroke(width = 2.dp.toPx()),
         )
+    }
+}
+
+/**
+ * Cartel modal con estética neón que aparece cuando el jugador conectó todos los
+ * pares pero dejó celdas vacías: recuerda que la victoria exige **rellenar todo el
+ * tablero**, no solo unir los pares.
+ *
+ * El marco reutiliza el MISMO lenguaje que la tarjeta del "juego estrella" del Home
+ * ([com.example.kortexgames.ui.home] `StarGameCard`): halo que respira ([softGlow])
+ * + borde de degradado que late en opacidad, teñido con el color de la categoría
+ * del juego (Resolución de Problemas), para que el cartel se sienta parte del mismo
+ * sistema visual.
+ *
+ * Enseña la regla con un [ExampleBoard]: un 4×4 con 2 colores ya resuelto (pares
+ * conectados y tablero 100% cableado), para que se vea qué aspecto tiene una
+ * solución completa. Se cierra con la X (esquina superior) o tocando fuera del
+ * cartel; el scrim absorbe los gestos para que no lleguen a la placa de debajo.
+ */
+@Composable
+private fun FillBoardHintDialog(onDismiss: () -> Unit) {
+    val accent = CategoryPalette.ProblemSolving
+    val shape = RoundedCornerShape(28.dp)
+
+    // Borde que late en opacidad (idéntico a StarGameCard): da vida al neón sin
+    // mover el layout, sincronizado en espíritu con el brillo del softGlow.
+    val transition = rememberInfiniteTransition(label = "fillHintBorder")
+    val borderAlpha by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "borderAlpha",
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(LogicColors.BackgroundDark.copy(alpha = 0.78f))
+            // Tocar el scrim cierra el cartel y, sobre todo, impide que el gesto
+            // se filtre al tablero (la placa es un hermano anterior en el Box).
+            .pointerInput(Unit) { detectTapGestures { onDismiss() } },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(24.dp)
+                .widthIn(max = 380.dp)
+                .softGlow(color = accent, shape = shape, maxElevation = 24.dp)
+                .clip(shape)
+                .background(LogicColors.SurfaceDark)
+                .border(
+                    width = 2.dp,
+                    brush = Brush.horizontalGradient(
+                        listOf(
+                            accent.copy(alpha = borderAlpha),
+                            accent.copy(alpha = borderAlpha * 0.6f),
+                        ),
+                    ),
+                    shape = shape,
+                )
+                // Absorbe los toques dentro del cartel para que NO lo cierren
+                // (solo la X o el scrim de fuera lo hacen).
+                .pointerInput(Unit) { detectTapGestures { } }
+                .padding(22.dp),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = "¡Casi lo tienes!",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = LogicColors.OnDark,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = "Conectaste todos los pares, pero aún quedan casillas " +
+                        "vacías. Para energizar el circuito tienes que cubrir TODO " +
+                        "el tablero: no debe sobrar ninguna celda libre.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = LogicColors.OnDarkMuted,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(18.dp))
+                Text(
+                    text = "Así se ve un tablero resuelto",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = LogicColors.NeonCyan,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(10.dp))
+                ExampleBoard(modifier = Modifier.fillMaxWidth(0.54f))
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = "4×4 · 2 colores · pares conectados y sin huecos",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = LogicColors.OnDarkMuted,
+                    textAlign = TextAlign.Center,
+                )
+            }
+
+            // X de cierre, anclada en la esquina superior del marco.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .bounceClick(onClick = onDismiss)
+                    .padding(2.dp),
+            ) {
+                NeonIcon(
+                    icon = KortexIcons.Close,
+                    tint = LogicColors.OnDarkMuted,
+                    size = 22.dp,
+                    glow = false,
+                    contentDescription = "Cerrar",
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Miniatura de un nivel 4×4 ya resuelto (2 colores) para el cartel de ayuda:
+ * reutiliza EXACTAMENTE los mismos [drawBoardBackdrop]/[drawWire]/[drawNode] que
+ * la placa real, así el ejemplo se ve idéntico al juego. Los dos cables juntos
+ * cubren las 16 celdas (tablero lleno) y cada uno une su par de nodos.
+ */
+@Composable
+private fun ExampleBoard(modifier: Modifier = Modifier) {
+    val exampleGrid = 4
+
+    // Dos cables entrelazados que, unidos, cubren las 16 celdas. Se eligen tramos
+    // que NO dejan los cuatro nodos alineados (cada extremo cae en fila y columna
+    // distintas), para que el ejemplo se vea variado y no como dos franjas rectas.
+    val paths = remember {
+        listOf(
+            WirePath(
+                WireColor.CYAN,
+                listOf(
+                    GridPosition(0, 0), GridPosition(0, 1), GridPosition(1, 1), GridPosition(1, 0),
+                    GridPosition(2, 0), GridPosition(3, 0), GridPosition(3, 1), GridPosition(2, 1),
+                ),
+            ),
+            WirePath(
+                WireColor.MAGENTA,
+                listOf(
+                    GridPosition(2, 2), GridPosition(3, 2), GridPosition(3, 3), GridPosition(2, 3),
+                    GridPosition(1, 3), GridPosition(1, 2), GridPosition(0, 2), GridPosition(0, 3),
+                ),
+            ),
+        )
+    }
+    // Nodos = extremos de cada cable (los "puntos" que se conectan).
+    val nodes = remember {
+        paths.flatMap { path ->
+            listOf(Node(path.color, path.cells.first()), Node(path.color, path.cells.last()))
+        }
+    }
+
+    // Misma respiración lenta del halo que la placa real (cables conectados).
+    val glowTransition = rememberInfiniteTransition(label = "exampleGlow")
+    val glow by glowTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "glow",
+    )
+
+    BoxWithConstraints(modifier = modifier.aspectRatio(1f)) {
+        val cellPx = with(LocalDensity.current) { (maxWidth / exampleGrid).toPx() }
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawBoardBackdrop(exampleGrid, cellPx)
+            paths.forEach { drawWire(it, cellPx, widthBoost = 1f, connected = true, glowPulse = glow) }
+            nodes.forEach { drawNode(it, cellPx, connected = true) }
+        }
     }
 }

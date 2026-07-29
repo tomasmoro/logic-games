@@ -80,8 +80,13 @@ import kotlinx.coroutines.launch
  * @param onResume reanuda el juego (`vm.onIntent(...Resume)`).
  * @param onExit abandona la partida y vuelve a la lista (el `onExit` de la pantalla).
  * @param gameTitle nombre del juego, como subtítulo del menú (opcional).
- * @param helpText explicación de "cómo se juega"; si es `null`, se oculta la ayuda.
- *        Reutiliza la descripción de la antesala del juego.
+ * @param help diseño de ayuda "¿Cómo se juega?" ([GameHelp], almacenados en
+ *        [com.example.kortexgames.game.GameHelpContent]). Si no es null, el menú muestra una
+ *        fila que abre la pantalla de ayuda genérica ([GameHelpSheet]) por encima del propio
+ *        menú. Es la forma preferida; tiene prioridad sobre [helpText].
+ * @param helpText **(legado)** explicación de "cómo se juega" en una sola cadena, que se
+ *        muestra plegable en el menú. Se usa solo si [help] es null; si ambos son null, no
+ *        hay ayuda. Preferir [help] para el nuevo diseño estructurado.
  * @param accent color de acento de la categoría (halo del botón, secciones del menú).
  * @param exitKeepsProgress si el juego guarda la partida en curso al salir (ver
  *        [com.example.kortexgames.game.ResumableGameEngine] / [GameExitGuard]): cuando
@@ -98,10 +103,15 @@ fun GamePauseControls(
     onExit: () -> Unit,
     modifier: Modifier = Modifier,
     gameTitle: String? = null,
+    help: GameHelp? = null,
     helpText: String? = null,
     accent: Color = LogicColors.NeonCyan,
     exitKeepsProgress: Boolean = false,
 ) {
+    // Estado de la hoja de ayuda genérica (solo cuando se inyecta [help]): se abre desde el
+    // menú de pausa y se dibuja como última capa para quedar por encima de él.
+    var showHelp by remember { mutableStateOf(false) }
+
     Box(modifier = modifier.fillMaxSize()) {
         // Botón de pausa: solo mientras se juega (en PAUSED lo sustituye el menú, y en
         // IDLE/FINISHED mandan la antesala / el overlay de fin de partida).
@@ -124,12 +134,23 @@ fun GamePauseControls(
             settings = settings,
             audio = audio,
             gameTitle = gameTitle,
+            hasRichHelp = help != null,
+            onOpenHelp = { showHelp = true },
             helpText = helpText,
             accent = accent,
             onResume = onResume,
             onExit = onExit,
             exitKeepsProgress = exitKeepsProgress,
         )
+
+        // Hoja de ayuda genérica por encima del menú de pausa (su propio scrim lo tapa).
+        if (help != null) {
+            GameHelpSheet(
+                help = help,
+                visible = showHelp,
+                onDismiss = { showHelp = false },
+            )
+        }
     }
 }
 
@@ -190,6 +211,8 @@ private fun BoxScope.PauseMenu(
     settings: SettingsRepository,
     audio: AudioAndHapticManager,
     gameTitle: String?,
+    hasRichHelp: Boolean,
+    onOpenHelp: () -> Unit,
     helpText: String?,
     accent: Color,
     onResume: () -> Unit,
@@ -318,8 +341,12 @@ private fun BoxScope.PauseMenu(
                 )
             }
 
-            // --- Ayuda (cómo se juega), plegable -----------------------------------
-            if (helpText != null) {
+            // --- Ayuda (cómo se juega) ---------------------------------------------
+            // Con diseño estructurado ([help]): fila que abre la pantalla de ayuda genérica.
+            // Sin él, respaldo de legado: texto plegable en línea ([helpText]).
+            if (hasRichHelp) {
+                HelpOpenRow(onClick = onOpenHelp, accent = accent)
+            } else if (helpText != null) {
                 HelpSection(helpText = helpText, accent = accent)
             }
 
@@ -435,6 +462,41 @@ private fun RowScope.AudioToggle(
     ) {
         NeonIcon(icon = if (enabled) iconOn else iconOff, tint = tint, size = 26.dp, glow = enabled)
         Text(label, style = MaterialTheme.typography.bodyMedium, color = tint)
+    }
+}
+
+/**
+ * Fila "¿Cómo se juega?" que **abre** la pantalla de ayuda genérica ([GameHelpSheet]) por
+ * encima del menú. Se usa cuando el juego inyecta un [GameHelp] estructurado; a diferencia
+ * de [HelpSection] no despliega texto en línea, sino que lanza la hoja completa (con arte,
+ * pasos y consejos). La flecha apunta a la derecha como "ir a".
+ */
+@Composable
+private fun HelpOpenRow(onClick: () -> Unit, accent: Color) {
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(LogicColors.SurfaceVariantDark)
+            .bounceClick(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        NeonIcon(icon = KortexIcons.Help, tint = accent, size = 22.dp, glow = false)
+        Text(
+            "¿Cómo se juega?",
+            style = MaterialTheme.typography.titleMedium,
+            color = LogicColors.OnDark,
+            modifier = Modifier.weight(1f),
+        )
+        NeonIcon(
+            icon = KortexIcons.ChevronRight,
+            tint = LogicColors.OnDarkMuted,
+            size = 22.dp,
+            glow = false,
+        )
     }
 }
 

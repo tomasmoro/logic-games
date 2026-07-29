@@ -57,6 +57,7 @@ import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.GameIntroScreen
+import com.example.kortexgames.game.GameHelpContent
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
@@ -143,6 +144,7 @@ fun ScrewGameScreen(graph: AppGraph, onExit: () -> Unit) {
         // Arranca en la frontera (récord + 1) y se resetea si el récord sube.
         var selectedLevel by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
         GameIntroScreen(
+            help = GameHelpContent.screws,
             title = "Tornillos Neón",
             description = "Desatornilla y recoloca los pernos para soltar todas las placas. Las placas tapan agujeros… y cuelgan si les queda un solo tornillo.",
             accent = CategoryPalette.SpatialVision,
@@ -206,7 +208,7 @@ fun ScrewGameScreen(graph: AppGraph, onExit: () -> Unit) {
             onResume = { vm.onIntent(ScrewGameIntent.Resume) },
             onExit = onExit,
             gameTitle = "Tornillos Neón",
-            helpText = "Desatornilla y recoloca los pernos para soltar todas las placas. Las placas tapan agujeros… y cuelgan si les queda un solo tornillo.",
+            help = GameHelpContent.screws,
             accent = CategoryPalette.SpatialVision,
         )
     }

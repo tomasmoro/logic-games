@@ -51,6 +51,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -67,12 +68,14 @@ import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.GameExitGuard
 import com.example.kortexgames.ui.components.GameIntroScreen
+import com.example.kortexgames.game.GameHelpContent
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
 import com.example.kortexgames.ui.components.LevelStripState
 import com.example.kortexgames.ui.components.NeonIcon
 import com.example.kortexgames.ui.components.ResumeState
+import com.example.kortexgames.ui.components.ReviveAdOverlay
 import com.example.kortexgames.ui.components.SpaceBackdrop
 import com.example.kortexgames.ui.components.bounceClick
 import com.example.kortexgames.ui.components.collectPressGlow
@@ -87,6 +90,13 @@ import kotlin.math.sin
 // más ajustado sin que el tubo de neón se vea apretado.
 private val CellSize = 66.dp
 private val BankLetterSize = 60.dp
+// Separación horizontal entre teclas del banco. Constante compartida por la fila
+// y por el cálculo adaptativo de tamaño para que ambos midan lo mismo.
+private val BankLetterGap = 12.dp
+// Tamaño mínimo al que puede encoger una tecla cuando la fila más llena (hasta 6
+// letras) no cabe en el ancho disponible. Por debajo la letra se volvería ilegible;
+// preferimos ese piso a seguir achicando.
+private val BankLetterMinSize = 40.dp
 
 /**
  * Colores neón asignados por palabra. Cada slot recibe un color estable según su
@@ -136,6 +146,7 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
     if (state.phase == LeveledGamePhase.LEVEL_SELECT) {
         var selectedLevel by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
         GameIntroScreen(
+            help = GameHelpContent.crucigrama,
             title = "Crucigrama Neón",
             description = "Escribe palabras con el teclado inferior. Si una palabra es correcta, se coloca sola en su lugar dentro del crucigrama.",
             accent = CategoryPalette.Language,
@@ -234,12 +245,23 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
 
         FeedbackFlash(eventId = game.feedbackTick, result = game.lastOutcome)
 
+        // Pista a cambio de un anuncio recompensado (mismo overlay que "revivir", con
+        // copy/icono propios): al verlo se revela la pista de una palabra pendiente; si
+        // se rechaza o no hay anuncio, no se revela nada.
         if (showHintAd) {
-            HintAdOverlay(
-                onFinished = {
+            ReviveAdOverlay(
+                adManager = graph.adManager,
+                onRevive = {
                     showHintAd = false
                     vm.onIntent(CrucigramaNeonIntent.HintAdWatched)
                 },
+                onDecline = { showHintAd = false },
+                title = "¿Necesitas una pista?",
+                rewardLabel = "la pista de una palabra",
+                body = "Mira un anuncio y te revelamos la pista de una palabra pendiente.",
+                icon = KortexIcons.Hint,
+                accent = CategoryPalette.Language,
+                audio = graph.audio,
             )
         }
 
@@ -264,7 +286,7 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
             onResume = { vm.onIntent(CrucigramaNeonIntent.Resume) },
             onExit = exitWithSave,
             gameTitle = "Crucigrama Neón",
-            helpText = "Escribe palabras con el teclado inferior. Si una palabra es correcta, se coloca sola en su lugar dentro del crucigrama.",
+            help = GameHelpContent.crucigrama,
             accent = CategoryPalette.Language,
             exitKeepsProgress = true,
         )
@@ -602,39 +624,6 @@ private fun GridCell(
     }
 }
 
-@Composable
-private fun HintAdOverlay(onFinished: () -> Unit) {
-    LaunchedEffect(Unit) {
-        // Placeholder de anuncio: en producción se reemplaza por intersticial real.
-        delay(1300)
-        onFinished()
-    }
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.65f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            modifier = Modifier
-                .clip(RoundedCornerShape(20.dp))
-                .background(LogicColors.SurfaceDark)
-                .border(BorderStroke(1.dp, CategoryPalette.Language.copy(alpha = 0.6f)), RoundedCornerShape(20.dp))
-                .padding(horizontal = 22.dp, vertical = 18.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text("Anuncio", style = MaterialTheme.typography.titleLarge, color = LogicColors.OnDark, fontWeight = FontWeight.Black)
-            Text(
-                "Viendo anuncio para desbloquear una pista...",
-                style = MaterialTheme.typography.bodyMedium,
-                color = LogicColors.OnDarkMuted,
-                textAlign = TextAlign.Center,
-            )
-        }
-    }
-}
-
 /**
  * Teclado inferior de letras, **centrado**, con estética de tecla de juego. Las acciones
  * de borrado ya no viven aquí: se movieron junto a la palabra en curso (retroceso y
@@ -652,13 +641,30 @@ private fun LetterBank(
     ) {
         Text("LETRAS", style = MaterialTheme.typography.labelLarge, color = accent, fontWeight = FontWeight.Bold)
         val rows = remember(letters) { letters.chunked(6) }
-        rows.forEach { row ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-            ) {
-                row.forEach { letter ->
-                    LetterKey(letter = letter, accent = accent, onClick = { onTapLetter(letter) })
+        // Teclas por fila de la fila más llena: manda para el cálculo de tamaño,
+        // así todas las filas usan el mismo tamaño y la más llena entra completa.
+        val maxPerRow = rows.maxOfOrNull { it.size } ?: 0
+        // El tamaño de tecla se adapta al ancho disponible: parte de BankLetterSize
+        // y se encoge SOLO cuando la fila más llena no cabría (p. ej. 6 letras en
+        // pantallas angostas), para que nunca se corte la última letra. Con 5 o
+        // menos letras se mantiene el tamaño original.
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val keySize = if (maxPerRow > 0) {
+                ((maxWidth - BankLetterGap * (maxPerRow - 1)) / maxPerRow)
+                    .coerceIn(BankLetterMinSize, BankLetterSize)
+            } else {
+                BankLetterSize
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                rows.forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(BankLetterGap, Alignment.CenterHorizontally),
+                    ) {
+                        row.forEach { letter ->
+                            LetterKey(letter = letter, size = keySize, accent = accent, onClick = { onTapLetter(letter) })
+                        }
+                    }
                 }
             }
         }
@@ -670,13 +676,16 @@ private fun LetterBank(
  * encendido ([drawNeonTile]) con la letra dentro. Rebota con [bounceClick] al pulsar.
  */
 @Composable
-private fun LetterKey(letter: Char, accent: Color, onClick: () -> Unit) {
+private fun LetterKey(letter: Char, size: Dp, accent: Color, onClick: () -> Unit) {
     val shape = RoundedCornerShape(16.dp)
     val interaction = remember { MutableInteractionSource() }
     val pressGlow by interaction.collectPressGlow()
+    // La letra escala con la tecla (~40% del lado) para mantener la proporción
+    // original (24sp a 60dp) cuando el banco se encoge por falta de ancho.
+    val fontSize = (size.value * 0.4f).sp
     Box(
         modifier = Modifier
-            .size(BankLetterSize)
+            .size(size)
             .drawBehind {
                 drawNeonTile(accent, activeAmt = 0.85f, pressAmt = pressGlow, cornerRadius = 16.dp, sparks = false, baseMargin = 5.dp)
             }
@@ -687,6 +696,7 @@ private fun LetterKey(letter: Char, accent: Color, onClick: () -> Unit) {
         Text(
             text = letter.toString(),
             style = MaterialTheme.typography.headlineSmall,
+            fontSize = fontSize,
             color = LogicColors.OnDark,
             fontWeight = FontWeight.Black,
         )

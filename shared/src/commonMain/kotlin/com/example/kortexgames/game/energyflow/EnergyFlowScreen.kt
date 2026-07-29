@@ -56,6 +56,7 @@ import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.CitySkylineBackground
 import com.example.kortexgames.ui.components.GameIntroScreen
+import com.example.kortexgames.game.GameHelpContent
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
@@ -105,6 +106,7 @@ fun EnergyFlowScreen(graph: AppGraph, onExit: () -> Unit) {
     if (state.phase == LeveledGamePhase.LEVEL_SELECT) {
         var selectedLevel by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
         GameIntroScreen(
+            help = GameHelpContent.energyFlow,
             title = "Flujo de Energía",
             description = "Gira las piezas para llevar la energía de la batería a la bombilla.",
             accent = CategoryPalette.SpatialVision,
@@ -259,7 +261,7 @@ fun EnergyFlowScreen(graph: AppGraph, onExit: () -> Unit) {
             onResume = { vm.onIntent(EnergyFlowIntent.Resume) },
             onExit = onExit,
             gameTitle = "Flujo de Energía",
-            helpText = "Gira las piezas para llevar la energía de la batería a la bombilla.",
+            help = GameHelpContent.energyFlow,
             accent = CategoryPalette.SpatialVision,
         )
     }

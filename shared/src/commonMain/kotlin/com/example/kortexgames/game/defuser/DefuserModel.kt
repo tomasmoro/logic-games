@@ -298,6 +298,15 @@ object DefuserConfig {
      *  convertir el juego en una contrarreloj (no se pierde por tiempo, solo baja
      *  el puntaje final). Mismo criterio que Neon Sudoku. */
     const val TIME_SCORE_PENALTY_PER_SEC = 2
+
+    /**
+     * Usos del **escáner de minas** por partida: cuántas celdas puede inspeccionar el
+     * jugador a cambio de un anuncio (ver [DefuserIntent.RequestScan]). Se limita para
+     * que la ayuda no trivialice la deducción —el corazón del Buscaminas— y para dar
+     * un tope claro a la monetización por partida. Un número fijo (no ilimitado) fue
+     * decisión de producto.
+     */
+    const val SCAN_MAX_USES = 3
 }
 
 /**

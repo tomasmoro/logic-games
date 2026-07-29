@@ -52,6 +52,7 @@ import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameMotif
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.ui.components.GameIntroScreen
+import com.example.kortexgames.game.GameHelpContent
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.SpaceBackdrop
@@ -91,6 +92,7 @@ fun HypergateScreen(graph: AppGraph, onExit: () -> Unit) {
     // Antesala: mientras no arranca (IDLE) se muestra la intro y NO corre el bucle de física.
     if (state.status == GameStatus.IDLE) {
         GameIntroScreen(
+            help = GameHelpContent.hypergate,
             title = "Hypergate",
             motif = GameMotif.HYPERGATE,
             description = "Toca en cualquier parte para alternar la polaridad del escudo. Haz que su color coincida con cada proyectil justo antes del impacto: iguala para absorber, falla y chocarás.",
@@ -248,7 +250,7 @@ fun HypergateScreen(graph: AppGraph, onExit: () -> Unit) {
             onResume = { vm.onIntent(HypergateIntent.Resume) },
             onExit = onExit,
             gameTitle = "Hypergate",
-            helpText = "Toca en cualquier parte para alternar la polaridad del escudo. Haz que su color coincida con cada proyectil justo antes del impacto: iguala para absorber, falla y chocarás.",
+            help = GameHelpContent.hypergate,
             accent = CategoryPalette.Reflexes,
         )
     }

@@ -493,7 +493,7 @@ object CrucigramaNeonGenerator {
                 "CAER" to "Desplazarse un cuerpo de arriba hacia abajo por la acción de su propio peso",
 
             ),
-            extras = listOf("RARA", "ARAR", "ERA", "RECAER", "RECREA", "CERCA"),
+            extras = listOf("RARA", "ARAR", "ERA", "RECAER", "RECREA", "CERCA", "CARA"),
         ),
         LevelDef(
             listOf(

@@ -60,6 +60,7 @@ import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.GameIntroScreen
+import com.example.kortexgames.game.GameHelpContent
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
@@ -130,6 +131,7 @@ fun StarportScreen(graph: AppGraph, onExit: () -> Unit) {
         // Arranca en la frontera (récord + 1) y se resetea si el récord sube.
         var selectedLevel by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
         GameIntroScreen(
+            help = GameHelpContent.starport,
             title = "Neon Starport Escape",
             description = "El hangar está colapsado. Desliza cada nave a lo largo de su eje y despeja el camino para que la nave insignia escape por la esclusa.",
             accent = CategoryPalette.Logic,
@@ -193,7 +195,7 @@ fun StarportScreen(graph: AppGraph, onExit: () -> Unit) {
             onResume = { vm.onIntent(StarportIntent.Resume) },
             onExit = onExit,
             gameTitle = "Neon Starport Escape",
-            helpText = "Desliza cada nave a lo largo de su eje y despeja el camino para que la nave insignia escape por la esclusa.",
+            help = GameHelpContent.starport,
             accent = CategoryPalette.Logic,
         )
     }

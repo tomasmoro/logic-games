@@ -57,6 +57,7 @@ import com.example.kortexgames.game.GameMotif
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.ui.components.CitySkylineBackground
 import com.example.kortexgames.ui.components.GameIntroScreen
+import com.example.kortexgames.game.GameHelpContent
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
@@ -111,6 +112,7 @@ fun BubbleMathScreen(graph: AppGraph, onExit: () -> Unit) {
     // Antesala del juego: mientras no ha arrancado (IDLE) se muestra la intro.
     if (state.status == GameStatus.IDLE) {
         GameIntroScreen(
+            help = GameHelpContent.bubbleMath,
             title = "Burbujas de Cálculo",
             description = "Revienta las burbujas con el resultado correcto antes de que toquen el suelo; encadena aciertos para subir el combo.",
             accent = CategoryPalette.MentalMath,
@@ -227,7 +229,7 @@ fun BubbleMathScreen(graph: AppGraph, onExit: () -> Unit) {
             onResume = { vm.onIntent(BubbleMathIntent.Resume) },
             onExit = onExit,
             gameTitle = "Burbujas de Cálculo",
-            helpText = "Revienta las burbujas con el resultado correcto antes de que toquen el suelo; encadena aciertos para subir el combo.",
+            help = GameHelpContent.bubbleMath,
             accent = CategoryPalette.MentalMath,
         )
     }

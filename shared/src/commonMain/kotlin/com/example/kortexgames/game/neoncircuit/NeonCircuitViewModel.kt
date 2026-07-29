@@ -54,6 +54,7 @@ class NeonCircuitViewModel(
         when (intent) {
             is NeonCircuitIntent.PlayLevel -> playLevel(intent.level)
             is NeonCircuitIntent.StartPath -> engine.onPathStarted(intent.color, intent.cell)
+            is NeonCircuitIntent.ResumePath -> engine.onPathResumed(intent.color, intent.cell)
             is NeonCircuitIntent.ExtendPath -> engine.onPathExtended(intent.cell)
             NeonCircuitIntent.EndPath -> engine.onPathEnded()
             NeonCircuitIntent.Restart -> engine.restart()
@@ -103,6 +104,8 @@ class NeonCircuitViewModel(
                 sendEffect(NeonCircuitEffect.Vibrate(HapticFeedback.SUCCESS))
                 sendEffect(NeonCircuitEffect.PulsePath(event.color))
             }
+            // Todos los pares unidos pero faltan casillas: abre el cartel explicativo.
+            NeonCircuitEvent.BoardNotFull -> sendEffect(NeonCircuitEffect.ShowFillHint)
         }
     }
 

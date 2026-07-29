@@ -65,6 +65,16 @@ sealed interface NeonCircuitIntent : UiIntent {
     data class StartPath(val color: WireColor, val cell: GridPosition) : NeonCircuitIntent
 
     /**
+     * El jugador posó el dedo sobre una celda [cell] ya cableada del canal [color]
+     * (que NO es un nodo): **retoma** ese trazo a medias en vez de obligar a
+     * reempezar desde el nodo. El motor recorta el cable hasta esa celda —que pasa
+     * a ser la nueva punta— y lo reactiva, de modo que el jugador siga tendiéndolo
+     * desde donde lo dejó (o rehaga a partir de un punto intermedio). Es la regla
+     * clásica de Flow: puedes agarrar un cable por cualquier punto de su recorrido.
+     */
+    data class ResumePath(val color: WireColor, val cell: GridPosition) : NeonCircuitIntent
+
+    /**
      * El dedo entró en la celda [cell]. El motor decide qué hacer con ella:
      *  - si es vecina ortogonal de la punta y está libre → extiende el cable
      *    (feedback de avance);
@@ -133,4 +143,11 @@ sealed interface NeonCircuitEffect : UiEffect {
      * debe repetirse al recomponer.
      */
     data class PulsePath(val color: WireColor) : NeonCircuitEffect
+
+    /**
+     * El jugador conectó todos los pares pero dejó celdas vacías: la pantalla abre
+     * el cartel que recuerda que hay que rellenar el tablero entero. Es one-shot
+     * (dispara la apertura); mantener/cerrar el cartel es estado local de la UI.
+     */
+    data object ShowFillHint : NeonCircuitEffect
 }

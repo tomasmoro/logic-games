@@ -12,14 +12,22 @@ import kotlin.random.Random
  *
  * ## Curva de dificultad
  *
- *  - **Tamaño de tablero**: arranca en [MIN_GRID_SIZE] y sube 1 casilla de lado
- *    cada [LEVELS_PER_GRID_SIZE] niveles, hasta tocar techo en [MAX_GRID_SIZE] y
- *    quedarse ahí (nunca se salta directo al máximo ni decrece).
- *  - **Nº de canales (colores)**: arranca en [BASE_PAIR_COUNT]; al llegar el
- *    tablero a [EXTRA_COLOR_GRID_SIZE]×[EXTRA_COLOR_GRID_SIZE] se añade un canal
- *    más, y al llegar al tamaño máximo se añade otro (dos saltos de dificultad
- *    "extra" bien espaciados, en vez de un color nuevo por nivel que saturaría
- *    el tablero pequeño).
+ * Un **escalón** de dificultad cada [LEVELS_PER_GRID_SIZE] niveles; cada escalón
+ * fija a la vez el lado del tablero y el nº de canales (ver [DIFFICULTY_TIERS]):
+ *
+ *  | Escalón | Niveles | Tablero | Canales |
+ *  |--------:|:-------:|:-------:|:-------:|
+ *  | 0       | 1–2     | 5×5     | 4       |
+ *  | 1       | 3–4     | 6×6     | 4       |
+ *  | 2       | 5–6     | 7×7     | 5       |
+ *  | 3       | 7–8     | 8×8     | 6       |
+ *  | 4       | 9–10    | 9×9     | 7       |
+ *  | 5       | 11–12   | 9×9     | 8       |
+ *
+ * El tablero crece de lado en lado (nunca salta al máximo ni decrece) y los
+ * canales suben de forma escalonada, no uno por nivel (saturaría los tableros
+ * pequeños). Al tocar el techo (9×9 con 8 canales) la dificultad se estabiliza
+ * ahí para siempre, dando una progresión infinita.
  *
  * ## Cómo se garantiza que el nivel sea resoluble (el "porqué" del algoritmo)
  *
@@ -50,14 +58,22 @@ import kotlin.random.Random
  */
 object NeonCircuitLevels {
 
-    /** Nº de pares de nodos (canales) con los que arranca el tablero mínimo. */
-    private const val BASE_PAIR_COUNT = 3
-
-    /** Lado de tablero a partir del cual se añade un canal extra. */
-    private const val EXTRA_COLOR_GRID_SIZE = 7
-
-    /** Nº de niveles que dura cada tamaño de tablero antes de crecer un paso. */
+    /** Nº de niveles que dura cada escalón de dificultad antes de subir. */
     private const val LEVELS_PER_GRID_SIZE = 2
+
+    /**
+     * Escalones de dificultad en orden (ver tabla en el KDoc de la clase): cada
+     * uno fija (lado de tablero, nº de canales). El último se mantiene para
+     * siempre una vez alcanzado, garantizando una progresión infinita.
+     */
+    private val DIFFICULTY_TIERS = listOf(
+        DifficultyTier(gridSize = 5, pairCount = 4),
+        DifficultyTier(gridSize = 6, pairCount = 4),
+        DifficultyTier(gridSize = 7, pairCount = 5),
+        DifficultyTier(gridSize = 8, pairCount = 6),
+        DifficultyTier(gridSize = 9, pairCount = 7),
+        DifficultyTier(gridSize = 9, pairCount = 8),
+    )
 
     /** Reintentos con semillas distintas antes de caer al patrón serpenteante. */
     private const val HAMILTONIAN_ATTEMPTS = 24
@@ -74,8 +90,9 @@ object NeonCircuitLevels {
      */
     fun forNumber(number: Int): CircuitLevel {
         val n = number.coerceAtLeast(1)
-        val gridSize = gridSizeForLevel(n)
-        val pairCount = pairCountForGridSize(gridSize)
+        val tier = tierForLevel(n)
+        val gridSize = tier.gridSize
+        val pairCount = tier.pairCount
         val seed = n.toLong()
 
         val path = hamiltonianPath(gridSize, seed)
@@ -89,19 +106,24 @@ object NeonCircuitLevels {
         return CircuitLevel(number = n, gridSize = gridSize, nodes = nodes)
     }
 
-    /** Lado del tablero para el nivel [number]: sube 1 cada [LEVELS_PER_GRID_SIZE] niveles. */
-    private fun gridSizeForLevel(number: Int): Int {
-        val tier = (number - 1) / LEVELS_PER_GRID_SIZE
-        return (MIN_GRID_SIZE + tier).coerceAtMost(MAX_GRID_SIZE)
+    /**
+     * Escalón de dificultad ([gridSize], [pairCount]) del nivel [number]: sube uno
+     * cada [LEVELS_PER_GRID_SIZE] niveles y se estanca en el último tramo definido
+     * (progresión infinita).
+     */
+    private fun tierForLevel(number: Int): DifficultyTier {
+        val index = (number - 1) / LEVELS_PER_GRID_SIZE
+        return DIFFICULTY_TIERS[index.coerceIn(0, DIFFICULTY_TIERS.lastIndex)]
     }
 
-    /** Nº de canales para un tablero de lado [gridSize]: ver curva de dificultad arriba. */
-    private fun pairCountForGridSize(gridSize: Int): Int {
-        var count = BASE_PAIR_COUNT
-        if (gridSize >= EXTRA_COLOR_GRID_SIZE) count++
-        if (gridSize >= MAX_GRID_SIZE) count++
-        return count
-    }
+    /**
+     * Un escalón de la curva de dificultad: lado del tablero y nº de canales que
+     * comparten los niveles de ese tramo.
+     *
+     * @property gridSize lado del tablero cuadrado ([MIN_GRID_SIZE]..[MAX_GRID_SIZE]).
+     * @property pairCount nº de pares de nodos (canales) del nivel; ≤ nº de [WireColor].
+     */
+    private data class DifficultyTier(val gridSize: Int, val pairCount: Int)
 
     /** Vecinas ortogonales de la celda dentro de un tablero de lado [gridSize]. */
     private fun GridPosition.orthogonalNeighbors(gridSize: Int): List<GridPosition> =

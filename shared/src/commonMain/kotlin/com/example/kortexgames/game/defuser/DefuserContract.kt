@@ -50,6 +50,19 @@ import kotlinx.serialization.Serializable
  *   continuar" (mismo patrón que Neon Sudoku). La partida sigue en
  *   [GameStatus.RUNNING] (no FINISHED) pero con el cronómetro congelado, así que si
  *   acepta se reanuda sin recrear estado. Se ofrece una sola vez por partida.
+ * @property scanUsesRemaining usos del **escáner de minas** que le quedan al jugador
+ *   en esta partida ([DefuserConfig.SCAN_MAX_USES] al empezar). Cada anuncio visto
+ *   con éxito lo decrementa; a `0` el botón de escáner se deshabilita. Persiste en el
+ *   guardado ([DefuserSavedState]) para que salir y reanudar no lo recargue.
+ * @property awaitingScanAd `true` mientras se está reproduciendo el anuncio del
+ *   escáner (entre pulsar el botón y conocer el resultado). Bloquea los toques del
+ *   tablero para que un tap no se procese "por debajo" del anuncio. La UI lo observa
+ *   para lanzar el rewarded, igual que `awaitingHint` en Neon Sudoku.
+ * @property scanning `true` cuando el anuncio ya se vio y el jugador está en **modo
+ *   selección**: el siguiente toque sobre una celda oculta la inspecciona (revela si
+ *   es mina —queda desactivada— o segura —se abre con cascada—) en vez de jugarse
+ *   como un revelado normal. Es transitorio (no se persiste): al inspeccionar o
+ *   cancelar vuelve a `false`.
  * @property gameOver resumen del resultado (puntaje + percentil) cuando la partida
  *   termina; `null` mientras se juega. Mismo patrón que el resto de juegos.
  */
@@ -62,8 +75,22 @@ data class DefuserUiState(
     val difficulty: MineDifficulty = MineDifficulty.FACIL,
     val hasSavedGame: Boolean = false,
     val awaitingRevive: Boolean = false,
+    val scanUsesRemaining: Int = DefuserConfig.SCAN_MAX_USES,
+    val awaitingScanAd: Boolean = false,
+    val scanning: Boolean = false,
     val gameOver: GameOverInfo? = null,
 ) : UiState {
+
+    /**
+     * `true` si el jugador puede activar el **escáner de minas** ahora mismo: partida
+     * en curso con minas ya sembradas (inspeccionar antes del primer toque no tendría
+     * sentido, aún no hay minas), le quedan usos, y no hay ya un anuncio/selección o
+     * una oferta de revivir en marcha. La UI la usa para habilitar/atenuar el botón,
+     * y el ViewModel la revalida antes de lanzar el anuncio (fuente única del "porqué").
+     */
+    val canRequestScan: Boolean
+        get() = status == GameStatus.RUNNING && minesArmed && scanUsesRemaining > 0 &&
+            !awaitingRevive && !awaitingScanAd && !scanning
 
     /**
      * Minas que el jugador **cree** que le quedan por marcar: total de minas menos
@@ -116,6 +143,12 @@ sealed interface DefuserIntent : UiIntent {
      * El motor ignora el intent sobre celdas ya reveladas o marcadas con escudo
      * (no se puede revelar por accidente una celda que marcaste como mina).
      *
+     * **Modo escáner:** si [DefuserUiState.scanning] está activo (el jugador vio el
+     * anuncio del escáner), este mismo toque **inspecciona** la celda en vez de
+     * jugarla: una mina queda neutralizada como escudo permanente y una celda segura
+     * se abre con cascada. Se reutiliza este intent —en lugar de uno nuevo— porque la
+     * UI ya enruta el tap del tablero aquí; el ViewModel bifurca según el estado.
+     *
      * @property position celda tocada.
      */
     data class RevealCell(val position: CellPosition) : DefuserIntent
@@ -139,6 +172,27 @@ sealed interface DefuserIntent : UiIntent {
     /** El jugador rechazó la segunda oportunidad (o se agotó su cuenta atrás): la
      *  partida termina de verdad (derrota), revelando el resto de minas. */
     data object DeclineRevive : DefuserIntent
+
+    /**
+     * El jugador pulsó el botón del **escáner de minas**: pide ver un anuncio para
+     * poder inspeccionar una celda a elección. No inspecciona nada todavía —solo
+     * arranca el anuncio ([DefuserUiState.awaitingScanAd])—; la UI lanza el rewarded y
+     * responde con [ConfirmScan] (visto) o [CancelScan] (cerrado / no disponible),
+     * mismo patrón que `RequestHint` en Neon Sudoku. No-op si [DefuserUiState.canRequestScan]
+     * es `false`.
+     */
+    data object RequestScan : DefuserIntent
+
+    /** El anuncio del escáner se vio completo: descuenta un uso y entra en **modo
+     *  selección** ([DefuserUiState.scanning]), a la espera de que el jugador toque la
+     *  celda a inspeccionar. */
+    data object ConfirmScan : DefuserIntent
+
+    /** Cancela el escáner: cubre tanto que el anuncio se cerrara antes de recompensar
+     *  (no se descuenta uso) como que el jugador abandone el modo selección tras verlo
+     *  (el uso ya se gastó en el anuncio). En ambos casos limpia
+     *  [DefuserUiState.awaitingScanAd]/[DefuserUiState.scanning]. */
+    data object CancelScan : DefuserIntent
 
     /** Pausa / reanuda (congela el cronómetro) sin perder el estado del panel. */
     data object Pause : DefuserIntent
@@ -177,6 +231,8 @@ sealed interface DefuserEffect : UiEffect {
      *  - [Flag]      → colocar/quitar un escudo.
      *  - [Explosion] → se reveló una mina: Game Over.
      *  - [Win]       → se despejó todo el campo: victoria.
+     *  - [ScanArmed] → el anuncio del escáner terminó: ya se puede elegir celda.
+     *  - [ScanMine]  → el escáner destapó una mina y la neutralizó (hallazgo útil).
      */
     data class PlaySound(val sound: SoundEffect) : DefuserEffect {
         companion object {
@@ -185,6 +241,8 @@ sealed interface DefuserEffect : UiEffect {
             val Flag = PlaySound(SoundEffect.TAP)
             val Explosion = PlaySound(SoundEffect.ERROR)
             val Win = PlaySound(SoundEffect.LEVEL_UP)
+            val ScanArmed = PlaySound(SoundEffect.TAP)
+            val ScanMine = PlaySound(SoundEffect.SUCCESS)
         }
     }
 
@@ -192,12 +250,15 @@ sealed interface DefuserEffect : UiEffect {
      * Dispara feedback háptico.
      *
      * Atajos semánticos:
-     *  - [Light] → vibración ligera al revelar una celda o poner un escudo.
-     *  - [Heavy] → vibración fuerte al pisar una mina (la explosión se "siente").
+     *  - [Light]  → vibración ligera al revelar una celda o poner un escudo.
+     *  - [Medium] → vibración media al neutralizar una mina con el escáner (un
+     *    hallazgo con más peso que un revelado, pero sin el golpe de una explosión).
+     *  - [Heavy]  → vibración fuerte al pisar una mina (la explosión se "siente").
      */
     data class Vibrate(val haptic: HapticFeedback) : DefuserEffect {
         companion object {
             val Light = Vibrate(HapticFeedback.LIGHT)
+            val Medium = Vibrate(HapticFeedback.MEDIUM)
             val Heavy = Vibrate(HapticFeedback.HEAVY)
         }
     }
@@ -248,6 +309,10 @@ sealed interface DefuserEffect : UiEffect {
  * @property reviveOffered si la segunda oportunidad ya se ofreció en esta partida
  *   (ver [DefuserIntent.Revive]): evita que, tras reanudar un guardado, el jugador
  *   reciba una segunda "vida extra" en la misma partida.
+ * @property scanUsesRemaining usos del escáner que le quedaban al guardar (ver
+ *   [DefuserUiState.scanUsesRemaining]): se persiste para que salir y reanudar no
+ *   recargue los usos gratis. Tiene valor por defecto para que los guardados escritos
+ *   antes de existir el escáner sigan deserializando (arrancan con el tope de usos).
  */
 @Serializable
 data class DefuserSavedState(
@@ -256,4 +321,5 @@ data class DefuserSavedState(
     val elapsedMs: Long,
     val difficulty: MineDifficulty,
     val reviveOffered: Boolean,
+    val scanUsesRemaining: Int = DefuserConfig.SCAN_MAX_USES,
 )

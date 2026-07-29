@@ -44,6 +44,7 @@ import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameMotif
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.ui.components.GameIntroScreen
+import com.example.kortexgames.game.GameHelpContent
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
@@ -110,6 +111,7 @@ fun NeonPulseScreen(graph: AppGraph, onExit: () -> Unit) {
     // Antesala (intro) mientras el juego está en IDLE, igual que el resto de juegos.
     if (state.status == GameStatus.IDLE) {
         GameIntroScreen(
+            help = GameHelpContent.neonPulse,
             title = "Neon Pulse",
             motif = GameMotif.NEON_PULSE,
             description = NEON_PULSE_HELP,
@@ -195,7 +197,7 @@ fun NeonPulseScreen(graph: AppGraph, onExit: () -> Unit) {
             onResume = { vm.onIntent(NeonPulseIntent.Resume) },
             onExit = onExit,
             gameTitle = "Neon Pulse",
-            helpText = NEON_PULSE_HELP,
+            help = GameHelpContent.neonPulse,
             accent = CategoryPalette.Reflexes,
         )
     }

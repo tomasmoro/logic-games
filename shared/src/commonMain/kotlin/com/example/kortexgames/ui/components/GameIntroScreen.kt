@@ -26,9 +26,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -91,7 +96,8 @@ data class ResumeState(
  * empezar a jugar (petición del usuario, inspirada en apps tipo Impulse). Presenta la
  * identidad del juego con estética neón (§9): icono, título, descripción y —si el juego
  * tiene niveles— un **carril horizontal de niveles** con el nivel actual resaltado; un
- * botón de **ayuda** (por ahora sin acción) y el CTA **Comenzar**.
+ * botón de **ayuda** que abre la pantalla de ayuda genérica ([GameHelpSheet]) con el
+ * [GameHelp] inyectado, y el CTA **Comenzar**.
  *
  * Es deliberadamente reutilizable y sin estado propio de negocio: los juegos LEVELED le
  * pasan [levels] (y arrancan el nivel elegido en [onStart]); los ENDLESS lo dejan en
@@ -111,7 +117,11 @@ data class ResumeState(
  *        (o placeholder vacío si ambos son null). Es la misma fuente que las tarjetas del
  *        catálogo, así intro/Home/lista comparten idéntica identidad visual.
  * @param levels datos del carril de niveles; **null** en juegos sin niveles (ENDLESS).
- * @param onHelp acción del botón de ayuda; por ahora un no-op (pendiente de contenido).
+ * @param help diseño de la ayuda "¿Cómo se juega?" ([GameHelp], almacenados en
+ *        [com.example.kortexgames.game.GameHelpContent]). Si no es null, el botón de ayuda
+ *        de la cabecera abre la pantalla de ayuda genérica ([GameHelpSheet]); si es null,
+ *        el botón cae en [onHelp].
+ * @param onHelp acción del botón de ayuda cuando no se inyecta [help]; por defecto un no-op.
  * @param startLabel texto del CTA (por defecto "Comenzar").
  * @param resume partida pendiente de continuar (ver [ResumeState]); **null** en los
  *        juegos que no guardan progreso al salir, que mantienen la antesala de siempre.
@@ -136,12 +146,18 @@ fun GameIntroScreen(
     icon: ImageVector? = null,
     motif: GameMotif? = null,
     levels: LevelStripState? = null,
+    help: GameHelp? = null,
     onHelp: () -> Unit = {},
     startLabel: String = "Comenzar",
     resume: ResumeState? = null,
     configContent: (@Composable () -> Unit)? = null,
     background: (@Composable () -> Unit)? = null,
 ) {
+    // Estado local de la hoja de ayuda: cuando el juego inyecta [help], el botón de la
+    // cabecera abre la pantalla de ayuda genérica sin que la pantalla llamante tenga que
+    // orquestar nada (por eso [onHelp] solo se usa como respaldo si no hay [help]).
+    var showHelp by remember { mutableStateOf(false) }
+
     Box(modifier = modifier.fillMaxSize().background(LogicColors.BackgroundDark)) {
         // Capa ambiental temática del juego (muro arcade, skyline…), si la hay.
         background?.invoke()
@@ -165,7 +181,7 @@ fun GameIntroScreen(
                 CircleIconButton(
                     icon = KortexIcons.Help,
                     tint = LogicColors.OnDarkMuted,
-                    onClick = onHelp,
+                    onClick = { if (help != null) showHelp = true else onHelp() },
                 )
             }
 
@@ -280,6 +296,17 @@ fun GameIntroScreen(
                 }
             }
         }
+
+        // Hoja de ayuda genérica, encima de todo: se abre desde el botón de la cabecera
+        // cuando el juego inyecta [help]. Es un overlay [BoxScope], por eso va como última
+        // capa del Box raíz.
+        if (help != null) {
+            GameHelpSheet(
+                help = help,
+                visible = showHelp,
+                onDismiss = { showHelp = false },
+            )
+        }
     }
 }
 
@@ -322,11 +349,14 @@ private fun GameIconHero(icon: ImageVector?, motif: GameMotif?, accent: Color) {
 
 /**
  * Carril **horizontal** de niveles (petición: "que los niveles se vean así"). Cada nivel
- * es un disco cuyo lenguaje visual depende de su estado:
- *  - **superado** (`≤ maxUnlocked`): disco de acento tenue con check; rejugable.
- *  - **elegido** (`== selected`): disco brillante (blanco) con ▶; es el que lanza "Comenzar".
- *  - **frontera** (`== maxUnlocked+1`, si no está elegido): borde de acento (el próximo nuevo).
- *  - **bloqueado** (`> maxUnlocked+1`): atenuado, con candado y sin interacción.
+ * es un **tile de neón** ([drawNeonTile], §9.7) cuyo grado de encendido comunica su estado:
+ *  - **superado** (`≤ maxUnlocked`): tile encendido a media luz (0.3) con check; rejugable.
+ *  - **elegido / nivel actual** (`== selected`): tile a pleno brillo (0.8) con ▶; lanza "Comenzar".
+ *  - **sin completar** (`> maxUnlocked`): tile apenas insinuado (0.1) —frontera con su número
+ *    en acento, bloqueados con candado y sin interacción—.
+ *
+ * Reutilizar `drawNeonTile` en vez de un borde propio mantiene los niveles dentro del mismo
+ * lenguaje de "tubo de neón" que las teclas/celdas de los juegos (fuente única, §9.7).
  *
  * El carril se auto-desplaza para dejar el nivel elegido a la vista al abrir la pantalla.
  */
@@ -390,42 +420,39 @@ private fun LevelDot(
     val playable = level <= frontier
     val locked = level > frontier
 
+    // Grado de encendido del tile según su estado (petición del usuario): el nivel actual
+    // a pleno brillo, los superados a media luz y los que faltan apenas insinuados. Así el
+    // ojo salta directo al que se va a jugar sin depender de un bucle de atención (§9.4).
+    val glow = when {
+        selected -> 0.8f
+        completed -> 0.3f
+        else -> 0.1f
+    }
+    // Los bloqueados pierden el acento y viran a gris: aún no forman parte del "juego".
+    val tileColor = if (locked) LogicColors.OnDarkMuted else accent
+
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
                 .size(64.dp)
-                .clip(CircleShape)
-                .background(
-                    when {
-                        selected -> Brush.verticalGradient(listOf(LogicColors.OnDark, Color(0xFFD5DCF2)))
-                        completed -> Brush.verticalGradient(
-                            listOf(accent.copy(alpha = 0.30f), accent.copy(alpha = 0.12f)),
-                        )
-                        else -> Brush.verticalGradient(
-                            listOf(LogicColors.SurfaceVariantDark, LogicColors.SurfaceDark),
-                        )
-                    },
-                )
-                .border(
-                    BorderStroke(
-                        width = if (selected || level == frontier) 2.dp else 1.dp,
-                        color = when {
-                            selected -> LogicColors.OnDark
-                            level == frontier -> accent
-                            completed -> accent.copy(alpha = 0.6f)
-                            else -> LogicColors.OnDarkMuted.copy(alpha = 0.18f)
-                        },
-                    ),
-                    CircleShape,
-                )
+                // Tile de neón compartido (§9.7): mismo lenguaje que las celdas del juego.
+                // Sin chispas: el carril es estático, las chispas son remate de celebración.
+                .drawBehind {
+                    drawNeonTile(
+                        baseColor = tileColor,
+                        activeAmt = glow,
+                        cornerRadius = 20.dp,
+                        sparks = false,
+                    )
+                }
                 .bounceClick(enabled = playable, onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
             when {
-                // El elegido manda: ▶ oscuro sobre el disco blanco (contraste máximo).
+                // El elegido manda: ▶ blanco sobre el tile a pleno brillo (contraste máximo).
                 selected -> NeonIcon(
                     icon = KortexIcons.Play,
-                    tint = LogicColors.BackgroundDark,
+                    tint = LogicColors.OnDark,
                     size = 26.dp,
                     glow = false,
                 )

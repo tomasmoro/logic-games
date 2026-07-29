@@ -84,6 +84,15 @@ class Neon2048ViewModel(
     private var runMark: TimeSource.Monotonic.ValueTimeMark? = null
     private var accumulated: Duration = Duration.ZERO
 
+    /**
+     * true una vez que el jugador **usó** la segunda oportunidad (vio el anuncio y
+     * revivió) en esta sesión de juego. La oferta de revivir es de **una sola vez**:
+     * tras consumirla no se vuelve a ofrecer, ni siquiera al empezar una partida nueva.
+     * Por eso NO se reinicia en [startGame] — persiste mientras viva el ViewModel.
+     * Rechazar la oferta no la consume (no vio el anuncio).
+     */
+    private var reviveConsumed = false
+
     init {
         // Récord previo: se pinta en la cabecera antes incluso de la primera jugada.
         // Se toma el máximo con lo que ya haya en el estado para que una emisión
@@ -113,10 +122,37 @@ class Neon2048ViewModel(
 
             is Neon2048Intent.Swipe -> onSwipe(intent.direction)
             Neon2048Intent.ContinueAfterWin -> setState { copy(keepPlaying = true) }
+            Neon2048Intent.Revive -> grantRevive()
+            Neon2048Intent.DeclineRevive -> declineRevive()
             Neon2048Intent.Pause -> pause()
             Neon2048Intent.Resume -> resume()
             is Neon2048Intent.SelectBoardSize -> selectBoardSize(intent.size)
         }
+    }
+
+    /**
+     * El anuncio recompensado concedió el trato: **limpia todas las fichas 2 y 4**,
+     * liberando casillas para que la corrida continúe (conserva puntuación y récord).
+     * Marca la segunda oportunidad como consumida: no se vuelve a ofrecer en la sesión.
+     */
+    private fun grantRevive() {
+        reviveConsumed = true
+        setState {
+            copy(
+                tiles = tiles.filterNot { it.value == 2 || it.value == 4 },
+                ghosts = emptyList(),
+                awaitingRevive = false,
+            )
+        }
+    }
+
+    /**
+     * El jugador rechazó la oferta (o el anuncio se cerró / no había): fin de partida
+     * real. No consume la segunda oportunidad (no vio el anuncio).
+     */
+    private fun declineRevive() {
+        setState { copy(awaitingRevive = false) }
+        finish()
     }
 
     /** Cambia el tamaño elegido en la antesala; no-op fuera de IDLE (ver KDoc del intent). */
@@ -177,7 +213,10 @@ class Neon2048ViewModel(
      */
     fun requestExit(onExit: () -> Unit) {
         val s = currentState
-        if (s.status != GameStatus.RUNNING && s.status != GameStatus.PAUSED) {
+        // Durante la oferta de revivir el tablero está sin movimientos (partida de hecho
+        // perdida): guardarlo dejaría una corrida bloqueada al reanudar. Se sale sin
+        // guardar (se abandona la oferta), como en cualquier estado no jugable.
+        if (s.awaitingRevive || (s.status != GameStatus.RUNNING && s.status != GameStatus.PAUSED)) {
             onExit()
             return
         }
@@ -295,8 +334,17 @@ class Neon2048ViewModel(
         emitMoveFeedback(move, justWon)
 
         // El game over se evalúa DESPUÉS de generar la ficha nueva: es justo esa
-        // ficha la que puede dejar el tablero sin jugadas posibles.
-        if (!hasMovesLeft(tiles, s.boardSize)) finish()
+        // ficha la que puede dejar el tablero sin jugadas posibles. Antes de terminar,
+        // ofrece revivir una vez por sesión, PERO solo si hay fichas 2 o 4 que limpiar
+        // (si no, la recompensa no despejaría nada y el tablero seguiría bloqueado).
+        if (!hasMovesLeft(tiles, s.boardSize)) {
+            val hasClearable = tiles.any { it.value == 2 || it.value == 4 }
+            if (!reviveConsumed && hasClearable) {
+                setState { copy(awaitingRevive = true) }
+            } else {
+                finish()
+            }
+        }
     }
 
     /**

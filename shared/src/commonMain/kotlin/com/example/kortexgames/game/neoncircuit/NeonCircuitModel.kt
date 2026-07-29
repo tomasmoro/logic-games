@@ -48,7 +48,7 @@ import kotlin.math.abs
 const val MIN_GRID_SIZE: Int = 5
 
 /** Lado máximo del tablero cuadrado (nivel avanzado). */
-const val MAX_GRID_SIZE: Int = 8
+const val MAX_GRID_SIZE: Int = 9
 
 /**
  * Coordenada de celda del tablero: fila y columna, ambas 0-based.
@@ -89,8 +89,8 @@ data class GridPosition(val row: Int, val col: Int) {
  * orden del enum define un mapeo estable canal→token para que un mismo nivel se
  * vea siempre igual.
  *
- * Hay 7 canales, suficientes para el tablero máximo (8×8 admite holgadamente
- * ≤ 7 pares en los niveles diseñados).
+ * Hay 8 canales, suficientes para el tablero máximo (9×9 admite holgadamente
+ * ≤ 8 pares en el escalón de dificultad más alto).
  */
 enum class WireColor {
     CYAN,
@@ -100,6 +100,7 @@ enum class WireColor {
     VIOLET,
     BLUE,
     CORAL,
+    LIME,
 }
 
 /**

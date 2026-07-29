@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.kortexgames.core.ads.RewardResult
 import com.example.kortexgames.core.audio.HapticFeedback
 import com.example.kortexgames.core.audio.SoundEffect
 import com.example.kortexgames.core.theme.CategoryPalette
@@ -45,6 +46,7 @@ import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.ui.components.FireworksOverlay
 import com.example.kortexgames.ui.components.GameExitGuard
 import com.example.kortexgames.ui.components.GameIntroScreen
+import com.example.kortexgames.game.GameHelpContent
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.KortexIcons
@@ -52,6 +54,7 @@ import com.example.kortexgames.ui.components.NeonIcon
 import com.example.kortexgames.ui.components.ReviveAdOverlay
 import com.example.kortexgames.ui.components.SpaceBackdrop
 import com.example.kortexgames.ui.components.bounceClick
+import com.example.kortexgames.ui.components.pulse
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.PI
@@ -182,6 +185,18 @@ fun DefuserScreen(graph: AppGraph, onExit: () -> Unit) {
         }
     }
 
+    // Escáner de minas: al marcar el ViewModel `awaitingScanAd` (el jugador pulsó el
+    // botón), se lanza DIRECTO el rewarded —sin overlay de por medio, igual que la
+    // pista de Neon Sudoku: pulsar el botón ya es la confirmación—. Al resolverse,
+    // EARNED entra en modo selección (ConfirmScan) y cualquier otro resultado cancela.
+    LaunchedEffect(state.awaitingScanAd) {
+        if (!state.awaitingScanAd) return@LaunchedEffect
+        when (graph.adManager.showRewardedAd()) {
+            RewardResult.EARNED -> vm.onIntent(DefuserIntent.ConfirmScan)
+            RewardResult.DISMISSED, RewardResult.UNAVAILABLE -> vm.onIntent(DefuserIntent.CancelScan)
+        }
+    }
+
     // Opacidad de cada celda para la cascada: 1 salvo las que la onda aún no
     // alcanzó. El frente avanza `cascade.value·(maxDist+FADE)`; una celda a
     // distancia d se enciende cuando el frente la sobrepasa, con una rampa suave
@@ -195,31 +210,37 @@ fun DefuserScreen(graph: AppGraph, onExit: () -> Unit) {
         ((front - distance) / CASCADE_FADE_RINGS).coerceIn(0f, 1f)
     }
 
-    // Antesala mientras el juego está en IDLE (mismo patrón que el resto de juegos:
-    // el selector de dificultad se superpone por fuera del componente compartido).
+    // Antesala mientras el juego está en IDLE, igual que el resto de juegos.
     if (state.status == GameStatus.IDLE) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            GameIntroScreen(
-                title = "Neon Defuser",
-                motif = GameMotif.MINESWEEPER,
-                description = DEFUSER_HELP,
-                accent = accent,
-                icon = GameCategory.ATTENTION.icon,
-                startLabel = if (state.hasSavedGame) "Continuar" else "Comenzar",
-                onStart = { vm.onIntent(DefuserIntent.Start) },
-                onExit = onExit,
-                background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },
-            )
-            if (!state.hasSavedGame) {
-                DifficultySelector(
-                    selected = state.difficulty,
-                    onSelect = { vm.onIntent(DefuserIntent.SelectDifficulty(it)) },
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(start = 24.dp, end = 24.dp, bottom = DIFFICULTY_SELECTOR_BOTTOM_GAP),
-                )
-            }
-        }
+        GameIntroScreen(
+            help = GameHelpContent.defuser,
+            title = "Neon Defuser",
+            motif = GameMotif.MINESWEEPER,
+            description = DEFUSER_HELP,
+            accent = accent,
+            icon = GameCategory.ATTENTION.icon,
+            startLabel = if (state.hasSavedGame) "Continuar" else "Comenzar",
+            onStart = { vm.onIntent(DefuserIntent.Start) },
+            onExit = onExit,
+            background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },
+            // El selector de dificultad va como `configContent` (dentro del bloque de
+            // acciones de la intro), NO superpuesto por fuera como antes. Overlayarlo
+            // fuera de GameIntroScreen lo dejaba por encima de la hoja de ayuda —que
+            // es la última capa de la propia intro—, y aparecía tapando el diálogo de
+            // "¿Cómo se juega?" (bug reportado). En el flujo normal, la ayuda lo cubre.
+            // Solo se ofrece cuando no hay partida guardada que continuar.
+            configContent = if (!state.hasSavedGame) {
+                {
+                    DifficultySelector(
+                        selected = state.difficulty,
+                        onSelect = { vm.onIntent(DefuserIntent.SelectDifficulty(it)) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            } else {
+                null
+            },
+        )
         return
     }
 
@@ -257,6 +278,37 @@ fun DefuserScreen(graph: AppGraph, onExit: () -> Unit) {
                     },
                     onFlag = { position -> vm.onIntent(DefuserIntent.ToggleFlag(position)) },
                 )
+            }
+
+            // Zona de acción inferior, centrada: el botón del **escáner de minas** o,
+            // en modo selección, su banner de guía. Son mutuamente excluyentes y
+            // comparten el mismo sitio (bajo el tablero), para que la acción y su
+            // mensaje aparezcan siempre en el mismo punto de la pantalla.
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (state.scanning) {
+                    ScanSelectionBanner(
+                        accent = accent,
+                        onCancel = {
+                            graph.audio.playSound(SoundEffect.TAP)
+                            vm.onIntent(DefuserIntent.CancelScan)
+                        },
+                    )
+                } else {
+                    ScannerButton(
+                        usesRemaining = state.scanUsesRemaining,
+                        enabled = state.canRequestScan,
+                        visible = state.minesArmed,
+                        accent = accent,
+                        onClick = {
+                            graph.audio.playSound(SoundEffect.TAP)
+                            graph.audio.hapticFeedback(HapticFeedback.LIGHT)
+                            vm.onIntent(DefuserIntent.RequestScan)
+                        },
+                    )
+                }
             }
         }
 
@@ -306,7 +358,7 @@ fun DefuserScreen(graph: AppGraph, onExit: () -> Unit) {
             onResume = { vm.onIntent(DefuserIntent.Resume) },
             onExit = exitWithSave,
             gameTitle = "Neon Defuser",
-            helpText = DEFUSER_HELP,
+            help = GameHelpContent.defuser,
             accent = accent,
             exitKeepsProgress = true,
         )
@@ -390,6 +442,134 @@ private fun HudStat(label: String, value: String, tint: Color) {
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Black,
             color = tint,
+        )
+    }
+}
+
+/**
+ * Botón del **escáner de minas**: pill con icono de radar, etiqueta y los usos que
+ * quedan (`×N`). Ver un anuncio para inspeccionar una celda a elección.
+ *
+ * Estados:
+ *  - **[visible]** `false` (aún no se sembraron minas): no ocupa sitio —usar el
+ *    escáner antes del primer toque no tiene sentido, no hay minas que hallar—.
+ *  - **[enabled]** `false` (sin usos, o hay un anuncio/selección/revivir en curso):
+ *    se atenúa y deja de responder, en vez de desaparecer, para que el jugador vea
+ *    que el poder existe pero ahora no aplica (mismo criterio que la tecla de pista
+ *    de Neon Sudoku).
+ *
+ * La aparición/desaparición va con un `AnimatedVisibility` de fundido + escala corta
+ * (§9.4: transiciones sutiles, nunca deslizamientos largos).
+ */
+@Composable
+private fun ScannerButton(
+    usesRemaining: Int,
+    enabled: Boolean,
+    visible: Boolean,
+    accent: Color,
+    onClick: () -> Unit,
+) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = visible,
+        enter = androidx.compose.animation.fadeIn() +
+            androidx.compose.animation.scaleIn(initialScale = 0.9f),
+        exit = androidx.compose.animation.fadeOut(),
+    ) {
+        val shape = RoundedCornerShape(14.dp)
+        // Atenuación cuando no se puede usar: el pill entero baja de opacidad.
+        val contentAlpha = if (enabled) 1f else 0.4f
+        Row(
+            modifier = Modifier
+                .then(if (enabled) Modifier.bounceClick(onClick = onClick) else Modifier)
+                .clip(shape)
+                .background(LogicColors.SurfaceDark.copy(alpha = 0.9f))
+                .border(
+                    BorderStroke(1.dp, accent.copy(alpha = if (enabled) 0.6f else 0.2f)),
+                    shape,
+                )
+                .padding(horizontal = 14.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            NeonIcon(
+                icon = KortexIcons.Scan,
+                tint = accent.copy(alpha = contentAlpha),
+                size = 20.dp,
+                glow = enabled,
+                contentDescription = "Ver un anuncio para inspeccionar una celda a elección",
+            )
+            Text(
+                "ESCÁNER",
+                style = MaterialTheme.typography.labelLarge,
+                color = LogicColors.OnDark.copy(alpha = contentAlpha),
+                fontWeight = FontWeight.Bold,
+            )
+            // Usos restantes como "×N": pequeño y en acento para leerse de un vistazo.
+            Text(
+                "×$usesRemaining",
+                style = MaterialTheme.typography.labelLarge,
+                color = accent.copy(alpha = contentAlpha),
+                fontWeight = FontWeight.Black,
+            )
+            // Distintivo de que la acción cuesta un anuncio (no es gratis), coherente
+            // con el resto de tratos de la app (§ monetización).
+            NeonIcon(
+                icon = KortexIcons.RewardedAd,
+                tint = LogicColors.OnDarkMuted.copy(alpha = contentAlpha),
+                size = 16.dp,
+                glow = false,
+                contentDescription = null,
+            )
+        }
+    }
+}
+
+/**
+ * Banner del **modo selección** del escáner: guía al jugador ("toca una celda oculta
+ * para inspeccionarla") y ofrece cancelar. Ocupa la misma zona inferior que el botón
+ * del escáner (ver `DefuserScreen`), del que toma el relevo mientras se elige celda.
+ * Late suavemente ([Modifier.pulse]) para señalar que el juego espera una acción.
+ */
+@Composable
+private fun ScanSelectionBanner(
+    accent: Color,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(LogicColors.SurfaceDark.copy(alpha = 0.96f))
+            .border(BorderStroke(1.5.dp, accent.copy(alpha = 0.7f)), shape)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        NeonIcon(
+            icon = KortexIcons.Scan,
+            tint = accent,
+            size = 22.dp,
+            glow = true,
+            contentDescription = null,
+            modifier = Modifier.pulse(),
+        )
+        Text(
+            "Toca una celda oculta para escanearla",
+            style = MaterialTheme.typography.bodyMedium,
+            color = LogicColors.OnDark,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            "Cancelar",
+            style = MaterialTheme.typography.labelLarge,
+            color = LogicColors.OnDarkMuted,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .bounceClick(onClick = onCancel)
+                .padding(horizontal = 4.dp, vertical = 2.dp),
         )
     }
 }
@@ -533,10 +713,6 @@ private fun shakeOffsetPx(progress: Float): Float {
 }
 
 // --- Constantes de render ---------------------------------------------------
-
-/** Separación del selector de dificultad respecto al fondo de la antesala (deja
- *  hueco al CTA "Comenzar" que ancla `GameIntroScreen`, igual que Neon Sudoku). */
-private val DIFFICULTY_SELECTOR_BOTTOM_GAP = 108.dp
 
 /** Hueco que el HUD deja a su derecha para el botón de pausa (44 dp + 16 dp). */
 private val PauseButtonReserve = 60.dp

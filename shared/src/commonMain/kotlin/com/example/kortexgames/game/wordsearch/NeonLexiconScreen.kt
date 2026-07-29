@@ -54,6 +54,7 @@ import com.example.kortexgames.game.LeveledGamePhase
 import com.example.kortexgames.ui.components.ArcadeBrickBackground
 import com.example.kortexgames.ui.components.GameExitGuard
 import com.example.kortexgames.ui.components.GameIntroScreen
+import com.example.kortexgames.game.GameHelpContent
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.LevelStripState
@@ -111,6 +112,7 @@ fun NeonLexiconScreen(graph: AppGraph, onExit: () -> Unit) {
     if (state.phase == LeveledGamePhase.LEVEL_SELECT) {
         var selectedLevel by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
         GameIntroScreen(
+            help = GameHelpContent.neonLexicon,
             title = "Sopa de Letras Neón",
             motif = GameMotif.WORD_SEARCH,
             description = "Desliza el dedo sobre las letras para trazar cada palabra escondida: horizontal, vertical o en diagonal. Encuéntralas todas para superar el nivel.",
@@ -201,7 +203,7 @@ fun NeonLexiconScreen(graph: AppGraph, onExit: () -> Unit) {
             onResume = { vm.onIntent(NeonLexiconIntent.Resume) },
             onExit = exitWithSave,
             gameTitle = "Sopa de Letras Neón",
-            helpText = "Desliza el dedo sobre las letras para trazar cada palabra escondida: horizontal, vertical o en diagonal. Encuéntralas todas para superar el nivel.",
+            help = GameHelpContent.neonLexicon,
             accent = accent,
             exitKeepsProgress = true,
         )

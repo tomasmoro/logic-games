@@ -46,6 +46,7 @@ import com.example.kortexgames.di.AppGraph
 import com.example.kortexgames.game.GameMotif
 import com.example.kortexgames.game.GameStatus
 import com.example.kortexgames.ui.components.GameIntroScreen
+import com.example.kortexgames.game.GameHelpContent
 import com.example.kortexgames.ui.components.GameOverOverlay
 import com.example.kortexgames.ui.components.GamePauseControls
 import com.example.kortexgames.ui.components.SpaceBackdrop
@@ -73,6 +74,7 @@ fun PolarityCollisionScreen(graph: AppGraph, onExit: () -> Unit) {
     // de paso, que el bucle de física corra bajo la intro).
     if (state.status == GameStatus.IDLE) {
         GameIntroScreen(
+            help = GameHelpContent.polarity,
             title = "Atracción Geométrica",
             motif = GameMotif.POLARITY_SECTORS,
             description = "Rota el círculo para capturar las piezas de tu color y evita las contrarias antes de que se acabe el tiempo.",
@@ -222,7 +224,7 @@ fun PolarityCollisionScreen(graph: AppGraph, onExit: () -> Unit) {
             onResume = { vm.onIntent(PolarityCollisionIntent.Resume) },
             onExit = onExit,
             gameTitle = "Atracción Geométrica",
-            helpText = "Rota el círculo para capturar las piezas de tu color y evita las contrarias antes de que se acabe el tiempo.",
+            help = GameHelpContent.polarity,
             accent = CategoryPalette.SpatialVision,
         )
     }

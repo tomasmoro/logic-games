@@ -25,6 +25,7 @@ import androidx.compose.material.icons.rounded.MusicOff
 import androidx.compose.material.icons.rounded.OndemandVideo
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Radar
 import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
@@ -150,6 +151,13 @@ object KortexIcons {
      * un objeto del juego y no un icono de UI (ver `DefuserBoard`).
      */
     val Warning: ImageVector = Icons.Rounded.Warning
+
+    /**
+     * Radar: el **escáner de minas** de Neon Defuser (ver un anuncio para inspeccionar
+     * una celda a elección). Un radar comunica "detectar/rastrear una amenaza oculta",
+     * que es justo lo que el poder hace, sin prometer que la desactive gratis.
+     */
+    val Scan: ImageVector = Icons.Rounded.Radar
 }
 
 /**

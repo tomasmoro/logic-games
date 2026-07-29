@@ -292,11 +292,38 @@ private fun DailyGoalCard(
     onClaim: () -> Unit,
 ) {
     val percent = (goal.progress * 100).roundToInt()
+    val shape = RoundedCornerShape(28.dp)
+
+    // Mismo lenguaje neón que [StarGameCard]: halo que respira + borde que late en
+    // opacidad, teñidos con el verde del CTA "jugar" ([LogicColors.NeonGreen]) para
+    // ligar visualmente el objetivo diario con su acción principal.
+    val transition = rememberInfiniteTransition(label = "dailyGoal")
+    val borderAlpha by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "borderAlpha",
+    )
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(28.dp))
+            .softGlow(color = LogicColors.NeonGreen, shape = shape, maxElevation = 24.dp)
+            .clip(shape)
             .background(LogicColors.SurfaceDark)
+            .border(
+                width = 2.dp,
+                brush = Brush.horizontalGradient(
+                    listOf(
+                        LogicColors.NeonGreen.copy(alpha = borderAlpha),
+                        LogicColors.NeonGreen.copy(alpha = borderAlpha * 0.6f),
+                    ),
+                ),
+                shape = shape,
+            )
             .padding(vertical = 24.dp, horizontal = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -755,6 +782,10 @@ private fun OtherGameMiniCard(star: StarGame, onClick: () -> Unit, modifier: Mod
             style = MaterialTheme.typography.labelMedium,
             color = LogicColors.OnDark,
             textAlign = TextAlign.Center,
+            // Fija 2 líneas para el título (aunque el juego tenga un nombre de una
+            // sola línea): así las 3 mini-tarjetas ocupan idéntica altura y la fila
+            // queda alineada, sin escalones por títulos de distinto largo.
+            minLines = 2,
             maxLines = 2,
             fontWeight = FontWeight.SemiBold,
         )
