@@ -20,7 +20,7 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
     (GoTrue valida el `aud` del token). Nota: `ASWebAuthenticationSession` intercepta
     el esquema de callback por sí mismo, así que NO hace falta tocar `Info.plist`.
   - Verificar el test en host: `./gradlew :shared:testAndroidHostTest --tests
-    "com.example.kortexgames.data.remote.auth.GoogleOAuthTest"` (hoy el árbol no
+    "com.kortexgames.app.data.remote.auth.GoogleOAuthTest"` (hoy el árbol no
     compila por WIP de blockgrid; correrlo al integrar).
 - [ ] **Completar el branding del OAuth consent screen (Google Cloud).** Falta
   añadir en la pestaña **Branding** del proyecto de Google Cloud (ver
@@ -223,9 +223,18 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
       `MobileAds` y registra `AdMobInterstitialAdPresenter`/`AdMobRewardedAdPresenter`
       (cargan bajo demanda en `Dispatchers.Main`, presentan con la Activity de
       `CurrentActivityHolder`, mapean cierre→resultado); el de iOS mantiene los simulados.
-      IDs de PRUEBA en `AdMobConfig` (androidMain) hasta publicar. Verificado:
-      `:androidApp:assembleDebug` en verde con el App ID en el manifest mergeado.
+      Verificado: `:androidApp:assembleDebug` en verde con el App ID en el manifest mergeado.
       (El `MobileAds.initialize` se movió de este seam a `AdConsentManager`, ver A7.)
+- [x] **IDs de AdMob por tipo de build.** HECHO. `debug` usa siempre los IDs de PRUEBA y
+      `release` los reales, sin pasos manuales antes de publicar. App ID: placeholder
+      `admobAppId` resuelto por `buildType` en `androidApp/build.gradle.kts` (aviso por
+      consola si se ensambla release sin `ADMOB_APP_ID`). Ad units: `generateSecrets`
+      emite `AdMobSecrets` desde `secrets.properties`
+      (`ADMOB_INTERSTITIAL_UNIT_ID`/`ADMOB_REWARDED_UNIT_ID`) y `AdMobConfig` elige real
+      vs prueba según `FLAG_DEBUGGABLE` + si hay valor configurado. **Pendiente al
+      publicar: crear los bloques en AdMob (intersticial + recompensado) y pegar los tres
+      IDs en `secrets.properties`.** Verificado: manifest de release con el ID real y el
+      de debug con el de prueba.
 - [x] **Consentimiento GDPR/UMP en Android (paso A7).** HECHO. `user-messaging-platform`
       (4.0.0) + `AdConsentManager` (androidMain): `requestConsentInfoUpdate` →
       `loadAndShowConsentFormIfRequired` → inicializa `MobileAds` solo cuando
@@ -237,8 +246,8 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
 - [ ] **AdMob iOS (Parte B) + precarga.** Falta: el puente Swift + CocoaPods/SPM para
       `GADInterstitialAd`/`GADRewardedAd` (reemplazar el `actual` iOS que hoy usa los
       simulados) **y su propio flujo UMP** en iOS; y **precargar** `InterstitialAd`/
-      `RewardedAd` en vez de cargar en cada `show()` para quitar latencia. Al publicar:
-      cambiar los IDs de PRUEBA de `AdMobConfig` por los reales.
+      `RewardedAd` en vez de cargar en cada `show()` para quitar latencia. Los ad units
+      de iOS serán otros (AdMob los da por plataforma) y hoy no los cubre `AdMobSecrets`.
 
 ## Técnico / limpieza
 - [ ] **Automatizar particiones de `user_progress`.** La tabla está particionada

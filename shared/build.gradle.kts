@@ -23,6 +23,10 @@ val secretsProps = Properties().apply {
 // Capturamos solo Strings (no el objeto Properties) para no romper el configuration cache.
 val googleWebClientId: String = secretsProps.getProperty("GOOGLE_WEB_CLIENT_ID", "")
 val googleIosClientId: String = secretsProps.getProperty("GOOGLE_IOS_CLIENT_ID", "")
+// Ad units REALES de AdMob. Vacías mientras no existan: `AdMobConfig` cae entonces a
+// las de prueba, así que un clon del repo sin `secrets.properties` compila y funciona.
+val admobInterstitialUnitId: String = secretsProps.getProperty("ADMOB_INTERSTITIAL_UNIT_ID", "")
+val admobRewardedUnitId: String = secretsProps.getProperty("ADMOB_REWARDED_UNIT_ID", "")
 
 val generateSecrets by tasks.registering {
     // Copias locales: el `doLast` captura estos vals (no las propiedades a nivel de
@@ -30,16 +34,20 @@ val generateSecrets by tasks.registering {
     val outDir = layout.buildDirectory.dir("generated/secrets/kotlin")
     val webId = googleWebClientId
     val iosId = googleIosClientId
+    val interstitialId = admobInterstitialUnitId
+    val rewardedId = admobRewardedUnitId
     // Declarar los valores como inputs → Gradle regenera solo cuando cambian.
     inputs.property("googleWebClientId", webId)
     inputs.property("googleIosClientId", iosId)
+    inputs.property("admobInterstitialUnitId", interstitialId)
+    inputs.property("admobRewardedUnitId", rewardedId)
     outputs.dir(outDir)
     doLast {
-        val pkgDir = outDir.get().asFile.resolve("com/example/kortexgames/data/remote")
+        val pkgDir = outDir.get().asFile.resolve("com/kortexgames/app/data/remote")
         pkgDir.mkdirs()
         pkgDir.resolve("Secrets.kt").writeText(
             """
-            package com.example.kortexgames.data.remote
+            package com.kortexgames.app.data.remote
 
             /**
              * GENERADO por la tarea Gradle `generateSecrets` desde `secrets.properties`.
@@ -49,6 +57,30 @@ val generateSecrets by tasks.registering {
             internal object Secrets {
                 const val GOOGLE_WEB_CLIENT_ID: String = "$webId"
                 const val GOOGLE_IOS_CLIENT_ID: String = "$iosId"
+            }
+            """.trimIndent() + "\n",
+        )
+
+        // Los ad units van en su propio objeto y en el paquete de `core.ads` (no en
+        // [Secrets], que es de auth/remoto) para que `AdMobConfig` los lea sin import
+        // y no se mezclen dos dominios distintos en un mismo "cajón de secretos".
+        val adsPkgDir = outDir.get().asFile.resolve("com/kortexgames/app/core/ads")
+        adsPkgDir.mkdirs()
+        adsPkgDir.resolve("AdMobSecrets.kt").writeText(
+            """
+            package com.kortexgames.app.core.ads
+
+            /**
+             * GENERADO por la tarea Gradle `generateSecrets` desde `secrets.properties`.
+             * NO editar a mano ni commitear.
+             *
+             * Cadena vacía = "no configurado": [AdMobConfig] lo interpreta como que aún
+             * no hay unidad real y usa la de prueba. El porqué de esa política está en
+             * el KDoc de [AdMobConfig].
+             */
+            internal object AdMobSecrets {
+                const val INTERSTITIAL_UNIT_ID: String = "$interstitialId"
+                const val REWARDED_UNIT_ID: String = "$rewardedId"
             }
             """.trimIndent() + "\n",
         )
@@ -67,7 +99,7 @@ kotlin {
     }
     
     androidLibrary {
-       namespace = "com.example.kortexgames.shared"
+       namespace = "com.kortexgames.app.shared"
        compileSdk = libs.versions.android.compileSdk.get().toInt()
        minSdk = libs.versions.android.minSdk.get().toInt()
     
@@ -156,7 +188,7 @@ dependencies {
 sqldelight {
     databases {
         create("LogicGamesDb") {
-            packageName.set("com.example.kortexgames.data.local.db")
+            packageName.set("com.kortexgames.app.data.local.db")
         }
     }
 }

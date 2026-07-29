@@ -31,10 +31,10 @@ verificación.
 |---|---|---|
 | **Web Client ID** | `secrets.properties` → `GOOGLE_WEB_CLIENT_ID`; y en Supabase | Android pide el ID token con este id como `serverClientId`; el token sale con `aud = Web Client ID`. Es además el id que registra a Google como proveedor en Supabase. |
 | **Web Client Secret** | **solo** en Supabase | El secreto del cliente Web. Vive únicamente en Supabase (servidor); **nunca** en la app. Sirve para el intercambio servidor↔Google del proveedor. |
-| **Android Client ID** | Google Cloud (no se pega en el código) | Ata el par *package name + SHA-1* a tu proyecto. Google lo usa para verificar que quien pide el token es realmente tu app Android. No se referencia en el código, pero **debe existir** o Credential Manager no devuelve token. |
+| **Android Client ID** | Google Cloud (no se pega en el código) | Ata el par *package name + SHA-1* a tu proyecto. Google lo usa para verificar que quien pide el token es realmente tu app Android. No se referencia en el código, pero **debe existir** o Credential Manager no devuelve token. Hace falta **uno por cada clave de firma** (debug / subida / Play): ver §1.3b. |
 | **iOS Client ID** | `secrets.properties` → `GOOGLE_IOS_CLIENT_ID`; y en Supabase | iOS obtiene el ID token vía `ASWebAuthenticationSession` usando este id; el token sale con `aud = iOS Client ID`. De él se deriva el esquema de redirección (*reversed client id*). |
 | **SHA-1** | Google Cloud (dentro del Android Client ID) | Huella de la clave con la que se firma el APK. Junto al package name, es la "identidad" criptográfica de la app Android ante Google. |
-| **Bundle ID** | Google Cloud (dentro del iOS Client ID) | El identificador de la app iOS (`com.example.kortexgames.KortexGames…`). Identifica a la app iOS ante Google. |
+| **Bundle ID** | Google Cloud (dentro del iOS Client ID) | El identificador de la app iOS (`com.kortexgames.app…`). Identifica a la app iOS ante Google. |
 
 > **Clave del `aud`:** el ID token de Android lleva `aud = Web Client ID` y el de iOS
 > lleva `aud = iOS Client ID`. Por eso Supabase necesita **ambos** ids en su lista de
@@ -162,12 +162,12 @@ Repite el paso tres veces, uno por tipo:
 
 1. *Application type*: **Android**.
 2. *Name*: p. ej. `KortexGames – Android`.
-3. *Package name*: `com.example.kortexgames` (coincide con `applicationId` en
+3. *Package name*: `com.kortexgames.app` (coincide con `applicationId` en
    `androidApp/build.gradle.kts`).
 4. *SHA-1 certificate fingerprint*: pégala aquí. Para obtenerla:
    ```bash
-   ./scripts/print-android-sha1.sh              # SHA-1 de DEBUG (para probar ya)
-   # ./scripts/print-android-sha1.sh <keystore> <alias>   # release, cuando publiques
+   ./scripts/print-android-sha1.sh                          # SHA-1 de DEBUG
+   ./scripts/print-android-sha1.sh kortexgames-upload.jks upload   # la de subida
    ```
    El script imprime una línea `SHA1: AA:BB:CC:...` — pega exactamente ese valor
    (con los dos puntos) en el campo.
@@ -177,10 +177,29 @@ Repite el paso tres veces, uno por tipo:
    registrado junto al SHA-1 para que Google confíe en las peticiones que
    Credential Manager hace desde tu APK firmado con esa clave.
 
-> Si más adelante generas una build de **release** firmada con otro keystore
-> (o usas Play App Signing, cuya SHA-1 ves en Play Console → *Setup → App
-> Integrity*), tendrás que **añadir esa segunda SHA-1** al mismo Android Client
-> ID (edítalo → *Add fingerprint*) o el login fallará solo en esa build.
+##### Una SHA-1 por client: hacen falta TRES
+
+El formulario de Android en Google Cloud tiene **un solo campo de huella**, y no se
+pueden añadir más a un client ya creado (eso lo permite la consola de *Firebase*, que
+no es la que se usa aquí). Como la restricción de unicidad de Google se define sobre
+el **par** *package name + SHA-1*, cada huella necesita su propio client — los tres con
+el mismo package `com.kortexgames.app`, en el mismo proyecto, conviviendo sin conflicto:
+Google resuelve por el par de quien hace la petición, así que cada build encuentra el suyo.
+
+| Client | SHA-1 | Cuándo se crea |
+|--------|-------|----------------|
+| `KortexGames – Android (debug)` | `~/.android/debug.keystore` | Al empezar, para probar en dev |
+| `KortexGames – Android (upload)` | `kortexgames-upload.jks` | Al preparar la publicación |
+| `KortexGames – Android (Play)` | Play Console → *Integridad de la app → Firma de apps* | Tras subir el primer AAB |
+
+> ⚠️ La tercera es la que de verdad importa y **solo existe después de subir la primera
+> build**: con Play App Signing, Play re-firma la app con su propia clave, así que lo que
+> instalan los usuarios NO lleva la huella de tu keystore. El síntoma clásico es un login
+> que te funciona a ti en release local y falla a todo el que instala desde la tienda.
+>
+> Si al crear un client sale *"An OAuth2 client already exists for this package name and
+> SHA-1"*, ese par ya está registrado en otro proyecto de Cloud o Firebase: el par debe
+> ser único a nivel global, no solo dentro de tu proyecto.
 
 #### c) iOS
 
@@ -189,11 +208,11 @@ Repite el paso tres veces, uno por tipo:
 3. *Bundle ID*: tiene que ser exactamente el de la app. Lo ves en
    `iosApp/Configuration/Config.xcconfig`:
    ```
-   PRODUCT_BUNDLE_IDENTIFIER=com.example.kortexgames.KortexGames$(TEAM_ID)
+   PRODUCT_BUNDLE_IDENTIFIER=com.kortexgames.app$(TEAM_ID)
    ```
    `$(TEAM_ID)` se resuelve al valor de la línea `TEAM_ID=XRVAAUV9DG` del mismo
    archivo, así que el bundle id real a pegar es
-   `com.example.kortexgames.KortexGamesXRVAAUV9DG`. Si tienes dudas, ábrelo en
+   `com.kortexgames.appXRVAAUV9DG`. Si tienes dudas, ábrelo en
    Xcode: proyecto `iosApp` → target `iosApp` → pestaña *General* → campo
    *Bundle Identifier* muestra el valor ya resuelto.
 4. *App Store ID* / *Team ID* (campos opcionales que aparecen debajo): puedes
@@ -261,6 +280,6 @@ Panel del proyecto (`pfjsacrxtutrkcsybaxh`) → **Authentication → Providers �
 | Síntoma | Causa probable |
 |---|---|
 | "Falta …CLIENT_ID" | `secrets.properties` vacío o no creado. |
-| Android: no aparece el selector / error 10 | Falta el **Android Client ID** o la SHA-1 no coincide con la clave de firma. |
+| Android: no aparece el selector / error 10 | Falta el **Android Client ID** o la SHA-1 no coincide con la clave de firma. Si falla **solo en release** (o solo a quien instala desde Play), falta el client de esa huella concreta: ver la tabla de §1.3b. |
 | "invalid audience" / login rechazado por Supabase | El Client ID de esa plataforma no está en *Authorized Client IDs* de Supabase. |
 | iOS: se abre y cierra sin sesión | El *bundle id* del iOS Client ID no coincide con el de la app. |

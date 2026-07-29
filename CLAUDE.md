@@ -106,7 +106,7 @@ Sigue estos patrones incluso si el usuario no lo repite en cada petición.
   (`MainActivity`, `LogicGamesApp`, manifest). Depende de `projects.shared`.
 - **`iosApp`** (Xcode): lanzador iOS; llama a `MainViewControllerKt.MainViewController()`.
 
-### Paquete base (en `shared`): `com.example.kortexgames`
+### Paquete base (en `shared`): `com.kortexgames.app`
 
 ```
 core/mvi        Base MVI (MviViewModel, UiState/UiIntent/UiEffect)
@@ -388,7 +388,7 @@ Todo tablero/tecla/celda de un minijuego que necesite un borde "de neón" (tubo
 de luz con halo) **reutiliza los componentes compartidos de `ui/components`**
 en vez de dibujar su propio `drawRoundRect`/`Stroke` suelto:
 
-- **[`drawNeonTile`](shared/src/commonMain/kotlin/com/example/kortexgames/ui/components/NeonTile.kt)**
+- **[`drawNeonTile`](shared/src/commonMain/kotlin/com/kortexgames/app/ui/components/NeonTile.kt)**
   (`DrawScope`): el "tubo hueco" que usan las teclas de Memoria de Secuencias y
   las celdas de Crucigrama Neón — halo ancho → halo intermedio → trazo nítido →
   núcleo blanco al encender (`activeAmt`), con chispas opcionales. Úsalo para
@@ -399,7 +399,7 @@ en vez de dibujar su propio `drawRoundRect`/`Stroke` suelto:
   entero del tablero solo por reutilizar la función: en tableros grandes con
   mucho contenido encima (rejilla, cables, nodos) un marco así de intenso
   compite con el resto y se ve sobrecargado; ahí basta un contorno sutil.
-- **[`NeonFrame`](shared/src/commonMain/kotlin/com/example/kortexgames/ui/components/NeonFrame.kt)**
+- **[`NeonFrame`](shared/src/commonMain/kotlin/com/kortexgames/app/ui/components/NeonFrame.kt)**
   (`@Composable`): el "bezel" de consola arcade con borde giratorio, para
   envolver un panel/pantalla completa (no una celda suelta).
 

@@ -1,0 +1,205 @@
+/*
+ * Hoja de estilos del sitio legal de KortexGames.
+ *
+ * Replica los tokens del sistema de diseño de la app (§9 de CLAUDE.md) para que
+ * las páginas legales se sientan parte del producto: fondo azul-noche, acentos
+ * neón escasos, bordes muy redondeados. Es CSS plano y sin dependencias
+ * externas a propósito: GitHub Pages sirve estos archivos tal cual y los
+ * revisores de Google Play / App Store deben poder abrirlos sin JS ni CDN.
+ */
+
+:root {
+  /* Base "Lógica" — superficies azul-noche */
+  --bg: #0a0e1a;
+  --surface: #141b2e;
+  --surface-variant: #1e2740;
+  --on-dark: #f2f5ff;
+  --on-dark-muted: #9aa3be;
+
+  /* Acentos "Juego" — neón */
+  --neon-green: #25e17e;
+  --neon-cyan: #00e5ff;
+  --violet: #9d4edd;
+  --amber: #ffc24b;
+
+  --radius-card: 24px;
+  --radius-chip: 12px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--on-dark);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.7;
+  -webkit-text-size-adjust: 100%;
+}
+
+.wrap {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 40px 20px 80px;
+}
+
+/* Cabecera: el único punto donde el degradado neón ocupa superficie, para que
+   el acento siga siendo escaso en el resto del documento. */
+header.hero {
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  border: 1px solid var(--surface-variant);
+  padding: 32px 28px;
+  margin-bottom: 36px;
+}
+
+.brand {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  background: linear-gradient(90deg, var(--neon-cyan), var(--neon-green));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin-bottom: 10px;
+}
+
+h1 {
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1.2;
+  margin: 0 0 12px;
+}
+
+h2 {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 44px 0 12px;
+  padding-top: 4px;
+}
+
+h3 {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 26px 0 8px;
+  color: var(--neon-cyan);
+}
+
+p, li {
+  color: #dfe4f5;
+}
+
+.meta {
+  color: var(--on-dark-muted);
+  font-size: 14px;
+  margin: 0;
+}
+
+a {
+  color: var(--neon-cyan);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(0, 229, 255, 0.35);
+}
+
+a:hover {
+  border-bottom-color: var(--neon-cyan);
+}
+
+ul {
+  padding-left: 22px;
+}
+
+li {
+  margin-bottom: 8px;
+}
+
+strong {
+  color: var(--on-dark);
+}
+
+/* Bloque destacado para lo que un padre/madre o un revisor de tienda necesita
+   leer sí o sí (menores, borrado de cuenta, contacto). */
+.callout {
+  background: var(--surface);
+  border: 1px solid var(--surface-variant);
+  border-left: 3px solid var(--neon-green);
+  border-radius: var(--radius-chip);
+  padding: 16px 20px;
+  margin: 20px 0;
+}
+
+.callout.warn {
+  border-left-color: var(--amber);
+}
+
+.callout p:first-child { margin-top: 0; }
+.callout p:last-child { margin-bottom: 0; }
+
+/* Las tablas se desbordan en móvil: el contenedor scrollea, nunca el body. */
+.table-scroll {
+  overflow-x: auto;
+  margin: 18px 0;
+  border-radius: var(--radius-chip);
+  border: 1px solid var(--surface-variant);
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 520px;
+  font-size: 15px;
+}
+
+th, td {
+  text-align: left;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--surface-variant);
+  vertical-align: top;
+}
+
+th {
+  background: var(--surface);
+  font-weight: 600;
+  color: var(--on-dark);
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+.lang-switch {
+  margin-top: 18px;
+  font-size: 14px;
+  color: var(--on-dark-muted);
+}
+
+footer {
+  margin-top: 56px;
+  padding-top: 24px;
+  border-top: 1px solid var(--surface-variant);
+  color: var(--on-dark-muted);
+  font-size: 14px;
+}
+
+/* Marcador visible de lo que el propietario debe completar antes de publicar.
+   Es deliberadamente chillón: si queda uno sin rellenar, se ve. */
+.todo {
+  background: rgba(255, 194, 75, 0.14);
+  color: var(--amber);
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-weight: 600;
+  font-size: 0.95em;
+}
+
+@media (max-width: 520px) {
+  h1 { font-size: 27px; }
+  .wrap { padding: 24px 16px 60px; }
+  header.hero { padding: 24px 20px; }
+}

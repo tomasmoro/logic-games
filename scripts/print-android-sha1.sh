@@ -25,8 +25,10 @@ if [[ "$KEYSTORE" == "$HOME/.android/debug.keystore" ]]; then
   ALIAS="${2:-androiddebugkey}"
   STOREPASS="android"
   KEYPASS="android"
+  IS_DEBUG=1
   echo "→ Keystore DEBUG: $KEYSTORE (alias=$ALIAS)"
 else
+  IS_DEBUG=0
   ALIAS="${2:?Debes indicar el alias del keystore de release}"
   # No hardcodeamos la contraseña de release: keytool la pedirá de forma interactiva.
   STOREPASS=""
@@ -52,5 +54,16 @@ else
 fi
 
 echo
-echo "Copia el valor tras 'SHA1:' (formato AA:BB:CC:...) al crear el OAuth client id"
-echo "de tipo Android en Google Cloud, junto al package name 'com.example.kortexgames'."
+if [[ "$IS_DEBUG" == "1" ]]; then
+  echo "Esta es la huella de DEBUG: sirve para PROBAR el login con Google en desarrollo."
+  echo "NO es la de producción. Para la de tu keystore de subida:"
+  echo "    ./scripts/print-android-sha1.sh kortexgames-upload.jks upload"
+else
+  echo "Esta es la huella de tu keystore de SUBIDA."
+  echo "Si usas Play App Signing, Play re-firma la app con OTRA clave: registra también"
+  echo "la SHA-1 de Play Console → Integridad de la app → Firma de apps, o el login con"
+  echo "Google fallará para los usuarios que instalen desde la tienda."
+fi
+echo
+echo "Copia el valor tras 'SHA1:' (formato AA:BB:CC:...) al OAuth client id de tipo"
+echo "Android en Google Cloud, junto al package name 'com.kortexgames.app'."
