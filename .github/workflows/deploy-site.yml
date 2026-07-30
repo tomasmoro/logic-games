@@ -1,22 +1,22 @@
-# Publica `legal-site/` en GitHub Pages.
+# Publica `site/` (landing + páginas legales) en GitHub Pages.
 #
 # ¿POR QUÉ UN WORKFLOW Y NO "Deploy from a branch"? Pages, al desplegar desde una rama,
-# solo admite como raíz del sitio `/` o `/docs`. El sitio legal vive en `legal-site/`, y
-# `docs/` ya está ocupado por documentación interna del proyecto que no queremos servir
-# como web. Con Actions se elige el directorio exacto, así que el sitio se queda donde
-# está y no hay que duplicarlo en otro repo (que habría que mantener sincronizado a mano).
+# solo admite como raíz del sitio `/` o `/docs`. El sitio web vive en `site/`, y `docs/`
+# ya está ocupado por documentación interna del proyecto que no queremos servir como web.
+# Con Actions se elige el directorio exacto, así que el sitio se queda donde está y no hay
+# que duplicarlo en otro repo (que habría que mantener sincronizado a mano).
 #
 # REQUISITO: en el repo, Settings → Pages → Source: **GitHub Actions**.
-name: Deploy legal site
+name: Deploy site
 
 on:
   push:
     branches: [main]
-    # Solo se redespliega si cambian las páginas legales: un commit de código Kotlin no
-    # tiene por qué disparar un deploy.
+    # Solo se redespliega si cambia el sitio: un commit de código Kotlin no tiene por qué
+    # disparar un deploy.
     paths:
-      - 'legal-site/**'
-      - '.github/workflows/deploy-legal-site.yml'
+      - 'site/**'
+      - '.github/workflows/deploy-site.yml'
   # Permite lanzarlo a mano desde la pestaña Actions (útil para el primer despliegue).
   workflow_dispatch:
 
@@ -43,10 +43,10 @@ jobs:
 
       - uses: actions/configure-pages@v5
 
-      # Se sube SOLO `legal-site/`: el resto del repo (código, docs internas) no se publica.
+      # Se sube SOLO `site/`: el resto del repo (código, docs internas) no se publica.
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: legal-site
+          path: site
 
       - id: deployment
         uses: actions/deploy-pages@v4
