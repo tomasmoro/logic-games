@@ -5,6 +5,14 @@
 xcuserdata
 !src/**/build/
 local.properties
+# Secretos/credenciales inyectados en build (Client IDs de Google, etc.). No se
+# versionan (CLAUDE.md §7); usar `secrets.properties.example` como plantilla.
+secrets.properties
+# Firma de release: el keystore y sus contraseñas. Perder el keystore impide volver a
+# actualizar la app en Play, así que guárdalo aparte y con copia de seguridad.
+keystore.properties
+*.jks
+*.keystore
 .idea
 .DS_Store
 captures

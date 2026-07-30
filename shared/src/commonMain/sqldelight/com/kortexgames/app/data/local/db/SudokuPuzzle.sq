@@ -1,0 +1,41 @@
+-- Caché local del banco de puzzles de Neon Sudoku Matrix (FASE 2 del banco).
+-- A diferencia de PlayerProgress.sq NO es progreso del jugador ni sincroniza de
+-- vuelta a Supabase: es una **réplica local de solo lectura** del catálogo de
+-- puzzles, sembrada desde el seed empaquetado y enriquecida desde Supabase cuando
+-- hay conexión. Su única "escritura" propia es `servedAt`, la marca de rotación
+-- para no repetir puzzles (ver SudokuPuzzleRepositoryImpl).
+CREATE TABLE SudokuPuzzleEntity (
+    id          TEXT    NOT NULL PRIMARY KEY,  -- UUID del puzzle (dedup seed/remoto)
+    difficulty  INTEGER NOT NULL,              -- SudokuDifficulty.ordinal (0..3)
+    puzzle      TEXT    NOT NULL,              -- 81 caracteres, '0' = celda vacía
+    solution    TEXT    NOT NULL,              -- 81 caracteres, solución única
+    servedAt    INTEGER                        -- epoch millis del último servido; NULL = nunca
+);
+
+-- Índice para la consulta caliente (rotación por dificultad): filtra por dificultad
+-- y ordena por antigüedad de servido sin escanear toda la tabla.
+CREATE INDEX sudoku_by_difficulty ON SudokuPuzzleEntity(difficulty, servedAt);
+
+countByDifficulty:
+SELECT COUNT(*) FROM SudokuPuzzleEntity WHERE difficulty = :difficulty;
+
+allIdsByDifficulty:
+SELECT id FROM SudokuPuzzleEntity WHERE difficulty = :difficulty;
+
+-- Inserta ignorando duplicados por id: el seed y el remoto pueden traer el mismo
+-- puzzle, y re-sembrar no debe pisar el `servedAt` ya acumulado localmente.
+insertIgnore:
+INSERT OR IGNORE INTO SudokuPuzzleEntity(id, difficulty, puzzle, solution, servedAt)
+VALUES (:id, :difficulty, :puzzle, :solution, NULL);
+
+-- Próximo puzzle a servir de una dificultad: primero los nunca servidos, luego los
+-- menos recientes; RANDOM() desempata para que la rotación no sea un orden fijo.
+-- Garantiza no repetir hasta agotar el banco de esa dificultad.
+selectNextByDifficulty:
+SELECT * FROM SudokuPuzzleEntity
+WHERE difficulty = :difficulty
+ORDER BY (servedAt IS NOT NULL), servedAt ASC, RANDOM()
+LIMIT 1;
+
+markServed:
+UPDATE SudokuPuzzleEntity SET servedAt = :servedAt WHERE id = :id;

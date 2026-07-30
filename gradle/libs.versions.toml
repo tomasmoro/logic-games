@@ -26,6 +26,10 @@ navigationCompose = "2.9.2"
 # --- FASE 6: login con Google nativo (Credential Manager, solo Android) ---
 androidxCredentials = "1.3.0"
 googleId = "1.1.1"
+# --- Anuncios: SDK de Google Mobile Ads (AdMob), solo Android por ahora ---
+playServicesAds = "25.4.0"
+# UMP: consentimiento GDPR/EEA (User Messaging Platform), exigido antes del 1er anuncio
+userMessaging = "4.0.0"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -67,6 +71,9 @@ supabase-auth = { module = "io.github.jan-tennert.supabase:auth-kt", version.ref
 supabase-functions = { module = "io.github.jan-tennert.supabase:functions-kt", version.ref = "supabase" }
 ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
 ktor-client-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "ktor" }
+# FASE 6: intercambio del código OAuth de Google por un ID token en iOS (POST al
+# token endpoint). El motor Darwin ya está; falta el core del cliente Ktor.
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 
 # --- FASE 5: Navigation Compose (Jetbrains, multiplataforma) ---
 navigation-compose = { module = "org.jetbrains.androidx.navigation:navigation-compose", version.ref = "navigationCompose" }
@@ -77,6 +84,11 @@ compose-materialIconsExtended = { module = "org.jetbrains.compose.material:mater
 androidx-credentials = { module = "androidx.credentials:credentials", version.ref = "androidxCredentials" }
 androidx-credentials-playServicesAuth = { module = "androidx.credentials:credentials-play-services-auth", version.ref = "androidxCredentials" }
 google-googleid = { module = "com.google.android.libraries.identity.googleid:googleid", version.ref = "googleId" }
+
+# --- Anuncios: AdMob (Google Mobile Ads SDK). Solo androidMain; iOS irá vía
+# CocoaPods/SPM + puente Swift (Parte B), no por este catálogo. ---
+play-services-ads = { module = "com.google.android.gms:play-services-ads", version.ref = "playServicesAds" }
+user-messaging-platform = { module = "com.google.android.ump:user-messaging-platform", version.ref = "userMessaging" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }

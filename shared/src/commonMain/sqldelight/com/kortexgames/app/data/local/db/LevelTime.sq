@@ -1,0 +1,35 @@
+-- Mejor tiempo por nivel en local (menor = mejor). Espeja la tabla Supabase
+-- player_level_time: una fila por (juego, nivel). Complementa a
+-- PlayerGameProgressEntity (una fila por juego, récord de nivel máx) con el detalle
+-- por nivel, que no cabe en su bestMetric único. La alimentan solo los juegos con
+-- GameProgression.tracksLevelTime activo (hoy Flujo de Energía). Se reescribe (upsert).
+CREATE TABLE LevelBestTimeEntity (
+    gameId      TEXT    NOT NULL,               -- UUID del catálogo
+    level       INTEGER NOT NULL,               -- nivel (1-based)
+    bestTimeMs  INTEGER NOT NULL,               -- mejor tiempo activo (ms), menor gana
+    updatedAt   INTEGER NOT NULL,               -- epoch millis de la marca
+    isSynced    INTEGER NOT NULL DEFAULT 0,     -- 0 = pendiente de subir, 1 = subido
+    PRIMARY KEY (gameId, level)
+);
+
+CREATE INDEX idx_level_time_synced ON LevelBestTimeEntity(isSynced);
+
+selectByGame:
+SELECT * FROM LevelBestTimeEntity WHERE gameId = :gameId;
+
+selectOne:
+SELECT * FROM LevelBestTimeEntity WHERE gameId = :gameId AND level = :level;
+
+selectUnsynced:
+SELECT * FROM LevelBestTimeEntity WHERE isSynced = 0;
+
+-- Upsert por (gameId, level). INSERT OR REPLACE por la misma razón que
+-- PlayerProgress.sq: el dialecto SQLite del proyecto (3.18) no trae el upsert nativo
+-- (ON CONFLICT, 3.24). Como la PK compuesta identifica la fila y no hay dependientes
+-- por rowid, reemplazar la fila entera equivale a un upsert.
+upsert:
+INSERT OR REPLACE INTO LevelBestTimeEntity(gameId, level, bestTimeMs, updatedAt, isSynced)
+VALUES (:gameId, :level, :bestTimeMs, :updatedAt, :isSynced);
+
+markSynced:
+UPDATE LevelBestTimeEntity SET isSynced = 1 WHERE gameId = :gameId AND level = :level;

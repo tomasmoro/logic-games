@@ -1,0 +1,16 @@
+-- Migración v3 → v4: añade la tabla de mejor tiempo por nivel. Necesaria para que las
+-- instalaciones EXISTENTES (BD en v3, sin esta tabla) la reciban vía onUpgrade. Las
+-- instalaciones nuevas la obtienen del CREATE en LevelTime.sq mediante Schema.create.
+-- Este .sqm eleva Schema.version a 4, disparando la migración en dispositivos con la BD
+-- antigua. Mismo patrón que 1.sqm y 2.sqm (ver PlayerProgress.sq); toda nueva alta de
+-- tabla/columna debe seguirlo.
+CREATE TABLE LevelBestTimeEntity (
+    gameId      TEXT    NOT NULL,
+    level       INTEGER NOT NULL,
+    bestTimeMs  INTEGER NOT NULL,
+    updatedAt   INTEGER NOT NULL,
+    isSynced    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (gameId, level)
+);
+
+CREATE INDEX idx_level_time_synced ON LevelBestTimeEntity(isSynced);

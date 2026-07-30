@@ -1,0 +1,16 @@
+-- Migración v5 → v6: añade la caché local del banco de puzzles de Neon Sudoku
+-- Matrix. Necesaria para que las instalaciones EXISTENTES (BD en v5, sin esta
+-- tabla) la reciban vía onUpgrade. Las instalaciones nuevas la obtienen del CREATE
+-- en SudokuPuzzle.sq mediante Schema.create. Este .sqm eleva Schema.version a 6,
+-- disparando la migración en dispositivos con la BD antigua. Mismo patrón que
+-- 1.sqm–4.sqm (ver SavedGameState.sq); toda nueva alta de tabla/columna debe
+-- seguirlo. El DDL debe coincidir con el de SudokuPuzzle.sq.
+CREATE TABLE SudokuPuzzleEntity (
+    id          TEXT    NOT NULL PRIMARY KEY,
+    difficulty  INTEGER NOT NULL,
+    puzzle      TEXT    NOT NULL,
+    solution    TEXT    NOT NULL,
+    servedAt    INTEGER
+);
+
+CREATE INDEX sudoku_by_difficulty ON SudokuPuzzleEntity(difficulty, servedAt);

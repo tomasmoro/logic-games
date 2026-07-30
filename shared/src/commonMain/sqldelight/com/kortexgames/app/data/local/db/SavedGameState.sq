@@ -1,0 +1,23 @@
+-- Partida en curso guardada al salir (back / "SALIR" del menú de pausa), para que
+-- juegos que lo activen puedan reanudarse en vez de regenerar el nivel. Es estado
+-- efímero de sesión local (no un récord): a diferencia de PlayerProgress.sq, NO
+-- sincroniza con Supabase (ver SavedGameStateRepositoryImpl). stateJson es el estado
+-- del motor del juego (S de GameEngine<S>) serializado con kotlinx.serialization; el
+-- formato lo decide cada juego, esta tabla solo lo transporta.
+CREATE TABLE SavedGameStateEntity (
+    gameId      TEXT    NOT NULL PRIMARY KEY,
+    stateJson   TEXT    NOT NULL,
+    savedAt     INTEGER NOT NULL   -- epoch millis del guardado
+);
+
+selectByGame:
+SELECT * FROM SavedGameStateEntity WHERE gameId = :gameId;
+
+-- Upsert idempotente por juego (mismo motivo que PlayerProgress.sq: INSERT OR REPLACE
+-- en vez de ON CONFLICT DO UPDATE, dialecto SQLite 3.18 del proyecto).
+upsert:
+INSERT OR REPLACE INTO SavedGameStateEntity(gameId, stateJson, savedAt)
+VALUES (:gameId, :stateJson, :savedAt);
+
+delete:
+DELETE FROM SavedGameStateEntity WHERE gameId = :gameId;
