@@ -32,34 +32,28 @@ Hay tres, y aparecen en ambos idiomas:
 
 ## Cómo publicarlo (GitHub Pages)
 
-Este repo es de la app y probablemente sea privado; GitHub Pages en repos privados
-requiere GitHub Pro. Lo más simple es un **repo público aparte** que solo contenga
-estas páginas:
+**No hace falta un repo aparte.** `tomasmoro/logic-games` es público, así que GitHub
+Pages funciona desde aquí sin GitHub Pro. Lo despliega el workflow
+`.github/workflows/deploy-legal-site.yml` en cada push a `main` que toque este
+directorio.
 
-```bash
-cd legal-site && git init -b main && git add . && git commit -m "Añade política de privacidad" && gh repo create kortexgames-legal --public --source=. --push
-```
+Se usa Actions en vez de *Deploy from a branch* porque esa opción solo admite `/` o
+`/docs` como raíz del sitio, y estas páginas viven en `legal-site/` (y `docs/` ya está
+ocupado por documentación interna que no queremos servir como web).
 
-Si no tienes `gh` instalado, crea el repo `kortexgames-legal` a mano en
-github.com y luego:
+Activación, una sola vez: **Settings → Pages → Source: GitHub Actions**. Después, el
+primer despliegue se puede lanzar a mano desde la pestaña *Actions* → *Deploy legal
+site* → *Run workflow*. Las URLs quedan:
 
-```bash
-cd legal-site && git init -b main && git add . && git commit -m "Añade política de privacidad" && git remote add origin https://github.com/tomasmoro/kortexgames-legal.git && git push -u origin main
-```
-
-Después, en el repo nuevo: **Settings → Pages → Source: Deploy from a branch →
-Branch: `main` / `(root)` → Save**. En uno o dos minutos las URLs quedan vivas:
-
-- `https://tomasmoro.github.io/kortexgames-legal/privacidad/`
-- `https://tomasmoro.github.io/kortexgames-legal/privacy/`
+- `https://tomasmoro.github.io/logic-games/privacidad/`
+- `https://tomasmoro.github.io/logic-games/privacy/`
 
 La segunda es la que se pega en las tiendas (usa la inglesa como principal; ambas
 enlazan a la otra).
 
-> Mantén este directorio como fuente de verdad y copia los cambios al repo
-> público, o añade el repo público como segundo remoto. Lo importante es que el
-> texto viva versionado junto al código: cuando cambies de SDK o añadas un
-> proveedor, la política tiene que actualizarse en el mismo commit.
+> La ventaja de publicar desde este mismo repo es que no hay copia que sincronizar: el
+> texto vive versionado junto al código, así que cuando cambies de SDK o añadas un
+> proveedor, la política se actualiza en el mismo commit y se despliega sola.
 
 ## Verlo en local antes de publicar
 
