@@ -29,4 +29,8 @@ class SavedGameStateRepositoryImpl(
     override suspend fun clear(gameId: String) {
         local.delete(gameId)
     }
+
+    override suspend fun clearAll() {
+        local.clearAll()
+    }
 }

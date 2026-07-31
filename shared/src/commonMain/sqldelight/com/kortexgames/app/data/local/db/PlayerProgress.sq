@@ -30,3 +30,7 @@ VALUES (:gameId, :bestMetric, :lastLevel, :updatedAt, :isSynced);
 
 markSynced:
 UPDATE PlayerGameProgressEntity SET isSynced = 1 WHERE gameId = :gameId;
+
+-- Vacía la progresión local (borrado de cuenta).
+deleteAll:
+DELETE FROM PlayerGameProgressEntity;

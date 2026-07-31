@@ -1,5 +1,6 @@
 package com.kortexgames.app.ui.profile
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -65,9 +66,10 @@ import kotlinx.coroutines.launch
  * Sin emojis: todos los iconos son vectoriales.
  *
  * @param onOpenAuth abre el login (CTA mostrado solo a invitados).
+ * @param onOpenSettings abre Ajustes (icono de engranaje de la cabecera).
  */
 @Composable
-fun ProfileScreen(graph: AppGraph, onOpenAuth: () -> Unit) {
+fun ProfileScreen(graph: AppGraph, onOpenAuth: () -> Unit, onOpenSettings: () -> Unit) {
     val settingsVm: SettingsViewModel = viewModel {
         SettingsViewModel(graph.settingsRepository, graph.audio)
     }
@@ -88,7 +90,11 @@ fun ProfileScreen(graph: AppGraph, onOpenAuth: () -> Unit) {
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Text("Perfil", style = MaterialTheme.typography.headlineLarge, color = LogicColors.OnDark)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Perfil", style = MaterialTheme.typography.headlineLarge, color = LogicColors.OnDark)
+                Spacer(Modifier.weight(1f))
+                SettingsButton(onClick = onOpenSettings)
+            }
 
             StreakCard(streakDays = streak, totalGames = history.size)
 
@@ -289,6 +295,22 @@ private fun AuthenticatedAccountCard(onSignOut: () -> Unit) {
                 fontWeight = FontWeight.SemiBold,
             )
         }
+    }
+}
+
+/** Botón circular de engranaje de la cabecera: abre la pantalla de Ajustes. */
+@Composable
+private fun SettingsButton(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(RoundedCornerShape(50))
+            .background(LogicColors.SurfaceDark)
+            .border(BorderStroke(1.dp, LogicColors.SurfaceVariantDark), RoundedCornerShape(50))
+            .bounceClick(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        NeonIcon(icon = KortexIcons.Settings, tint = LogicColors.OnDarkMuted, size = 20.dp, glow = false)
     }
 }
 

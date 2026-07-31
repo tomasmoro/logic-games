@@ -27,4 +27,11 @@ interface SavedGameStateRepository {
 
     /** Borra el guardado de [gameId] (nivel completado, o ya consumido al reanudar). */
     suspend fun clear(gameId: String)
+
+    /**
+     * Borra TODAS las partidas en curso guardadas. Lo usa el borrado de cuenta:
+     * aunque este repositorio nunca sincronizó nada, el estado en curso también es
+     * información del jugador y debe desaparecer del dispositivo con el resto.
+     */
+    suspend fun clearAll()
 }

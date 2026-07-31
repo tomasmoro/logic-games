@@ -47,3 +47,8 @@ UPDATE GameProgressEntity SET isSynced = 1, remoteId = :remoteId WHERE localId =
 
 countInRange:
 SELECT count(*) FROM GameProgressEntity WHERE createdAt >= :start AND createdAt < :end;
+
+-- Vacía el historial local (borrado de cuenta): el dispositivo no debe seguir
+-- mostrando partidas de una cuenta que ya no existe en la nube.
+deleteAll:
+DELETE FROM GameProgressEntity;

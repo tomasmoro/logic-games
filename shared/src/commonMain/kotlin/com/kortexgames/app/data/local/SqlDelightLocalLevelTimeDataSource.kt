@@ -48,6 +48,10 @@ class SqlDelightLocalLevelTimeDataSource(
         queries.markSynced(gameId, level.toLong())
     }
 
+    override suspend fun clearAll(): Unit = withContext(io) {
+        queries.deleteAll()
+    }
+
     private fun LevelBestTimeEntity.toDomain() = LevelBestTime(
         gameId = gameId,
         level = level.toInt(),

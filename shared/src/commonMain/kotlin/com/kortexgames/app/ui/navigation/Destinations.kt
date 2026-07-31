@@ -33,6 +33,9 @@ object Routes {
      */
     const val AUTH_ONBOARDING = "auth/onboarding"
 
+    /** Ajustes de cuenta (nombre de usuario, borrar cuenta…), abierta desde Perfil. */
+    const val SETTINGS = "settings"
+
     const val MEMORY = "game/memory"
     const val WATER_SORT = "game/watersort"
     const val BUBBLE_MATH = "game/bubblemath"

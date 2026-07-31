@@ -38,4 +38,7 @@ interface LocalProgressDataSource {
 
     /** Partidas cuyo createdAt cae dentro del rango [startEpochMs, endEpochMs). */
     suspend fun countInRange(startEpochMs: Long, endEpochMs: Long): Int
+
+    /** Vacía todo el historial local (borrado de cuenta). */
+    suspend fun clearAll()
 }

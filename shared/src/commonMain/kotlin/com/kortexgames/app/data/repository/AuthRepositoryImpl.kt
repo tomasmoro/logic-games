@@ -10,6 +10,7 @@ import io.github.jan.supabase.auth.providers.Google
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.auth.providers.builtin.IDToken
 import io.github.jan.supabase.auth.status.SessionStatus
+import io.github.jan.supabase.functions.functions
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import kotlinx.coroutines.CoroutineScope
@@ -93,45 +94,75 @@ class AuthRepositoryImpl(
         runCatching { client.auth.signOut() }
     }
 
+    override suspend fun updateDisplayName(name: String): Result<Unit> {
+        val userId = (sessionState.value as? AuthState.Authenticated)?.userId
+            ?: return Result.failure(IllegalStateException("No hay sesión activa"))
+        return runCatching {
+            client.postgrest.from("users")
+                .update({ set("display_name", name) }) {
+                    filter { eq("id", userId) }
+                }
+        }.map { }
+    }
+
+    override suspend fun deleteAccount(): Result<Unit> {
+        if (sessionState.value !is AuthState.Authenticated) {
+            return Result.failure(IllegalStateException("No hay sesión activa"))
+        }
+        // La Edge Function reenvía el JWT del llamador; con service_role borra
+        // auth.users(id) del propio usuario y el ON DELETE CASCADE del esquema se
+        // lleva por delante public.users y todo lo que cuelga de su id.
+        return runCatching {
+            client.functions.invoke("delete-account")
+        }.map { }.onSuccess {
+            runCatching { client.auth.signOut() }
+        }
+    }
+
     /**
      * Proyecta el estado del SDK de Supabase al modelo de dominio. Solo la sesión
      * autenticada con id de usuario válido cuenta como [AuthState.Authenticated];
      * cualquier otro estado (inicializando, sin sesión, fallo de refresco) se trata
      * como invitado para que la app siempre tenga un estado usable y offline.
      *
-     * Es `suspend` porque para el caso autenticado consulta el plan real en la BD.
+     * Es `suspend` porque para el caso autenticado consulta el perfil real en la BD.
      */
     private suspend fun SessionStatus.toAuthState(): AuthState = when (this) {
         is SessionStatus.Authenticated -> {
             val userId = session.user?.id
-            if (userId != null) AuthState.Authenticated(userId, fetchPlan(userId)) else AuthState.Guest
+            if (userId != null) {
+                val profile = fetchProfile(userId)
+                AuthState.Authenticated(userId, profile.toPlanType(), profile.displayName)
+            } else {
+                AuthState.Guest
+            }
         }
         else -> AuthState.Guest
     }
 
     /**
-     * Lee `plan_type`/`premium_until` de la fila propia en `public.users` y los
-     * resuelve a [PlanType]. La RLS ya restringe el `select` a la fila del usuario
+     * Lee `plan_type`/`premium_until`/`display_name` de la fila propia en
+     * `public.users`. La RLS ya restringe el `select` a la fila del usuario
      * autenticado, pero filtramos por `id` igualmente por claridad y para forzar la
      * fila única esperada. Cualquier error (offline, fila aún no propagada por el
-     * trigger) degrada a [PlanType.FREE]: preferimos mostrar anuncios de más antes
-     * que bloquear el arranque.
+     * trigger) degrada a un perfil FREE sin nombre: preferimos mostrar anuncios de
+     * más antes que bloquear el arranque.
      */
-    private suspend fun fetchPlan(userId: String): PlanType = runCatching {
+    private suspend fun fetchProfile(userId: String): UserProfileRow = runCatching {
         client.postgrest.from("users")
-            .select(Columns.list("plan_type", "premium_until")) {
+            .select(Columns.list("plan_type", "premium_until", "display_name")) {
                 filter { eq("id", userId) }
             }
-            .decodeSingleOrNull<UserPlanRow>()
-            ?.toPlanType()
-            ?: PlanType.FREE
-    }.getOrDefault(PlanType.FREE)
+            .decodeSingleOrNull<UserProfileRow>()
+            ?: UserProfileRow(planType = "free")
+    }.getOrDefault(UserProfileRow(planType = "free"))
 
-    /** Proyección mínima de `public.users` para resolver el plan. */
+    /** Proyección mínima de `public.users` para resolver el plan y el nombre. */
     @Serializable
-    private data class UserPlanRow(
+    private data class UserProfileRow(
         @SerialName("plan_type") val planType: String,
         @SerialName("premium_until") val premiumUntil: Instant? = null,
+        @SerialName("display_name") val displayName: String? = null,
     ) {
         /**
          * `plan_type` es la fuente, pero se **valida** contra `premium_until` (ver

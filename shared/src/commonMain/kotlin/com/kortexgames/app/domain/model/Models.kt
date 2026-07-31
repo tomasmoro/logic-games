@@ -8,7 +8,9 @@ enum class PlanType { FREE, PREMIUM }
 /** Estado de sesión: invitado (solo local) o autenticado (sincroniza). */
 sealed interface AuthState {
     data object Guest : AuthState
-    data class Authenticated(val userId: String, val plan: PlanType) : AuthState
+
+    /** @property displayName nombre de usuario (`public.users.display_name`); null si no se ha fijado. */
+    data class Authenticated(val userId: String, val plan: PlanType, val displayName: String? = null) : AuthState
 }
 
 /**

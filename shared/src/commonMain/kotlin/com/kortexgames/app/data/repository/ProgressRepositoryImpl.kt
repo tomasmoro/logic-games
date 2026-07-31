@@ -109,6 +109,10 @@ class ProgressRepositoryImpl(
         return local.countInRange(start, end)
     }
 
+    override suspend fun clearLocal() {
+        local.clearAll()
+    }
+
     private fun GameProgress.toResult() = GameResult(
         gameId = gameId,
         score = score,

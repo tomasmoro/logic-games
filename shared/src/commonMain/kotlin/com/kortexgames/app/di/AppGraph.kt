@@ -191,4 +191,23 @@ class AppGraph(context: PlatformContext) {
     suspend fun signOut() {
         authRepository.signOut()
     }
+
+    /**
+     * Borra la cuenta de forma permanente: [AuthRepository.deleteAccount] borra el
+     * backend (cascada en Supabase) y cierra la sesión; si eso tiene éxito, aquí
+     * además vaciamos TODO el rastro local del usuario en este dispositivo
+     * (historial, récords, tiempos por nivel, logros, partida en curso y la
+     * reclamación del objetivo diario). Es necesario porque la app es
+     * local-first: sin esto, el dispositivo seguiría mostrando el progreso de una
+     * cuenta que ya no existe en la nube. Si el borrado remoto falla, no se toca
+     * nada local (más vale una cuenta que no se pudo borrar que datos huérfanos).
+     */
+    suspend fun deleteAccount(): Result<Unit> =
+        authRepository.deleteAccount().onSuccess {
+            progressRepository.clearLocal()
+            playerProgressRepository.clearLocal()
+            achievementsRepository.clearLocal()
+            savedGameStateRepository.clearAll()
+            dailyGoalManager.clearClaimedReward()
+        }
 }

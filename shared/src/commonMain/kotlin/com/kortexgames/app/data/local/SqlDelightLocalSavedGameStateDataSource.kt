@@ -42,6 +42,10 @@ class SqlDelightLocalSavedGameStateDataSource(
         queries.delete(gameId)
     }
 
+    override suspend fun clearAll(): Unit = withContext(io) {
+        queries.deleteAll()
+    }
+
     private fun SavedGameStateEntity.toDomain() = SavedGameState(
         gameId = gameId,
         stateJson = stateJson,

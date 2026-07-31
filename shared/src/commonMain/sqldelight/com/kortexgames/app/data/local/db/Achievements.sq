@@ -30,3 +30,8 @@ VALUES (:achievementId, :progress, :unlockedAt, :isSynced);
 
 markSynced:
 UPDATE UserAchievementEntity SET isSynced = 1 WHERE achievementId = :achievementId;
+
+-- Vacía los logros del jugador (borrado de cuenta). El catálogo no vive aquí, así
+-- que esto no afecta a qué logros existen, solo al progreso/desbloqueo guardado.
+deleteAll:
+DELETE FROM UserAchievementEntity;

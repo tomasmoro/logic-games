@@ -27,4 +27,7 @@ interface LocalPlayerProgressDataSource {
 
     /** Marca la fila de un juego como sincronizada. */
     suspend fun markSynced(gameId: String)
+
+    /** Vacía toda la progresión local (borrado de cuenta). */
+    suspend fun clearAll()
 }

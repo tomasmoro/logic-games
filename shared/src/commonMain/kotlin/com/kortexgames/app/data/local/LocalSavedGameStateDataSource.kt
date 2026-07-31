@@ -27,4 +27,7 @@ interface LocalSavedGameStateDataSource {
 
     /** Borra el guardado de un juego. */
     suspend fun delete(gameId: String)
+
+    /** Borra todas las partidas en curso guardadas (borrado de cuenta). */
+    suspend fun clearAll()
 }

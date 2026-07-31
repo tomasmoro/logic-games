@@ -51,6 +51,10 @@ class SqlDelightLocalPlayerProgressDataSource(
         queries.markSynced(gameId)
     }
 
+    override suspend fun clearAll(): Unit = withContext(io) {
+        queries.deleteAll()
+    }
+
     private fun PlayerGameProgressEntity.toDomain() = PlayerGameProgress(
         gameId = gameId,
         bestMetric = bestMetric.toInt(),

@@ -35,4 +35,11 @@ interface ProgressRepository {
 
     /** Nº de partidas jugadas HOY (para el Daily Goal). */
     suspend fun countPlayedToday(): Int
+
+    /**
+     * Vacía el historial local. Es puramente local (no toca la nube): lo usa el
+     * borrado de cuenta, después de que el backend ya confirmó su propio borrado,
+     * para que el dispositivo tampoco siga mostrando datos de una cuenta borrada.
+     */
+    suspend fun clearLocal()
 }

@@ -33,3 +33,7 @@ VALUES (:gameId, :level, :bestTimeMs, :updatedAt, :isSynced);
 
 markSynced:
 UPDATE LevelBestTimeEntity SET isSynced = 1 WHERE gameId = :gameId AND level = :level;
+
+-- Vacía los mejores tiempos por nivel (borrado de cuenta).
+deleteAll:
+DELETE FROM LevelBestTimeEntity;

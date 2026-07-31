@@ -77,6 +77,10 @@ class SqlDelightLocalProgressDataSource(
             queries.countInRange(startEpochMs, endEpochMs).executeAsOne().toInt()
         }
 
+    override suspend fun clearAll(): Unit = withContext(io) {
+        queries.deleteAll()
+    }
+
     private fun GameProgressEntity.toDomain() = GameProgress(
         localId = localId,
         remoteId = remoteId,

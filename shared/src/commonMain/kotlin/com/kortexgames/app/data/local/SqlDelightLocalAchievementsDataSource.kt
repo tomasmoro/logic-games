@@ -46,6 +46,10 @@ class SqlDelightLocalAchievementsDataSource(
         queries.markSynced(achievementId)
     }
 
+    override suspend fun clearAll(): Unit = withContext(io) {
+        queries.deleteAll()
+    }
+
     private fun UserAchievementEntity.toDomain() = UserAchievement(
         achievementId = achievementId,
         progress = progress.toInt(),

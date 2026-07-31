@@ -139,6 +139,10 @@ class AchievementsRepositoryImpl(
         }
     }
 
+    override suspend fun clearLocal() {
+        local.clearAll()
+    }
+
     private fun currentUserId(): String? =
         (authState() as? AuthState.Authenticated)?.userId
 }

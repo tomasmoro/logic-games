@@ -44,4 +44,10 @@ interface AchievementsRepository {
      * modo invitado.
      */
     suspend fun sync()
+
+    /**
+     * Vacía el progreso/desbloqueo local de todos los logros. Puramente local; lo
+     * usa el borrado de cuenta tras confirmar el borrado en el backend.
+     */
+    suspend fun clearLocal()
 }

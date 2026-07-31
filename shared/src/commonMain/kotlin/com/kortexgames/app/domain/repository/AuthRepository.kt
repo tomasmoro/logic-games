@@ -35,4 +35,19 @@ interface AuthRepository {
 
     /** Cierra la sesión actual (vuelve a modo invitado). */
     suspend fun signOut()
+
+    /**
+     * Cambia el nombre de usuario (`public.users.display_name`) del usuario
+     * autenticado. Falla con [IllegalStateException] si se llama en modo invitado.
+     */
+    suspend fun updateDisplayName(name: String): Result<Unit>
+
+    /**
+     * Borra la cuenta de forma **permanente e irreversible**: delega en la Edge
+     * Function `delete-account` (necesita `service_role` para borrar de
+     * `auth.users`, algo que el cliente nunca debe tener). El borrado en cascada
+     * de `auth.users` se lleva por delante `public.users` y todo lo que referencia
+     * su `id` (progreso, logros, rachas…). Al terminar cierra la sesión local.
+     */
+    suspend fun deleteAccount(): Result<Unit>
 }

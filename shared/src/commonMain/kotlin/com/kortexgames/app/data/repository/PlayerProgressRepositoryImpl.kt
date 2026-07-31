@@ -207,6 +207,11 @@ class PlayerProgressRepositoryImpl(
         }
     }
 
+    override suspend fun clearLocal() {
+        local.clearAll()
+        localLevelTime.clearAll()
+    }
+
     private fun currentUserId(): String? =
         (authState() as? AuthState.Authenticated)?.userId
 }

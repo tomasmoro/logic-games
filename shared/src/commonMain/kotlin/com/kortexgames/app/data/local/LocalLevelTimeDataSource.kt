@@ -24,4 +24,7 @@ interface LocalLevelTimeDataSource {
 
     /** Marca la fila de un (juego, nivel) como sincronizada. */
     suspend fun markSynced(gameId: String, level: Int)
+
+    /** Vacía todos los tiempos por nivel (borrado de cuenta). */
+    suspend fun clearAll()
 }

@@ -62,6 +62,11 @@ class DailyGoalStore(private val dataStore: DataStore<Preferences>) {
     suspend fun setClaimedDate(isoDate: String) {
         dataStore.edit { it[claimedDateKey] = isoDate }
     }
+
+    /** Olvida la reclamación guardada (borrado de cuenta): la próxima partida no debe heredar el "ya reclamado" de una cuenta borrada. */
+    suspend fun clear() {
+        dataStore.edit { it.remove(claimedDateKey) }
+    }
 }
 
 /**
@@ -114,5 +119,10 @@ class DailyGoalManager(
         if (!state.value.canClaim) return false
         store.setClaimedDate(clock.todayIn(TimeZone.currentSystemDefault()).toString())
         return true
+    }
+
+    /** Olvida la reclamación del día (borrado de cuenta): ver [DailyGoalStore.clear]. */
+    suspend fun clearClaimedReward() {
+        store.clear()
     }
 }

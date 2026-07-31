@@ -25,4 +25,7 @@ interface LocalAchievementsDataSource {
 
     /** Marca la fila de un logro como sincronizada. */
     suspend fun markSynced(achievementId: String)
+
+    /** Vacía el estado de todos los logros del jugador (borrado de cuenta). */
+    suspend fun clearAll()
 }

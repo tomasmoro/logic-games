@@ -21,3 +21,7 @@ VALUES (:gameId, :stateJson, :savedAt);
 
 delete:
 DELETE FROM SavedGameStateEntity WHERE gameId = :gameId;
+
+-- Vacía todas las partidas en curso guardadas (borrado de cuenta).
+deleteAll:
+DELETE FROM SavedGameStateEntity;

@@ -46,4 +46,10 @@ interface PlayerProgressRepository {
      * No-op en modo invitado.
      */
     suspend fun sync()
+
+    /**
+     * Vacía la progresión local (récords + mejores tiempos por nivel). Puramente
+     * local; lo usa el borrado de cuenta tras confirmar el borrado en el backend.
+     */
+    suspend fun clearLocal()
 }

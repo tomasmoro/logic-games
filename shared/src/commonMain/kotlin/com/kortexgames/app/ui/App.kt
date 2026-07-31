@@ -62,6 +62,7 @@ import com.kortexgames.app.ui.navigation.AnimatedBottomBar
 import com.kortexgames.app.ui.navigation.Routes
 import com.kortexgames.app.ui.navigation.TopLevelTab
 import com.kortexgames.app.ui.profile.ProfileScreen
+import com.kortexgames.app.ui.settings.SettingsScreen
 
 /**
  * Raíz de la app Compose Multiplatform, compartida por Android e iOS.
@@ -225,6 +226,21 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean) {
                     ProfileScreen(
                         graph = graph,
                         onOpenAuth = { navController.navigate(Routes.AUTH) },
+                        onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                    )
+                }
+                composable(Routes.SETTINGS) {
+                    SettingsScreen(
+                        graph = graph,
+                        onBack = { navController.popBackStack() },
+                        onOpenAuth = { navController.navigate(Routes.AUTH) },
+                        // Cuenta borrada: la sesión ya cerró, saca al usuario del backstack
+                        // de Ajustes/Perfil y lo deja en Home como invitado.
+                        onAccountDeleted = {
+                            navController.navigate(Routes.HOME) {
+                                popUpTo(Routes.HOME) { inclusive = true }
+                            }
+                        },
                     )
                 }
                 composable(Routes.MEMORY) {

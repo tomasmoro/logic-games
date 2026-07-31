@@ -1,9 +1,10 @@
 # site — Sitio web público de KortexGames
 
-Sitio estático con la **página principal** de la App y su **política de privacidad**
-(español e inglés). Se publica en GitHub Pages. Sus URLs se pegan en tres sitios:
-Google Play Console, App Store Connect y el *Branding* del OAuth consent screen de
-Google Cloud (que exige homepage + política para sacar la app de modo Testing).
+Sitio estático con la **página principal** de la App, su **política de privacidad** y sus
+**condiciones del servicio** (español e inglés). Se publica en GitHub Pages. Sus URLs se
+pegan en tres sitios: Google Play Console, App Store Connect y el *Branding* del OAuth
+consent screen de Google Cloud (que exige homepage + política para sacar la app de modo
+Testing; el enlace a condiciones es opcional ahí, pero conviene rellenarlo).
 
 ```
 site/
@@ -11,8 +12,16 @@ site/
 ├── styles.css          Tokens del sistema de diseño (§9 de CLAUDE.md)
 ├── assets/icon.png     Icono de la app, reutilizado como logo
 ├── privacidad/         Política de Privacidad (ES)  → /privacidad/
-└── privacy/            Privacy Policy (EN)          → /privacy/
+├── privacy/            Privacy Policy (EN)          → /privacy/
+├── condiciones/        Condiciones del Servicio (ES) → /condiciones/
+└── terms/              Terms of Service (EN)        → /terms/
 ```
+
+> Las condiciones declaran en su §9 que **la App no tiene compras dentro de la
+> aplicación**, y en su §2 que **no es un producto sanitario ni promete beneficios
+> cognitivos** (la cláusula que evita el problema por el que la FTC sancionó a Lumosity).
+> Si algún día se integra Google Play Billing, hay que actualizar la §9 de ambos idiomas
+> **antes** de activar la compra.
 
 > El contenido de la landing (nº de juegos, categorías, lista de títulos) sale del
 > catálogo real: `GameCatalog.kt`, contando solo los `playable = true` que no estén
