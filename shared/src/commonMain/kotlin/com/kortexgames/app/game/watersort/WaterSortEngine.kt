@@ -36,6 +36,16 @@ data class PourEvent(
 const val MAX_EXTRA_TUBES: Int = 1
 
 /**
+ * Deshacer **gratis** que el jugador tiene por intento de nivel. El primero sale
+ * gratis porque un vertido mal dado suele ser un desliz (o un toque erróneo), no una
+ * decisión: cobrarlo desde el primero castiga el error honesto y empuja a reiniciar.
+ * A partir del segundo, deshacer se vuelve una ayuda de verdad —permite tantear el
+ * nivel a base de retroceder— y por eso pasa a costar un anuncio recompensado, igual
+ * que el "Tubo extra" y el "Reiniciar".
+ */
+const val FREE_UNDOS: Int = 1
+
+/**
  * Estado de UI de "Ordena las Pociones".
  *
  * @property tubes tablero actual (fuente de verdad para pintar).
@@ -49,6 +59,8 @@ const val MAX_EXTRA_TUBES: Int = 1
  * @property extraTubesUsed tubos extra ya añadidos (vía anuncio) en esta partida.
  * @property canAddTube aún queda cupo de tubos extra ([MAX_EXTRA_TUBES]) y la
  *   partida sigue en curso → la UI puede ofrecer el botón "Tubo extra".
+ * @property undosUsed deshacer ya gastados en este intento de nivel (incluidos los
+ *   pagados con anuncio). Solo se usa para saber si el próximo sale gratis.
  */
 data class WaterSortState(
     val tubes: List<Tube> = emptyList(),
@@ -62,7 +74,16 @@ data class WaterSortState(
     val lastPour: PourEvent? = null,
     val extraTubesUsed: Int = 0,
     val canAddTube: Boolean = true,
-)
+    val undosUsed: Int = 0,
+) {
+    /**
+     * ¿El próximo deshacer es gratis? Los primeros [FREE_UNDOS] lo son; a partir de
+     * ahí cuesta un anuncio recompensado. La UI lo usa para marcar el botón con el
+     * distintivo de anuncio y el ViewModel para decidir si pide el anuncio o deshace
+     * directamente.
+     */
+    val nextUndoIsFree: Boolean get() = undosUsed < FREE_UNDOS
+}
 
 /**
  * Motor de "Ordena las Pociones" (Water Sort), categoría Pensamiento Lógico.
@@ -213,7 +234,14 @@ class WaterSortEngine(
         }
     }
 
-    /** Deshace el último vertido restaurando el tablero previo. */
+    /**
+     * Deshace el último vertido restaurando el tablero previo.
+     *
+     * Contabiliza el uso en [WaterSortState.undosUsed]: los primeros [FREE_UNDOS] son
+     * gratis y el resto los concede el ViewModel solo tras un anuncio recompensado.
+     * El **cobro no se decide aquí** (el motor no conoce los anuncios); esta función
+     * asume que quien la llama ya pagó el precio que tocara, igual que [addExtraTube].
+     */
     fun undo() {
         val previous = history.removeLastOrNull() ?: return
         val s = _state.value
@@ -224,6 +252,7 @@ class WaterSortEngine(
             solved = false,
             canUndo = history.isNotEmpty(),
             lastPour = null,
+            undosUsed = s.undosUsed + 1,
         )
     }
 
@@ -264,6 +293,10 @@ class WaterSortEngine(
      * Reinicia el MISMO nivel a su estado inicial (no genera uno nuevo). Conserva los
      * tubos extra ya obtenidos por anuncio ([initialTubes] los incluye) y su contador,
      * para no devolverle al jugador un tablero más difícil del que ya "pagó".
+     *
+     * El deshacer gratis SÍ se recupera (el estado nuevo arranca con `undosUsed = 0`):
+     * es un intento nuevo desde cero, y reiniciar ya cuesta su propio anuncio, así que
+     * no da pie a farmear deshaceres gratis.
      */
     fun restart() {
         history.clear()
@@ -279,14 +312,52 @@ class WaterSortEngine(
     }
 
     /**
-     * Puntaje: base proporcional al nivel menos una penalización por cada vertido de
-     * más respecto a la solución de referencia ([minMoves]). Premia resolver niveles
-     * altos con pocos movimientos; nunca baja de 0.
+     * Puntaje de la partida: **base por nivel alcanzado, menos lo que costó llegar**.
+     *
+     * ```
+     * base    = nivel * BASE_PER_LEVEL
+     * castigo = vertidos de más   * PENALTY_PER_EXTRA_MOVE
+     *         + segundos activos  * PENALTY_PER_SECOND
+     *         + deshaceres        * PENALTY_PER_UNDO
+     *         + tubos extra       * PENALTY_PER_EXTRA_TUBE
+     * score   = base - min(castigo, BASE_PER_LEVEL - 1)
+     * ```
+     *
+     * ## Por qué el castigo va topado
+     * El tope es lo que mantiene el ranking **monótono en el nivel**: por mal que se
+     * juegue el nivel N, su peor puntaje (`N*1000 - 999`) sigue por encima del mejor
+     * del nivel N-1 (`(N-1)*1000`). Sin ese tope, una partida lenta y sucia del nivel
+     * 10 podría puntuar por debajo de una impecable del 6, y la tabla mundial diría
+     * que el jugador que llegó más lejos es peor. El castigo ordena a los que están
+     * en el MISMO nivel; el nivel ordena el resto.
+     *
+     * ## Por qué el tiempo pesa poco
+     * Esto es un puzle de pensar, no de reflejos: no hay reloj en pantalla y quedarse
+     * un minuto mirando el tablero es jugar bien, no perder el tiempo. El tiempo entra
+     * solo como desempate fino entre soluciones igual de eficientes (y el cronómetro
+     * ya descuenta las pausas, ver [elapsedActive]).
+     *
+     * ## Por qué las ayudas restan
+     * El **tubo extra** es la que más resta: desatasca un tablero perdido y por eso
+     * trivializa el nivel, así que quien lo usa no puede competir de tú a tú con quien
+     * lo resolvió limpio. **Deshacer** resta menos porque el primero suele ser un
+     * desliz, no una ayuda (ver [FREE_UNDOS]) — pero resta desde el primero: en la
+     * tabla mundial lo que cuenta es la partida, no si la ayuda salió gratis.
+     *
+     * Ojo: [restart] pone [WaterSortState.undosUsed] y los vertidos a cero porque el
+     * intento empieza de nuevo. No es un atajo para limpiar el castigo — reiniciar
+     * tira todo el avance del nivel y el cronómetro NO se reinicia, así que el tiempo
+     * malgastado se sigue pagando.
      */
     override fun calculateScore(): Int {
-        val base = currentLevel * 1_000
-        val extraMoves = (_state.value.moves - currentRoundMinMoves).coerceAtLeast(0)
-        return (base - extraMoves * PENALTY_PER_EXTRA_MOVE).coerceAtLeast(0)
+        val s = _state.value
+        val base = currentLevel * BASE_PER_LEVEL
+        val extraMoves = (s.moves - currentRoundMinMoves).coerceAtLeast(0)
+        val penalty = extraMoves.toLong() * PENALTY_PER_EXTRA_MOVE +
+            elapsedActive().inWholeSeconds * PENALTY_PER_SECOND +
+            s.undosUsed.toLong() * PENALTY_PER_UNDO +
+            s.extraTubesUsed.toLong() * PENALTY_PER_EXTRA_TUBE
+        return (base - penalty.coerceIn(0L, BASE_PER_LEVEL - 1L)).toInt()
     }
 
     /** Precisión = eficiencia: movimientos de referencia / movimientos reales. */
@@ -300,6 +371,30 @@ class WaterSortEngine(
     override fun reachedMetric(): Int = currentLevel
 
     private companion object {
-        const val PENALTY_PER_EXTRA_MOVE = 40
+        /**
+         * Puntos que vale cada nivel. Es la escala que separa un nivel del siguiente:
+         * el castigo total se topa en `BASE_PER_LEVEL - 1` para no invadir el tramo
+         * del nivel anterior (ver [calculateScore]).
+         */
+        const val BASE_PER_LEVEL = 1_000L
+
+        /** Castigo por cada vertido por encima de la solución de referencia (`minMoves`). */
+        const val PENALTY_PER_EXTRA_MOVE = 40L
+
+        /**
+         * Castigo por segundo activo. Deliberadamente bajo: 60 s cuestan 120 puntos,
+         * lo justo para desempatar sin convertir un puzle de pensar en una carrera.
+         */
+        const val PENALTY_PER_SECOND = 2L
+
+        /** Castigo por cada deshacer, salga gratis o pagado con anuncio. */
+        const val PENALTY_PER_UNDO = 60L
+
+        /**
+         * Castigo por tubo extra. El más caro con diferencia: es la ayuda que convierte
+         * un tablero atascado en uno resoluble, así que debe doler en la tabla aunque
+         * siga mereciendo la pena para terminar el nivel.
+         */
+        const val PENALTY_PER_EXTRA_TUBE = 250L
     }
 }

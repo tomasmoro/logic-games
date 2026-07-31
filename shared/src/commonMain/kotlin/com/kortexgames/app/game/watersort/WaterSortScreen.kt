@@ -209,7 +209,7 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
     // y (2) saber si el `progress` actual corresponde ya al vertido en curso.
     var animId by remember { mutableStateOf<Long?>(null) }
 
-    // Anuncios: tanto "Tubo extra" como "Reiniciar" piden el rewarded real al
+    // Anuncios: "Tubo extra", "Reiniciar" y el deshacer de pago piden el rewarded real al
     // AdManager (mismo trato que Neon Sudoku/Desactivador — pulsar el botón YA es
     // la confirmación del jugador, así que el anuncio se lanza directo, sin overlay
     // de por medio) y, si concede la recompensa, envían el intent que ejecuta la
@@ -220,6 +220,7 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
             val onEarned = when (effect) {
                 WaterSortEffect.ShowRewardedAd -> WaterSortIntent.ExtraTubeRewarded
                 WaterSortEffect.ShowRestartAd -> WaterSortIntent.Restart
+                WaterSortEffect.ShowUndoAd -> WaterSortIntent.UndoRewarded
             }
             if (graph.adManager.showRewardedAd() == RewardResult.EARNED) {
                 vm.onIntent(onEarned)
@@ -402,6 +403,11 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
                     label = "Deshacer",
                     tint = LogicColors.NeonCyan,
                     enabled = game.canUndo && !animating,
+                    // El primer deshacer del intento es gratis; a partir de ahí cuesta
+                    // un anuncio y el botón lo anuncia con el distintivo (petición del
+                    // usuario). El cobro lo resuelve el ViewModel: aquí siempre se
+                    // manda el mismo intent.
+                    costsAd = !game.nextUndoIsFree,
                     onClick = { vm.onIntent(WaterSortIntent.Undo) },
                 )
                 ActionButton(
@@ -754,6 +760,12 @@ private fun DrawScope.drawTube(
  * Botón de acción con icono neón y etiqueta. El icono se envuelve en un contenedor
  * de **tamaño fijo** para que activar/desactivar el halo (glow) no cambie su
  * footprint y, con ello, no desplace el resto de la UI (bug de "salto" al servir).
+ *
+ * @param costsAd si la acción cuesta un anuncio recompensado, superpone el distintivo
+ *   [KortexIcons.RewardedAd] en la esquina del icono. Es la misma señal que usa Neon
+ *   Defuser en su escáner: el jugador debe saber ANTES de pulsar que va a ver un
+ *   anuncio. Como es una superposición, el botón no cambia de tamaño al pasar de
+ *   gratis a de pago (p. ej. el "Deshacer" tras gastar el gratuito).
  */
 @Composable
 private fun ActionButton(
@@ -763,6 +775,7 @@ private fun ActionButton(
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    costsAd: Boolean = false,
 ) {
     val effectiveTint = if (enabled) tint else LogicColors.OnDarkMuted
     Column(
@@ -775,6 +788,16 @@ private fun ActionButton(
         // Reserva fija (~1.9x el glifo) para que el halo no altere el layout.
         Box(Modifier.size(54.dp), contentAlignment = Alignment.Center) {
             NeonIcon(icon = icon, tint = effectiveTint, glow = enabled, size = 28.dp)
+            if (costsAd) {
+                NeonIcon(
+                    icon = KortexIcons.RewardedAd,
+                    tint = LogicColors.OnDarkMuted,
+                    glow = false,
+                    size = 14.dp,
+                    contentDescription = "Cuesta ver un anuncio",
+                    modifier = Modifier.align(Alignment.BottomEnd),
+                )
+            }
         }
         Spacer(Modifier.height(4.dp))
         Text(label, style = MaterialTheme.typography.labelLarge, color = effectiveTint)
@@ -896,12 +919,22 @@ private fun PreviewActionButtons() {
                 .padding(16.dp),
             horizontalArrangement = Arrangement.spacedBy(20.dp),
         ) {
+            // Deshacer en sus dos estados: gratis (el primero) y de pago (con el
+            // distintivo de anuncio), para poder comparar ambos de un vistazo.
             ActionButton(
                 icon = KortexIcons.Undo,
                 label = "Deshacer",
                 tint = LogicColors.NeonCyan,
                 enabled = true,
                 onClick = {},
+            )
+            ActionButton(
+                icon = KortexIcons.Undo,
+                label = "Deshacer",
+                tint = LogicColors.NeonCyan,
+                enabled = true,
+                onClick = {},
+                costsAd = true,
             )
             ActionButton(
                 icon = KortexIcons.Refresh,

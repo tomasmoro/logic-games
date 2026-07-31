@@ -97,7 +97,8 @@ con consentimiento UMP, logros (`game/achievements`), objetivo diario y rachas
 modelado en el dominio pero **no se puede comprar** (no hay SDK de billing), y la
 app se dirige a público mixto con menores de 13 sin la pantalla neutral de edad
 ni el `tagForChildDirectedTreatment` que exigen COPPA y la Política de Familias
-de Google Play. La política de privacidad ya está redactada en `legal-site/`.
+de Google Play. Las páginas legales (privacidad y condiciones, ES/EN) ya existen
+en `site/` y se despliegan solas a GitHub Pages (`.github/workflows/deploy-site.yml`).
 
 ---
 

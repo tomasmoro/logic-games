@@ -8,8 +8,8 @@ import com.kortexgames.app.domain.model.GameResult
 import com.kortexgames.app.domain.repository.ProgressRepository
 import com.kortexgames.app.domain.repository.SavedGameStateRepository
 import com.kortexgames.app.game.GameIds
-import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
+import com.kortexgames.app.game.toGameOverInfo
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.launchIn
@@ -689,6 +689,7 @@ class DefuserViewModel(
         val result = GameResult(
             gameId = GameIds.NEON_DEFUSER,
             score = if (won) calculateScore(elapsed) else 0,
+            // (el detalle de qué resta y por qué está en `calculateScore`)
             completionTimeMs = elapsed,
             // Buscaminas se juega a "un error y fuera": la precisión útil es binaria
             // (despejaste o explotaste), así que 100% al ganar y 0% al perder.
@@ -705,16 +706,32 @@ class DefuserViewModel(
                 audio.playSound(SoundEffect.LEVEL_UP)
                 sendEffect(DefuserEffect.VictoryFireworks)
             }
-            setState { copy(gameOver = GameOverInfo(result, outcome.percentile, outcome.isNewRecord)) }
+            setState { copy(gameOver = outcome.toGameOverInfo(result)) }
         }
     }
 
-    /** Puntaje final de una victoria: [DefuserConfig.BASE_SCORE] menos una
-     *  penalización por cada segundo transcurrido, sin bajar de 0. Recompensa
-     *  desactivar rápido sin que el reloj pueda terminar la partida. */
+    /**
+     * Puntaje final de una victoria: [DefuserConfig.BASE_SCORE] menos el tiempo
+     * empleado y menos **las ayudas por anuncio** usadas (escáner y revivir), sin
+     * bajar de 0.
+     *
+     * Las ayudas restan porque sin eso la tabla mundial sería de quien más anuncios
+     * ve, no de quien mejor deduce: el escáner y el revivir dan exactamente lo que el
+     * ranking pretende medir (leer bien el panel y no pisar una mina). Los importes y
+     * su justificación están en [DefuserConfig.SCAN_SCORE_PENALTY] y
+     * [DefuserConfig.REVIVE_SCORE_PENALTY].
+     *
+     * Los contadores sobreviven a salir y reanudar la partida: el escáner porque
+     * `scanUsesRemaining` va en [DefuserSavedState], y el revivir porque
+     * [reviveOffered] también se persiste. Sin eso, salir y volver limpiaría el
+     * castigo dejando las ayudas ya cobradas.
+     */
     private fun calculateScore(elapsedMs: Long): Int {
         val elapsedSeconds = elapsedMs / 1_000
-        val penalty = elapsedSeconds * DefuserConfig.TIME_SCORE_PENALTY_PER_SEC
+        val scansUsed = DefuserConfig.SCAN_MAX_USES - currentState.scanUsesRemaining
+        val penalty = elapsedSeconds * DefuserConfig.TIME_SCORE_PENALTY_PER_SEC +
+            scansUsed.toLong() * DefuserConfig.SCAN_SCORE_PENALTY +
+            (if (reviveOffered) DefuserConfig.REVIVE_SCORE_PENALTY.toLong() else 0L)
         return (DefuserConfig.BASE_SCORE - penalty).coerceAtLeast(0L).toInt()
     }
 

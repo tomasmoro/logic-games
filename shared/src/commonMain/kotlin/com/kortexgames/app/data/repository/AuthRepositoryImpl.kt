@@ -22,6 +22,8 @@ import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /**
  * Implementación de [AuthRepository] sobre **Supabase Auth**.
@@ -66,7 +68,11 @@ class AuthRepositoryImpl(
             }
         }
 
-    override suspend fun signUpWithEmail(email: String, password: String): Result<Unit> =
+    override suspend fun signUpWithEmail(
+        email: String,
+        password: String,
+        displayName: String,
+    ): Result<Unit> =
         // Si el proyecto exige confirmación por correo, `signUpWith` no crea sesión
         // todavía; el usuario queda como invitado hasta confirmar y podrá iniciar
         // sesión con el botón del Home/Perfil. Aun así lo tratamos como éxito.
@@ -74,6 +80,12 @@ class AuthRepositoryImpl(
             client.auth.signUpWith(Email) {
                 this.email = email
                 this.password = password
+                // `data` acaba en `auth.users.raw_user_meta_data`, de donde el
+                // trigger `handle_new_user` (migración 0026) lo copia a
+                // `public.users.display_name` al crear el perfil.
+                data = buildJsonObject {
+                    put("display_name", displayName)
+                }
             }
         }.map { }
 

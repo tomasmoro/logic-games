@@ -17,9 +17,12 @@ import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Leaderboard
 import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.MilitaryTech
+import androidx.compose.material.icons.automirrored.rounded.TrendingUp
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.MusicOff
 import androidx.compose.material.icons.rounded.OndemandVideo
@@ -72,6 +75,22 @@ object KortexIcons {
 
     /** Estrella: destacado / mejor rendimiento (p. ej. "tu juego estrella"). */
     val Star: ImageVector = Icons.Rounded.Star
+
+    /**
+     * Podio: la comparativa mundial de fin de partida cuando el jugador aún está
+     * por debajo de la media. Se elige el podio (y no un trofeo) a propósito: habla
+     * de "dónde estás en la tabla", no de haber ganado nada.
+     */
+    val Leaderboard: ImageVector = Icons.Rounded.Leaderboard
+
+    /**
+     * Medalla: tramos altos de la comparativa mundial (top 20%). Escalón intermedio
+     * entre [Leaderboard] (posición) y [Trophy] (nº1 del mundo).
+     */
+    val Medal: ImageVector = Icons.Rounded.MilitaryTech
+
+    /** Flecha ascendente: progreso al alza (ya superas a la mitad del mundo). */
+    val TrendingUp: ImageVector = Icons.AutoMirrored.Rounded.TrendingUp
 
     /** Deshacer el último movimiento (acción de juego). */
     val Undo: ImageVector = Icons.AutoMirrored.Rounded.Undo

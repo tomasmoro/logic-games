@@ -37,6 +37,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -195,10 +196,12 @@ fun GameIntroScreen(
                     .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Spacer(Modifier.height(16.dp))
+                // Sin Spacer previo y con solo 8dp debajo: el propio héroe ya aporta el
+                // padding que reserva sitio a su halo (HERO_GLOW_SPREAD), así que el
+                // ritmo vertical visible sigue siendo el de antes (16 arriba / 24 abajo).
                 GameIconHero(icon = icon, motif = motif, accent = accent)
 
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(8.dp))
                 Text(
                     title,
                     style = MaterialTheme.typography.headlineLarge,
@@ -310,39 +313,54 @@ fun GameIntroScreen(
     }
 }
 
+/** Alcance del halo del héroe; el padding del contenedor reserva justo este espacio. */
+private val HERO_GLOW_SPREAD = 16.dp
+
 /**
  * "Héroe" del juego: recuadro redondeado con halo neón de acento donde vive la identidad
  * visual del juego. Prioridad de contenido: [motif] (arte propio del juego, dibujado
  * centrado con [GameMotifIcon]) > [icon] (glifo neón) > **placeholder vacío** (el recuadro
  * con su halo, para juegos aún sin diseñar). El motivo es el mismo que pinta el fondo de la
  * tarjeta del juego en el catálogo, así intro/lista/Home comparten identidad.
+ *
+ * El resplandor lo da [breathingNeonHalo] y **no** [softGlow]: la sombra de plataforma en
+ * la que se apoya `softGlow` se transparentaba a través del degradado del recuadro y
+ * dibujaba un recuadro oscuro fantasma dentro del icono (ver KDoc de [breathingNeonHalo]).
+ * Por el mismo motivo el degradado de fondo es ahora **opaco**: mezcla el acento con la
+ * superficie en vez de superponerlo con alfa, así ninguna capa de detrás asoma. El look
+ * (color y respiración) es el mismo.
  */
 @Composable
 private fun GameIconHero(icon: ImageVector?, motif: GameMotif?, accent: Color) {
-    val shape = RoundedCornerShape(28.dp)
-    Box(
-        modifier = Modifier
-            .size(132.dp)
-            // Halo neón que "respira" alrededor del marco, mismo lenguaje que los
-            // elementos destacados de la Home (§9.4). Va antes del clip para que el
-            // resplandor se derrame fuera del recuadro.
-            .softGlow(color = accent, shape = shape, maxElevation = 24.dp)
-            .clip(shape)
-            .background(
-                Brush.verticalGradient(
-                    listOf(accent.copy(alpha = 0.16f), LogicColors.SurfaceDark),
-                ),
-            )
-            .border(BorderStroke(1.5.dp, accent.copy(alpha = 0.55f)), shape),
-        contentAlignment = Alignment.Center,
-    ) {
-        when {
-            motif != null -> GameMotifIcon(
-                motif = motif,
-                accent = accent,
-                modifier = Modifier.fillMaxSize(),
-            )
-            icon != null -> NeonIcon(icon = icon, tint = accent, size = 64.dp)
+    val corner = 28.dp
+    val shape = RoundedCornerShape(corner)
+    // El halo se dibuja fuera del recuadro: este padding le reserva sitio dentro de los
+    // límites del contenedor para que el scroll del cuerpo no lo recorte.
+    Box(modifier = Modifier.padding(HERO_GLOW_SPREAD)) {
+        Box(
+            modifier = Modifier
+                .size(132.dp)
+                // Halo neón que "respira" alrededor del marco, mismo lenguaje que los
+                // elementos destacados de la Home (§9.4). Va antes del clip para que el
+                // resplandor se derrame fuera del recuadro.
+                .breathingNeonHalo(color = accent, cornerRadius = corner, spread = HERO_GLOW_SPREAD)
+                .clip(shape)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(lerp(LogicColors.SurfaceDark, accent, 0.16f), LogicColors.SurfaceDark),
+                    ),
+                )
+                .border(BorderStroke(1.5.dp, accent.copy(alpha = 0.55f)), shape),
+            contentAlignment = Alignment.Center,
+        ) {
+            when {
+                motif != null -> GameMotifIcon(
+                    motif = motif,
+                    accent = accent,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                icon != null -> NeonIcon(icon = icon, tint = accent, size = 64.dp)
+            }
         }
     }
 }

@@ -109,16 +109,70 @@ data class PercentileResult(
 )
 
 /**
+ * Un puesto del ranking mundial de un juego, tal y como se pinta en la lista de
+ * fin de partida.
+ *
+ * @property rank puesto (1 = mejor del mundo).
+ * @property displayName nombre público del jugador; **null** si aún no ha elegido
+ *   uno (la UI lo sustituye por un genérico). El backend nunca envía el `user_id`,
+ *   así que este modelo no puede identificar a nadie más allá de su nombre público.
+ * @property score la **mejor marca** de ese jugador en el juego, no la última.
+ * @property isCurrentUser true en la fila del jugador que acaba de jugar; la UI la
+ *   resalta para que encuentre su posición de un vistazo.
+ */
+data class LeaderboardEntry(
+    val rank: Long,
+    val displayName: String?,
+    val score: Int,
+    val isCurrentUser: Boolean,
+)
+
+/**
+ * Comparativa con el resto del mundo al terminar una partida (RPC `get_game_ranking`).
+ *
+ * A diferencia de [PercentileResult] —que compara la partida contra todas las
+ * *partidas* históricas— aquí el universo son los **jugadores**, cada uno
+ * representado por su mejor marca. Es la métrica que se puede listar y la que
+ * corresponde a la idea intuitiva de "mi puesto".
+ *
+ * @property rank puesto del jugador (1 = el mejor del mundo).
+ * @property totalPlayers cuántos jugadores tienen al menos una partida en el juego.
+ * @property betterThanPct % de jugadores con marca estrictamente peor (0..100).
+ *   Los empatados NO cuentan, así que el número nunca infla el logro.
+ * @property isGlobalRecord true si la partida recién jugada **superó** la mejor
+ *   marca mundial anterior (empatarla no basta). Dispara la celebración especial.
+ * @property entries ventana del ranking alrededor del jugador (1 por encima y 3 por
+ *   debajo; si es el nº1, los 5 primeros), ya ordenada por puesto ascendente.
+ * @property difficultyLabel nombre de la dificultad a la que pertenece ESTA tabla
+ *   ("Experto"), en los juegos cuyo ranking se separa por dificultad; null cuando el
+ *   juego tiene una tabla única. La UI lo rotula para que se entienda por qué el top
+ *   cambia según la dificultad elegida (ver `GameRankingScopes`).
+ */
+data class GameRanking(
+    val rank: Long,
+    val totalPlayers: Long,
+    val betterThanPct: Double,
+    val isGlobalRecord: Boolean,
+    val entries: List<LeaderboardEntry>,
+    val difficultyLabel: String? = null,
+)
+
+/**
  * Resultado de persistir una partida ([com.kortexgames.app.domain.repository.ProgressRepository.saveResult]).
  * Reúne en un solo objeto lo que la UI de fin de partida necesita, resuelto en la
  * misma ruta local-first para que ningún ViewModel tenga que recalcularlo.
  *
  * @property percentile percentil global (usuario autenticado + online); null si no.
+ * @property ranking comparativa por jugadores (puesto + vecinos del ranking); null en
+ *   invitado/offline, o si la RPC de ranking falló aunque la partida sí se subiera —
+ *   se resuelve aparte del percentil justamente para que un fallo suyo no arrastre
+ *   al resto de la tarjeta de resultados.
  * @property isNewRecord true si la partida **batió el récord previo** del jugador en
  *   ese juego (según la dirección de su métrica). Es false en la primera marca
  *   registrada (sin récord anterior que superar) para no celebrar la primera partida.
  */
 data class SaveOutcome(
     val percentile: PercentileResult?,
+    val ranking: GameRanking?,
     val isNewRecord: Boolean,
 )

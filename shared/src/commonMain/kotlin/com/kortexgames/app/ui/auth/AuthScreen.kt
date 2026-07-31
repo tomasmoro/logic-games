@@ -31,6 +31,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Login
 import androidx.compose.material.icons.rounded.Email
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
@@ -65,6 +66,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.core.theme.LogicGradients
 import com.kortexgames.app.di.AppGraph
+import com.kortexgames.app.ui.components.LegalAcceptanceCheckbox
+import com.kortexgames.app.ui.components.LegalPassiveNotice
 import com.kortexgames.app.ui.components.NeonIcon
 import com.kortexgames.app.ui.components.bounceClick
 import com.kortexgames.app.ui.components.pulse
@@ -95,7 +98,12 @@ fun AuthScreen(
     onBack: () -> Unit,
 ) {
     val vm: AuthViewModel = viewModel {
-        AuthViewModel(graph.authRepository, graph.onboardingGate, graph.audio)
+        AuthViewModel(
+            graph.authRepository,
+            graph.onboardingGate,
+            graph.audio,
+            graph.legalConsentStore,
+        )
     }
     val state by vm.state.collectAsStateWithLifecycle()
 
@@ -244,6 +252,23 @@ private fun AuthForm(
             )
         }
 
+        // Nombre de jugador: solo al crear cuenta. Va PRIMERO porque es la
+        // pregunta de identidad ("¿cómo te llamamos?"), no una credencial, y
+        // porque así el orden del teclado (Siguiente) recorre el formulario de
+        // arriba abajo sin saltos.
+        AnimatedVisibility(visible = state.requiresUsername) {
+            AuthTextField(
+                value = state.username,
+                onValueChange = { onIntent(AuthIntent.UsernameChanged(it)) },
+                label = "Nombre de jugador",
+                leadingIcon = Icons.Rounded.Person,
+                keyboardType = KeyboardType.Text,
+                imeAction = ImeAction.Next,
+                enabled = !state.isSubmitting,
+                errorText = state.usernameError,
+            )
+        }
+
         AuthTextField(
             value = state.email,
             onValueChange = { onIntent(AuthIntent.EmailChanged(it)) },
@@ -264,6 +289,17 @@ private fun AuthForm(
         // Banner de error: aparece/desaparece con fade (no salta el layout brusco).
         AnimatedVisibility(visible = state.error != null) {
             ErrorBanner(message = state.error.orEmpty())
+        }
+
+        // Aceptación de condiciones: solo al crear cuenta. Entra y sale con la
+        // misma transición suave que el resto de bloques condicionales para que
+        // cambiar de modo no dé un salto de layout.
+        AnimatedVisibility(visible = state.requiresLegalAcceptance) {
+            LegalAcceptanceCheckbox(
+                checked = state.acceptedLegal,
+                onCheckedChange = { onIntent(AuthIntent.ToggleLegalAcceptance) },
+                enabled = !state.isSubmitting,
+            )
         }
 
         PrimaryButton(
@@ -295,9 +331,16 @@ private fun AuthForm(
         DividerWithText("o continúa con")
 
         GoogleButton(
-            enabled = !state.isSubmitting,
+            enabled = state.canUseGoogle,
             onClick = { onIntent(AuthIntent.SignInWithGoogle) },
         )
+
+        // En "Inicia sesión" no hay casilla, pero Google puede acabar creando una
+        // cuenta si el email no existía: el aviso deja los documentos a un toque y
+        // hace que continuar sea una aceptación informada.
+        AnimatedVisibility(visible = !state.requiresLegalAcceptance) {
+            LegalPassiveNotice()
+        }
 
         // Solo en la puerta de primera apertura: seguir sin cuenta (con aviso).
         if (isOnboarding) {
@@ -330,6 +373,7 @@ private fun AuthTextField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailing: @Composable (() -> Unit)? = null,
     onDone: (() -> Unit)? = null,
+    errorText: String? = null,
 ) {
     OutlinedTextField(
         value = value,
@@ -338,6 +382,10 @@ private fun AuthTextField(
         label = { Text(label) },
         singleLine = true,
         enabled = enabled,
+        isError = errorText != null,
+        // El error se muestra bajo el campo, no en un banner: así el usuario ve
+        // qué campo corregir sin tener que relacionarlo con un mensaje lejano.
+        supportingText = errorText?.let { { Text(it) } },
         leadingIcon = { Icon(leadingIcon, contentDescription = null) },
         trailingIcon = trailing,
         visualTransformation = visualTransformation,
@@ -356,6 +404,15 @@ private fun AuthTextField(
             unfocusedLeadingIconColor = LogicColors.OnDarkMuted,
             focusedContainerColor = LogicColors.SurfaceVariantDark,
             unfocusedContainerColor = LogicColors.SurfaceVariantDark,
+            // El rojo de error también sale del tema: Material traería el suyo,
+            // ajeno a la paleta (CLAUDE.md §4).
+            errorBorderColor = LogicColors.Error,
+            errorLabelColor = LogicColors.Error,
+            errorSupportingTextColor = LogicColors.Error,
+            errorCursorColor = LogicColors.Error,
+            errorLeadingIconColor = LogicColors.Error,
+            errorTextColor = LogicColors.OnDark,
+            errorContainerColor = LogicColors.SurfaceVariantDark,
         ),
     )
 }
@@ -451,16 +508,23 @@ private fun PrimaryButton(
     }
 }
 
-/** Botón secundario de Google: contorno neutro, icono + etiqueta. */
+/**
+ * Botón secundario de Google: contorno neutro, icono + etiqueta.
+ *
+ * Cuando está deshabilitado (envío en curso, o falta aceptar condiciones al
+ * registrarse) se atenúa: si solo dejara de responder al toque, el usuario
+ * pensaría que el botón está roto en vez de entender que le falta un paso.
+ */
 @Composable
 private fun GoogleButton(enabled: Boolean, onClick: () -> Unit) {
+    val contentColor = if (enabled) LogicColors.OnDark else LogicColors.OnDarkMuted
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(54.dp)
             .clip(RoundedCornerShape(20.dp))
             .border(1.5.dp, LogicColors.SurfaceVariantDark, RoundedCornerShape(20.dp))
-            .background(LogicColors.SurfaceVariantDark.copy(alpha = 0.4f))
+            .background(LogicColors.SurfaceVariantDark.copy(alpha = if (enabled) 0.4f else 0.18f))
             .bounceClick(enabled = enabled, onClick = onClick),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
@@ -468,14 +532,14 @@ private fun GoogleButton(enabled: Boolean, onClick: () -> Unit) {
         Icon(
             Icons.AutoMirrored.Rounded.Login,
             contentDescription = null,
-            tint = LogicColors.OnDark,
+            tint = contentColor,
             modifier = Modifier.size(22.dp),
         )
         Spacer(Modifier.width(12.dp))
         Text(
             "Continuar con Google",
             style = MaterialTheme.typography.labelLarge,
-            color = LogicColors.OnDark,
+            color = contentColor,
             fontWeight = FontWeight.SemiBold,
         )
     }

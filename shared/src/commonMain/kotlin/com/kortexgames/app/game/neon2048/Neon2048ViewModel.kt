@@ -9,8 +9,8 @@ import com.kortexgames.app.domain.repository.PlayerProgressRepository
 import com.kortexgames.app.domain.repository.ProgressRepository
 import com.kortexgames.app.domain.repository.SavedGameStateRepository
 import com.kortexgames.app.game.GameIds
-import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
+import com.kortexgames.app.game.toGameOverInfo
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -444,7 +444,7 @@ class Neon2048ViewModel(
             savedGameState.clear(GameIds.NEON_2048)
             val outcome = progress.saveResult(result)
             audio.playSound(SoundEffect.LEVEL_UP)
-            setState { copy(gameOver = GameOverInfo(result, outcome.percentile, outcome.isNewRecord)) }
+            setState { copy(gameOver = outcome.toGameOverInfo(result)) }
         }
     }
 }

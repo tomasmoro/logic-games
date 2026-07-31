@@ -307,6 +307,23 @@ object DefuserConfig {
      * decisión de producto.
      */
     const val SCAN_MAX_USES = 3
+
+    /**
+     * Puntos que resta cada uso del **escáner**. Inspeccionar una celda a elección
+     * evita justo la deducción que es el juego, y además puede salvar de pisar una
+     * mina; a [TIME_SCORE_PENALTY_PER_SEC] equivale a regalarle al jugador 75
+     * segundos, bastante más de lo que cuesta razonar una celda dudosa. Con los tres
+     * usos gastados el castigo (450) ya es media partida.
+     */
+    const val SCAN_SCORE_PENALTY = 150
+
+    /**
+     * Puntos que resta **revivir** con anuncio tras pisar una mina. El más caro: sin
+     * él la partida está perdida y puntuaría 0, así que rescata el resultado entero.
+     * Aun así compensa revivir —terminar con 700 es mejor que perder con 0—; lo que
+     * no compensa es contar con ello para subir en la tabla mundial.
+     */
+    const val REVIVE_SCORE_PENALTY = 250
 }
 
 /**

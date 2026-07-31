@@ -234,32 +234,41 @@ sealed interface NeonSudokuEffect : UiEffect {
      * [com.kortexgames.app.core.audio.AudioAndHapticManager].
      *
      * Atajos semánticos del juego:
-     *  - [Input] → dígito escrito o nota añadida/quitada, coincide con la solución.
+     *  - [Input] → gesto **neutro**: nota de lápiz añadida/quitada o Modo Notas.
+     *  - [Correct] → dígito definitivo escrito que coincide con la solución.
      *  - [Error] → el número escrito no coincide con la solución.
      *  - [UnitComplete] → se completó una fila, columna o bloque 3x3.
      *  - [LevelComplete] → tablero completado sin errores (victoria).
-     *  - [Hint] → una pista reveló el dígito correcto de una celda.
+     *
+     * [Input] y [Correct] son sonidos DISTINTOS a propósito: colocar bien un dígito
+     * es el acierto que el juego debe premiar, y con el `TAP` neutro sonaba igual que
+     * tocar una celda, así que no se percibía como recompensa (§9.4, feedback
+     * inmediato al acertar).
      */
     data class PlaySound(val sound: SoundEffect) : NeonSudokuEffect {
         companion object {
             val Input = PlaySound(SoundEffect.TAP)
+            val Correct = PlaySound(SoundEffect.SUCCESS)
             val Error = PlaySound(SoundEffect.ERROR)
             val UnitComplete = PlaySound(SoundEffect.SUCCESS)
             val LevelComplete = PlaySound(SoundEffect.LEVEL_UP)
-            val Hint = PlaySound(SoundEffect.SUCCESS)
         }
     }
 
     /**
      * Dispara feedback háptico.
      *
-     * Atajos semánticos:
-     *  - [Tick]  → vibración ligera al seleccionar una celda.
-     *  - [Heavy] → vibración fuerte al cometer un choque.
+     * Atajos semánticos, en escalón de intensidad para que el jugador distinga los
+     * hitos sin mirar: seleccionar < acertar < completar unidad ≈ chocar.
+     *  - [Tick]    → vibración ligera al seleccionar una celda o anotar.
+     *  - [Correct] → golpe medio al colocar bien un dígito (acierto).
+     *  - [Success] → patrón de logro al completar fila/columna/bloque.
+     *  - [Heavy]   → vibración fuerte al cometer un choque.
      */
     data class Vibrate(val haptic: HapticFeedback) : NeonSudokuEffect {
         companion object {
             val Tick = Vibrate(HapticFeedback.LIGHT)
+            val Correct = Vibrate(HapticFeedback.MEDIUM)
             val Heavy = Vibrate(HapticFeedback.HEAVY)
             val Success = Vibrate(HapticFeedback.SUCCESS)
         }
@@ -291,18 +300,33 @@ sealed interface NeonSudokuEffect : UiEffect {
      * Se acaban de colocar las **9 apariciones** de [digit] en el tablero, sin
      * ningún choque entre ellas: ya no queda ninguna instancia por colocar.
      * Agotar un dígito es un hito de la partida entera (no de una unidad
-     * puntual como [UnitsCompleted]), así que la UI celebra con **fuegos
-     * artificiales de pantalla completa** — el mismo componente que usa el
-     * resto del catálogo para un nuevo récord —, más vistoso que el destello
-     * local de una fila/columna/bloque.
+     * puntual como [UnitsCompleted]), así que la UI lo celebra por partida doble:
+     *  - **onda expansiva** sobre las [cells] —las 9 apariciones del dígito—, el
+     *    mismo lenguaje visual que [UnitsCompleted]. Es la parte *informativa*:
+     *    dice QUÉ se completó, iluminando dónde está cada aparición aunque estén
+     *    repartidas por todo el tablero (una unidad, en cambio, se explica sola
+     *    porque sus celdas son contiguas).
+     *  - **fuegos artificiales de pantalla completa** —el mismo componente que usa
+     *    el resto del catálogo para un récord—, la parte *celebratoria*, que marca
+     *    el escalón frente a cerrar una simple fila.
      *
      * Se emite como mucho una vez por dígito y partida: el ViewModel lleva la
      * cuenta para no repetir la celebración si el jugador reescribe una celda
      * que ya tenía ese valor.
      *
      * @property digit dígito agotado, `1..9`.
+     * @property cells las 9 celdas que contienen [digit]. Viajan resueltas en el
+     *   efecto (y no las recalcula la pantalla) porque corresponden al tablero de
+     *   ESTE instante: cuando la UI procese el efecto, el jugador ya pudo escribir
+     *   o borrar en otra celda.
+     * @property origin celda recién rellenada (la que agotó el dígito); epicentro
+     *   desde el que se propaga la onda, igual que en [UnitsCompleted].
      */
-    data class DigitCompleted(val digit: Int) : NeonSudokuEffect
+    data class DigitCompleted(
+        val digit: Int,
+        val cells: List<CellPosition>,
+        val origin: CellPosition,
+    ) : NeonSudokuEffect
 
     /**
      * Solicita a la UI la animación de sacudida horizontal (`shake`) sobre la
@@ -368,4 +392,8 @@ data class NeonSudokuSavedState(
     val totalInputs: Int,
     val conflictInputs: Int,
     val solution: String = "",
+    /** Pistas ya gastadas. Con valor por defecto para que las partidas guardadas
+     *  ANTES de que existiera el campo sigan deserializando (arrancan sin castigo
+     *  por pistas, que es lo correcto: se jugaron cuando la pista no penalizaba). */
+    val hintsUsed: Int = 0,
 )

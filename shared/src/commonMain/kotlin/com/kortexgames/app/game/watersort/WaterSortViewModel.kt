@@ -16,6 +16,7 @@ import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.LeveledGamePhase
+import com.kortexgames.app.game.toGameOverInfo
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -40,7 +41,17 @@ data class WaterSortUiState(
 sealed interface WaterSortIntent : UiIntent {
     /** El jugador tocó el tubo [index] (selección de origen o destino). */
     data class TapTube(val index: Int) : WaterSortIntent
+
+    /**
+     * El jugador pulsó "Deshacer". El primero del intento ([FREE_UNDOS]) se aplica al
+     * momento; los siguientes disparan [WaterSortEffect.ShowUndoAd] y solo se aplican
+     * cuando la UI devuelve [UndoRewarded]. La UI no decide el precio: manda un único
+     * intent y el ViewModel resuelve si toca cobrar.
+     */
     data object Undo : WaterSortIntent
+
+    /** La UI confirma que el anuncio del deshacer terminó → se deshace el vertido. */
+    data object UndoRewarded : WaterSortIntent
 
     /**
      * El jugador pulsó "Tubo extra": pide ver un anuncio recompensado. NO añade el
@@ -92,6 +103,13 @@ sealed interface WaterSortEffect : UiEffect {
      * one-shot que [ShowRewardedAd].
      */
     data object ShowRestartAd : WaterSortEffect
+
+    /**
+     * Pide a la UI mostrar un anuncio **antes de deshacer** (a partir del segundo
+     * deshacer del intento; ver [FREE_UNDOS]). Al terminar, la UI devuelve
+     * [WaterSortIntent.UndoRewarded]. Mismo mecanismo one-shot que [ShowRewardedAd].
+     */
+    data object ShowUndoAd : WaterSortEffect
 }
 
 /**
@@ -128,7 +146,8 @@ class WaterSortViewModel(
     override fun onIntent(intent: WaterSortIntent) {
         when (intent) {
             is WaterSortIntent.TapTube -> engine.onTubeTap(intent.index)
-            WaterSortIntent.Undo -> engine.undo()
+            WaterSortIntent.Undo -> requestUndo()
+            WaterSortIntent.UndoRewarded -> engine.undo()
             WaterSortIntent.WatchAdForRestart -> sendEffect(WaterSortEffect.ShowRestartAd)
             WaterSortIntent.Restart -> engine.restart()
             WaterSortIntent.Pause -> engine.pause()
@@ -147,6 +166,21 @@ class WaterSortViewModel(
                 copy(phase = LeveledGamePhase.LEVEL_SELECT, gameOver = null)
             }
         }
+    }
+
+    /**
+     * Resuelve el precio del deshacer: el primero del intento es gratis y se aplica al
+     * momento; a partir de ahí se pide el anuncio recompensado y el vertido se deshace
+     * al volver con [WaterSortIntent.UndoRewarded].
+     *
+     * Se comprueba `canUndo` antes de pedir el anuncio (defensa en profundidad, aparte
+     * de que la UI deshabilita el botón) para no gastarle un anuncio al jugador y luego
+     * no deshacer nada.
+     */
+    private fun requestUndo() {
+        val game = currentState.game
+        if (!game.canUndo) return
+        if (game.nextUndoIsFree) engine.undo() else sendEffect(WaterSortEffect.ShowUndoAd)
     }
 
     /**
@@ -170,7 +204,7 @@ class WaterSortViewModel(
             val outcome = progress.saveResult(result)
             audio.playSound(SoundEffect.LEVEL_UP)
             audio.hapticFeedback(HapticFeedback.SUCCESS)
-            setState { copy(gameOver = GameOverInfo(result, outcome.percentile, outcome.isNewRecord)) }
+            setState { copy(gameOver = outcome.toGameOverInfo(result)) }
         }
     }
 }

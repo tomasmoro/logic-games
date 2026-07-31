@@ -28,6 +28,8 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Shape
@@ -209,4 +211,73 @@ fun Modifier.softGlow(
         ambientColor = color,
         spotColor = color,
     )
+}
+
+/**
+ * Halo neón que "respira", **dibujado** con capas concéntricas en vez de con la sombra
+ * de plataforma: mismo lenguaje de tubo de neón que [drawNeonTile] (§9.7) —halo ancho
+ * y tenue → intermedio → ceñido al borde—, con la intensidad y el alcance oscilando en
+ * bucle lento (§9.4).
+ *
+ * **Por qué existe además de [softGlow]:** `softGlow` delega en `Modifier.shadow`, y la
+ * sombra de Android se pinta como un rectángulo redondeado macizo DEBAJO de todo el
+ * contorno. Si la superficie que lleva el halo no es 100% opaca (degradados con alfa,
+ * como el recuadro héroe de la antesala), esa sombra se transparenta y aparece como un
+ * **recuadro oscuro interior** — el borde fantasma que se veía dentro del icono del
+ * juego. Aquí no hay sombra: los trazos se dibujan enteros POR FUERA del contorno
+ * (cada capa se infla la mitad de su propio grosor), así que nunca pueden manchar el
+ * interior, y el resultado es idéntico en Android e iOS (la sombra de plataforma ni
+ * siquiera respeta el color en todos los backends).
+ *
+ * Úsalo cuando el elemento tenga fondo translúcido o quieras un halo de color fiable;
+ * [softGlow] sigue bien para superficies opacas (el CTA con su degradado macizo).
+ *
+ * Nota: dibuja fuera de los límites del composable, así que el padre debe tener sitio
+ * (un `padding` propio) o un contenedor con clip recortará el resplandor.
+ *
+ * @param color color del neón (normalmente el acento de la categoría).
+ * @param cornerRadius radio de esquina del contorno que rodea (debe coincidir con el
+ *   del elemento para que el halo lo siga).
+ * @param spread alcance máximo del resplandor hacia fuera.
+ * @param durationMillis duración de medio ciclo de respiración.
+ */
+fun Modifier.breathingNeonHalo(
+    color: Color,
+    cornerRadius: Dp = 28.dp,
+    spread: Dp = 16.dp,
+    durationMillis: Int = 1600,
+): Modifier = composed {
+    val transition = rememberInfiniteTransition(label = "neonHalo")
+    val breath by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "neonHaloBreath",
+    )
+    drawBehind {
+        // El "respiro" mueve a la vez alcance y opacidad: un halo que solo cambia de
+        // alfa parece un parpadeo; moviendo también el alcance parece luz real.
+        val reach = spread.toPx() * (0.7f + 0.3f * breath)
+        val intensity = 0.75f + 0.25f * breath
+        val corner = cornerRadius.toPx()
+        // (fracción del alcance, alfa base): de la capa más ancha y tenue a la más
+        // ceñida y brillante, misma proporción que las capas de [drawNeonTile].
+        val layers = listOf(1f to 0.10f, 0.55f to 0.16f, 0.22f to 0.28f)
+        layers.forEach { (fraction, baseAlpha) ->
+            val width = reach * fraction
+            // El trazo se centra en un contorno inflado la mitad de su grosor: su borde
+            // interior cae justo sobre el del elemento, nunca dentro (ver KDoc).
+            val inset = width / 2f
+            drawRoundRect(
+                color = color.copy(alpha = baseAlpha * intensity),
+                topLeft = Offset(-inset, -inset),
+                size = Size(size.width + width, size.height + width),
+                cornerRadius = CornerRadius(corner + inset, corner + inset),
+                style = Stroke(width = width),
+            )
+        }
+    }
 }

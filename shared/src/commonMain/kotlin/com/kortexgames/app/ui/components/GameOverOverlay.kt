@@ -9,6 +9,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,6 +45,7 @@ import com.kortexgames.app.core.audio.HapticFeedback
 import com.kortexgames.app.core.audio.SoundEffect
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.core.theme.LogicGradients
+import com.kortexgames.app.domain.model.PercentileResult
 import com.kortexgames.app.game.GameOverInfo
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
@@ -117,6 +120,21 @@ fun GameOverOverlay(
     // el retardo).
     if (scrimAlpha <= 0f) return
 
+    // Se celebra HABER BATIDO algo en ESTA partida, no ostentar un título.
+    //
+    // Ser el nº1 del mundo no basta: si bastara, el campeón vería fuegos artificiales
+    // al terminar cada partida —incluidas las que quedan muy por debajo de su propia
+    // marca—, y una celebración que salta siempre deja de significar nada. Cuando el
+    // récord sigue en pie pero la partida no lo ha superado, `WorldRankingPanel` lo
+    // dice con palabras ("Sigues siendo el nº1... tu récord aguanta") y la pantalla
+    // se queda quieta.
+    //
+    // `isGlobalRecord` solo existe con sesión + red; sin él la tarjeta sigue
+    // celebrando el récord personal, que es local y siempre está disponible.
+    val ranking = info.ranking
+    val isGlobalRecord = ranking?.isGlobalRecord == true
+    val showFireworks = info.isNewRecord || isGlobalRecord
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -141,6 +159,11 @@ fun GameOverOverlay(
                     BorderStroke(1.5.dp, Brush.linearGradient(LogicGradients.ring)),
                     cardShape,
                 )
+                // Con la comparativa mundial la tarjeta ganó ~5 filas de ranking y en
+                // pantallas cortas el CTA se quedaría fuera del recorte. El scroll va
+                // DENTRO del borde (después de clip/background) para que el marco neón
+                // siga fijo y solo se mueva el contenido.
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -153,8 +176,11 @@ fun GameOverOverlay(
                 modifier = Modifier.align(Alignment.End),
             )
 
-            // Badge de nuevo récord: aparece con un "pop" por encima del trofeo.
-            if (info.isNewRecord) {
+            // Badge de récord PERSONAL. Se calla si la partida también es récord
+            // mundial: ese caso ya lo corona `WorldRankingPanel` con su propia
+            // píldora, y batir al mundo entero implica batirse a uno mismo — dos
+            // insignias seguidas diciendo casi lo mismo restarían fuerza a la buena.
+            if (info.isNewRecord && !isGlobalRecord) {
                 NewRecordBadge(visible = visible)
             }
 
@@ -199,9 +225,21 @@ fun GameOverOverlay(
                 )
             }
 
-            // Mensaje de percentil (FASE 2) o aviso de modo invitado, destacado en
-            // su propio contenedor.
-            PercentileBanner(info)
+            // Comparativa con el mundo, en orden de preferencia:
+            //   1. ranking por jugadores (puesto, tramo y vecinos) — lo normal;
+            //   2. percentil suelto de la FASE 2 — red de seguridad para cuando la
+            //      partida sí se subió pero la RPC de ranking falló, para no degradar
+            //      al cartel de "inicia sesión" a alguien que SÍ tiene sesión;
+            //   3. aviso de guardado local (invitado / sin red).
+            val percentile = info.percentile
+            when {
+                ranking != null -> WorldRankingPanel(
+                    ranking = ranking,
+                    currentScore = info.result.score,
+                )
+                percentile != null -> PercentileBanner(percentile)
+                else -> WorldRankingUnavailable()
+            }
 
             Spacer(Modifier.height(2.dp))
 
@@ -254,16 +292,22 @@ fun GameOverOverlay(
             }
         }
 
-        // Celebración de nuevo récord: fuegos artificiales neón POR DELANTE de la
-        // tarjeta (se dibuja al final ⇒ queda encima) con sonido/háptica arcade
-        // sincronizados a cada estallido. Puntual, no en bucle (§9.4). El Canvas no
-        // lleva modificadores de pointer input, así que NO intercepta toques: los
-        // botones del diálogo, por debajo, siguen siendo pulsables.
-        if (info.isNewRecord) {
+        // Celebración: fuegos artificiales neón POR DELANTE de la tarjeta (se dibuja
+        // al final ⇒ queda encima) con sonido/háptica arcade sincronizados a cada
+        // estallido. Puntual, no en bucle (§9.4). El Canvas no lleva modificadores de
+        // pointer input, así que NO intercepta toques: los botones del diálogo, por
+        // debajo, siguen siendo pulsables.
+        //
+        // Se dispara UNA sola capa aunque coincidan los dos hitos (récord personal y
+        // mundial a la vez): dos tandas simultáneas se solaparían y el sonido se
+        // duplicaría. A cambio, si el récord batido es el MUNDIAL la tanda es más
+        // larga, que es como se nota que ha pasado algo más gordo.
+        if (showFireworks) {
             FireworksOverlay(
                 modifier = Modifier
                     .fillMaxSize()
                     .zIndex(1f),
+                burstCount = if (isGlobalRecord) 10 else 6,
                 onBurst = { index ->
                     audio?.playSound(SoundEffect.SUCCESS)
                     audio?.hapticFeedback(if (index == 0) HapticFeedback.HEAVY else HapticFeedback.LIGHT)
@@ -345,47 +389,34 @@ private fun StatChip(
 }
 
 /**
- * Banner de comparación global (percentil) o, en invitado/offline, aviso de que
- * el resultado quedó guardado localmente y se comparará al iniciar sesión.
+ * Comparativa mínima (percentil sobre PARTIDAS, FASE 2). Solo se usa cuando el
+ * ranking por jugadores no llegó: es el mismo mensaje de siempre, sin lista ni
+ * tramos, para que un fallo aislado de `get_game_ranking` no borre la comparativa
+ * de la tarjeta. La versión rica vive en [WorldRankingPanel].
  */
 @Composable
-private fun PercentileBanner(info: GameOverInfo) {
-    val percentile = info.percentile
+private fun PercentileBanner(percentile: PercentileResult) {
     val shape = RoundedCornerShape(16.dp)
-    if (percentile != null) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(shape)
-                .background(
-                    // Degradado recompensa translúcido: destaca el logro sin
-                    // saturar (el neón brilla porque es escaso).
-                    Brush.horizontalGradient(LogicGradients.reward.map { it.copy(alpha = 0.16f) }),
-                )
-                .border(BorderStroke(1.dp, LogicColors.Amber.copy(alpha = 0.5f)), shape)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            NeonIcon(icon = KortexIcons.Trophy, tint = LogicColors.Amber, size = 22.dp)
-            Text(
-                "Eres mejor que el ${percentile.betterThanPct.roundToInt()}% de los jugadores",
-                style = MaterialTheme.typography.titleMedium,
-                color = LogicColors.Amber,
-                textAlign = TextAlign.Start,
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(
+                // Degradado recompensa translúcido: destaca el logro sin
+                // saturar (el neón brilla porque es escaso).
+                Brush.horizontalGradient(LogicGradients.reward.map { it.copy(alpha = 0.16f) }),
             )
-        }
-    } else {
+            .border(BorderStroke(1.dp, LogicColors.Amber.copy(alpha = 0.5f)), shape)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        NeonIcon(icon = KortexIcons.Trophy, tint = LogicColors.Amber, size = 22.dp)
         Text(
-            "Guardado localmente · inicia sesión para comparar con el mundo",
-            style = MaterialTheme.typography.bodyMedium,
-            color = LogicColors.OnDarkMuted,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(shape)
-                .background(LogicColors.SurfaceVariantDark)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+            "Eres mejor que el ${percentile.betterThanPct.roundToInt()}% de los jugadores",
+            style = MaterialTheme.typography.titleMedium,
+            color = LogicColors.Amber,
+            textAlign = TextAlign.Start,
         )
     }
 }

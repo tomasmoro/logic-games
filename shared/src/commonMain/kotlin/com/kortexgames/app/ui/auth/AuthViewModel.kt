@@ -9,6 +9,7 @@ import com.kortexgames.app.core.mvi.UiEffect
 import com.kortexgames.app.core.mvi.UiIntent
 import com.kortexgames.app.core.mvi.UiState
 import com.kortexgames.app.data.remote.auth.GoogleSignInUnavailableException
+import com.kortexgames.app.data.settings.LegalConsentStore
 import com.kortexgames.app.data.settings.OnboardingGate
 import com.kortexgames.app.domain.repository.AuthRepository
 import kotlinx.coroutines.launch
@@ -25,22 +26,85 @@ enum class AuthMode { SignIn, SignUp }
 data class AuthUiState(
     val email: String = "",
     val password: String = "",
+    val username: String = "",
     val mode: AuthMode = AuthMode.SignIn,
     val isSubmitting: Boolean = false,
     val error: String? = null,
     val showGuestRiskDialog: Boolean = false,
+    val acceptedLegal: Boolean = false,
 ) : UiState {
+
+    /**
+     * La aceptación de condiciones **solo se exige al crear cuenta**: quien ya
+     * tiene una las aceptó en su día, y volver a pedírselo para entrar sería
+     * fricción sin valor legal.
+     */
+    val requiresLegalAcceptance: Boolean
+        get() = mode == AuthMode.SignUp
+
+    /** true si falta marcar la casilla para poder registrarse. */
+    val legalBlocksSubmit: Boolean
+        get() = requiresLegalAcceptance && !acceptedLegal
+
+    /** El nombre de jugador solo se pide al crear cuenta. */
+    val requiresUsername: Boolean
+        get() = mode == AuthMode.SignUp
+
+    /**
+     * Nombre válido: entre [MIN_USERNAME_LENGTH] y [MAX_USERNAME_LENGTH] tras
+     * recortar espacios. No se exige unicidad porque `public.users.display_name`
+     * no la impone: es un nombre para mostrar, no un identificador — el id real
+     * es el UUID de la cuenta.
+     */
+    val isUsernameValid: Boolean
+        get() = username.trim().length in MIN_USERNAME_LENGTH..MAX_USERNAME_LENGTH
+
+    /**
+     * Error de nombre a mostrar bajo el campo, o `null` si está bien o aún no se
+     * ha escrito nada (no se regaña a un campo intacto).
+     */
+    val usernameError: String?
+        get() = when {
+            !requiresUsername || username.isEmpty() -> null
+            username.trim().length < MIN_USERNAME_LENGTH ->
+                "Al menos $MIN_USERNAME_LENGTH caracteres."
+            username.trim().length > MAX_USERNAME_LENGTH ->
+                "Máximo $MAX_USERNAME_LENGTH caracteres."
+            else -> null
+        }
+
     /** Validación mínima para habilitar el botón de enviar. */
     val canSubmit: Boolean
-        get() = !isSubmitting && email.contains("@") && email.contains(".") && password.length >= 6
+        get() = !isSubmitting && !legalBlocksSubmit &&
+            (!requiresUsername || isUsernameValid) &&
+            email.contains("@") && email.contains(".") && password.length >= 6
+
+    /**
+     * Google también crea cuenta cuando el email no existía, así que en modo
+     * "Crea tu cuenta" queda sujeto a la misma casilla que el alta por email.
+     */
+    val canUseGoogle: Boolean
+        get() = !isSubmitting && !legalBlocksSubmit
+
+    companion object {
+        /** Mínimo del nombre de jugador: evita nombres de una letra en rankings. */
+        const val MIN_USERNAME_LENGTH = 3
+
+        /** Máximo: cabe en una tarjeta de ranking sin truncarse. */
+        const val MAX_USERNAME_LENGTH = 20
+    }
 }
 
 sealed interface AuthIntent : UiIntent {
     data class EmailChanged(val value: String) : AuthIntent
     data class PasswordChanged(val value: String) : AuthIntent
+    data class UsernameChanged(val value: String) : AuthIntent
     data object ToggleMode : AuthIntent
     data object SubmitEmail : AuthIntent
     data object SignInWithGoogle : AuthIntent
+
+    /** Marca/desmarca la casilla de aceptación de condiciones y privacidad. */
+    data object ToggleLegalAcceptance : AuthIntent
 
     /** El usuario pulsó "continuar sin cuenta": abre el diálogo de riesgos. */
     data object RequestContinueAsGuest : AuthIntent
@@ -68,12 +132,18 @@ sealed interface AuthEffect : UiEffect {
  * riesgos). En **cualquier** salida marca [OnboardingGate.markDecided] para que la
  * bienvenida no se vuelva a mostrar, y emite [AuthEffect.Finished].
  *
+ * Al **crear cuenta** exige aceptar condiciones y privacidad, y registra esa
+ * aceptación en [LegalConsentStore] solo si la creación tuvo éxito: guardar el
+ * consentimiento de un alta que falló dejaría constancia de algo que nunca llegó
+ * a ocurrir.
+ *
  * Da feedback inmediato (sonido + háptica) en cada intento, según CLAUDE.md §9.4.
  */
 class AuthViewModel(
     private val authRepository: AuthRepository,
     private val onboardingGate: OnboardingGate,
     private val audio: AudioAndHapticManager,
+    private val legalConsent: LegalConsentStore,
 ) : MviViewModel<AuthIntent, AuthUiState, AuthEffect>(AuthUiState()) {
 
     override fun onIntent(intent: AuthIntent) {
@@ -84,6 +154,15 @@ class AuthViewModel(
             is AuthIntent.PasswordChanged ->
                 setState { copy(password = intent.value, error = null) }
 
+            is AuthIntent.UsernameChanged ->
+                // Se recorta por el máximo al escribir en vez de dejar teclear de
+                // más y rechazar al enviar: el tope se nota antes de invertir
+                // esfuerzo. Los espacios se limpian al enviar, no aquí, para no
+                // impedir escribir "Ana " + "María".
+                setState {
+                    copy(username = intent.value.take(AuthUiState.MAX_USERNAME_LENGTH), error = null)
+                }
+
             AuthIntent.ToggleMode -> {
                 audio.playSound(SoundEffect.TAP)
                 setState {
@@ -92,6 +171,11 @@ class AuthViewModel(
                         error = null,
                     )
                 }
+            }
+
+            AuthIntent.ToggleLegalAcceptance -> {
+                audio.playSound(SoundEffect.TAP)
+                setState { copy(acceptedLegal = !acceptedLegal, error = null) }
             }
 
             AuthIntent.SubmitEmail -> submitEmail()
@@ -118,7 +202,11 @@ class AuthViewModel(
         viewModelScope.launch {
             val result = when (state.mode) {
                 AuthMode.SignIn -> authRepository.signInWithEmail(state.email.trim(), state.password)
-                AuthMode.SignUp -> authRepository.signUpWithEmail(state.email.trim(), state.password)
+                AuthMode.SignUp -> authRepository.signUpWithEmail(
+                    email = state.email.trim(),
+                    password = state.password,
+                    displayName = state.username.trim(),
+                )
             }
             result
                 .onSuccess { finishSuccessfully() }
@@ -127,6 +215,7 @@ class AuthViewModel(
     }
 
     private fun signInWithGoogle() {
+        if (!currentState.canUseGoogle) return
         audio.playSound(SoundEffect.TAP)
         setState { copy(isSubmitting = true, error = null) }
         viewModelScope.launch {
@@ -144,10 +233,16 @@ class AuthViewModel(
         }
     }
 
-    /** Éxito de auth: marca la puerta como resuelta y cierra la pantalla. */
+    /**
+     * Éxito de auth: registra el consentimiento si lo hubo, marca la puerta como
+     * resuelta y cierra la pantalla.
+     */
     private suspend fun finishSuccessfully() {
         audio.playSound(SoundEffect.SUCCESS)
         audio.hapticFeedback(HapticFeedback.MEDIUM)
+        if (currentState.acceptedLegal) {
+            legalConsent.accept()
+        }
         onboardingGate.markDecided()
         sendEffect(AuthEffect.Finished)
     }

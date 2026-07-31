@@ -23,8 +23,20 @@ interface AuthRepository {
     /** Inicia sesión con email y contraseña ya existentes. */
     suspend fun signInWithEmail(email: String, password: String): Result<Unit>
 
-    /** Crea una cuenta nueva con email y contraseña. */
-    suspend fun signUpWithEmail(email: String, password: String): Result<Unit>
+    /**
+     * Crea una cuenta nueva con email y contraseña.
+     *
+     * @param displayName nombre de jugador elegido en el formulario. Viaja como
+     *   metadato del alta para que el trigger `handle_new_user` lo escriba en
+     *   `public.users.display_name` **en la misma transacción** que crea el
+     *   perfil. Hacerlo con un `update` posterior desde el cliente dejaría
+     *   perfiles sin nombre si la app se cierra o pierde red justo después.
+     */
+    suspend fun signUpWithEmail(
+        email: String,
+        password: String,
+        displayName: String,
+    ): Result<Unit>
 
     /**
      * Inicia sesión con Google. Obtiene el ID token nativo (seam de plataforma) y

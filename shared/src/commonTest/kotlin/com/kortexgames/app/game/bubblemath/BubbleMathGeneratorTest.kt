@@ -69,4 +69,31 @@ class BubbleMathGeneratorTest {
             assertEquals(BubbleMathGenerator.optionCount(round), spec.options.size)
         }
     }
+
+    /**
+     * La velocidad de caída acelera solo hasta [BubbleMathGenerator.SPEED_CAP_ROUND] y
+     * a partir de ahí queda congelada: es lo que mantiene jugable la curva cuando ya
+     * hay divisiones y 6 burbujas en pantalla.
+     */
+    @Test
+    fun laVelocidadDeCaidaSeCongelaTrasLaRondaTope() {
+        val cap = BubbleMathGenerator.SPEED_CAP_ROUND
+
+        // Antes del tope: cada ronda da estrictamente menos tiempo que la anterior.
+        for (round in 2..cap) {
+            assertTrue(
+                BubbleMathGenerator.fallDurationMs(round) < BubbleMathGenerator.fallDurationMs(round - 1),
+                "La ronda $round debería caer más rápido que la ${round - 1}",
+            )
+        }
+
+        // Desde el tope: siempre el mismo tiempo, por alta que sea la ronda.
+        for (round in cap..200) {
+            assertEquals(
+                BubbleMathGenerator.MIN_FALL_MS,
+                BubbleMathGenerator.fallDurationMs(round),
+                "La velocidad no debería seguir subiendo en la ronda $round",
+            )
+        }
+    }
 }

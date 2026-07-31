@@ -56,19 +56,27 @@ class ProgressRepositoryImpl(
         val auth = authState()
         // DIAGNÓSTICO: distingue "la app me ve como invitado" de "la RPC falló".
         println("KORTEX saveResult authState=${auth::class.simpleName}")
-        if (auth !is AuthState.Authenticated) return SaveOutcome(percentile = null, isNewRecord = isNewRecord)
+        if (auth !is AuthState.Authenticated) {
+            return SaveOutcome(percentile = null, ranking = null, isNewRecord = isNewRecord)
+        }
 
-        val percentile = runCatching {
-            val (remoteId, percentile) = remote.submit(result)
-            local.markSynced(localId, remoteId)
-            percentile
+        // withRanking = true: es la partida que el jugador acaba de terminar, la única
+        // para la que la comparativa mundial se va a mostrar en pantalla.
+        val submitted = runCatching {
+            val outcome = remote.submit(result, withRanking = true)
+            local.markSynced(localId, outcome.remoteId)
+            outcome
         }.onFailure {
             // DIAGNÓSTICO: el fallo de red/RPC se traga con getOrNull(), así que sin
             // esto el percentil vuelve null en silencio y la UI cae al cartel de
             // "inicia sesión" aunque el usuario SÍ esté autenticado.
             println("KORTEX submit_game_result FALLÓ: ${it::class.simpleName}: ${it.message}")
         }.getOrNull() // fallo de red → queda pendiente, se subirá en syncPending()
-        return SaveOutcome(percentile = percentile, isNewRecord = isNewRecord)
+        return SaveOutcome(
+            percentile = submitted?.percentile,
+            ranking = submitted?.ranking,
+            isNewRecord = isNewRecord,
+        )
     }
 
     override fun observeHistory(gameId: String?): Flow<List<GameProgress>> =
@@ -84,8 +92,8 @@ class ProgressRepositoryImpl(
     private suspend fun pushLocal() {
         for (row in local.getUnsynced()) {
             runCatching {
-                val (remoteId, _) = remote.submit(row.toResult())
-                local.markSynced(row.localId, remoteId)
+                // Sin ranking: son partidas viejas que ya nadie va a ver comparadas.
+                local.markSynced(row.localId, remote.submit(row.toResult()).remoteId)
             } // si una falla, seguimos con las demás; reintento en la próxima sync
         }
     }

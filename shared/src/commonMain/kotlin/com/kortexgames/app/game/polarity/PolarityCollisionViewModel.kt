@@ -12,6 +12,7 @@ import com.kortexgames.app.domain.model.GameResult
 import com.kortexgames.app.domain.repository.ProgressRepository
 import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
+import com.kortexgames.app.game.toGameOverInfo
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -92,7 +93,7 @@ class PolarityCollisionViewModel(
             val outcome = progress.saveResult(result)
             audio.playSound(SoundEffect.LEVEL_UP)
             audio.hapticFeedback(HapticFeedback.SUCCESS)
-            setState { copy(gameOver = GameOverInfo(result, outcome.percentile, outcome.isNewRecord)) }
+            setState { copy(gameOver = outcome.toGameOverInfo(result)) }
         }
     }
 }

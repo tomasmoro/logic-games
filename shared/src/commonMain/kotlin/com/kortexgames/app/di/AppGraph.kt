@@ -26,6 +26,7 @@ import com.kortexgames.app.data.repository.PlayerProgressRepositoryImpl
 import com.kortexgames.app.data.repository.ProgressRepositoryImpl
 import com.kortexgames.app.data.repository.SavedGameStateRepositoryImpl
 import com.kortexgames.app.data.repository.SudokuPuzzleRepositoryImpl
+import com.kortexgames.app.data.settings.LegalConsentStore
 import com.kortexgames.app.data.settings.OnboardingGate
 import com.kortexgames.app.data.settings.SettingsRepository
 import com.kortexgames.app.data.settings.createSettingsDataStore
@@ -110,6 +111,9 @@ class AppGraph(context: PlatformContext) {
 
     /** Recuerda si el usuario ya decidió en la puerta de login (onboarding). */
     val onboardingGate = OnboardingGate(preferences, appScope)
+
+    /** Registro de qué versión de condiciones/privacidad aceptó el usuario. */
+    val legalConsentStore = LegalConsentStore(preferences, appScope)
 
     // --- Repositorios local-first -------------------------------------------
     /** Progresión por juego (récord + reanudación), sincronizada con Supabase. */

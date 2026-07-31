@@ -8,8 +8,8 @@ import com.kortexgames.app.domain.model.GameResult
 import com.kortexgames.app.domain.repository.ProgressRepository
 import com.kortexgames.app.domain.repository.SavedGameStateRepository
 import com.kortexgames.app.game.GameIds
-import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
+import com.kortexgames.app.game.toGameOverInfo
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.launchIn
@@ -105,6 +105,14 @@ class NeonSudokuViewModel(
      *  partida: se limita a una por partida, como en "Burbujas de Cálculo". */
     private var reviveOffered = false
 
+    /** Pistas gastadas en la partida. No hay tope de uso (a diferencia del escáner
+     *  del Buscaminas), así que es el CASTIGO en puntos el único freno que impide
+     *  escalar en la tabla mundial a base de anuncios; ver [calculateScore]. Vive
+     *  aquí y no en el estado de UI porque la pantalla no lo dibuja, igual que
+     *  [totalInputs], pero SÍ se persiste ([NeonSudokuSavedState.hintsUsed]) para
+     *  que salir y reanudar no borre lo ya gastado. */
+    private var hintsUsed = 0
+
     /** Celda pedida como pista al pulsar "Pista" ([onRequestHint]), capturada en
      *  el momento de la pulsación. A diferencia de [awaitingRevive], el anuncio
      *  de la pista NO bloquea el tablero (se lanza directo, sin diálogo de
@@ -199,6 +207,7 @@ class NeonSudokuViewModel(
         totalInputs = saved.totalInputs
         conflictInputs = saved.conflictInputs
         reviveOffered = saved.reviveOffered
+        hintsUsed = saved.hintsUsed
         solution = saved.solution
         val board = Board(saved.cells)
         // Los dígitos ya agotados en el guardado no deben volver a festejarse: se
@@ -255,6 +264,7 @@ class NeonSudokuViewModel(
                 totalInputs = 0
                 conflictInputs = 0
                 reviveOffered = false
+                hintsUsed = 0
                 celebratedDigits.clear()
                 solution = puzzle.solution
                 // Sin recompute defensivo: las pistas fijas de la plantilla nacen con
@@ -299,6 +309,7 @@ class NeonSudokuViewModel(
             elapsedMs = s.elapsedMs,
             difficulty = s.difficulty,
             reviveOffered = reviveOffered,
+            hintsUsed = hintsUsed,
             totalInputs = totalInputs,
             conflictInputs = conflictInputs,
             solution = solution,
@@ -446,24 +457,27 @@ class NeonSudokuViewModel(
     private fun applyCorrectPlacement(newBoard: Board, position: CellPosition, digit: Int) {
         setState { copy(board = newBoard) }
 
-        // Celebración de unidad completada: pisa al feedback de escritura normal
+        // Celebración de unidad completada: pisa al feedback de acierto normal
         // (mismo criterio que Neon Grid 2048 con la fusión sobre el movimiento),
-        // para no encadenar dos sonidos en 100 ms.
+        // para no encadenar dos sonidos en 100 ms. Comparten familia sonora —ambos
+        // son un acierto—, y lo que marca el escalón es la háptica (medio → patrón
+        // de logro) más la onda visual que solo dispara la unidad completada.
         val completedCells = completedUnitsAt(newBoard, position)
         if (completedCells.isNotEmpty()) {
             sendEffect(NeonSudokuEffect.PlaySound.UnitComplete)
             sendEffect(NeonSudokuEffect.Vibrate.Success)
             sendEffect(NeonSudokuEffect.UnitsCompleted(completedCells, position))
         } else {
-            sendEffect(NeonSudokuEffect.PlaySound.Input)
-            sendEffect(NeonSudokuEffect.Vibrate.Tick)
+            sendEffect(NeonSudokuEffect.PlaySound.Correct)
+            sendEffect(NeonSudokuEffect.Vibrate.Correct)
         }
 
         // Dígito agotado: sus 9 apariciones ya están en el tablero y ninguna es
         // errónea, así que no queda ninguna instancia más por colocar. Es un hito
         // de la partida entera (no de una unidad puntual), así que la celebración
-        // es aparte y más grande (fuegos artificiales de pantalla completa, ver
-        // NeonSudokuScreen) en vez de sumarse al destello local de arriba.
+        // es aparte y más grande (onda expansiva sobre las 9 apariciones + fuegos
+        // artificiales de pantalla completa, ver NeonSudokuScreen) en vez de
+        // sumarse al destello local de arriba.
         //
         // Solo puede volverse cierto para [digit]: borrar SIEMPRE reduce el
         // recuento de un dígito (nunca lo completa) y escribir/revelar una celda
@@ -471,7 +485,16 @@ class NeonSudokuViewModel(
         // nunca el de un tercero que la jugada no tocó.
         if (digit !in celebratedDigits && isDigitComplete(newBoard, digit)) {
             celebratedDigits += digit
-            sendEffect(NeonSudokuEffect.DigitCompleted(digit))
+            sendEffect(
+                NeonSudokuEffect.DigitCompleted(
+                    digit = digit,
+                    // Las 9 celdas se resuelven aquí, contra el tablero recién
+                    // escrito, para que la onda ilumine exactamente el estado que
+                    // provocó el hito (ver KDoc del efecto).
+                    cells = newBoard.cellsWithValue(digit).map { it.position },
+                    origin = position,
+                ),
+            )
         }
 
         if (newBoard.isComplete && !newBoard.hasAnyConflict) finish(won = true)
@@ -614,8 +637,14 @@ class NeonSudokuViewModel(
                 val digit = solutionDigitAt(position)
                 val revealed = cell.copy(value = digit, notes = emptySet(), hasConflict = false)
                 val newBoard = s.board.replacing(position, revealed)
-                sendEffect(NeonSudokuEffect.PlaySound.Hint)
-                sendEffect(NeonSudokuEffect.Vibrate.Success)
+                // Se cuenta aquí, dentro del if, y no al pedir la pista: si el jugador
+                // resolvió la celda por su cuenta mientras corría el anuncio no se
+                // revela nada, así que tampoco hay ayuda que cobrar en el puntaje.
+                hintsUsed++
+                // El feedback lo emite [applyCorrectPlacement] (acierto o unidad
+                // completada). Antes se disparaba también aquí un sonido propio de
+                // pista, pero desde que colocar bien un dígito suena a acierto serían
+                // dos sonidos idénticos encadenados.
                 applyCorrectPlacement(newBoard, position, digit)
             }
         }
@@ -675,17 +704,29 @@ class NeonSudokuViewModel(
                 audio.playSound(SoundEffect.LEVEL_UP)
                 sendEffect(NeonSudokuEffect.SweepVictory)
             }
-            setState { copy(gameOver = GameOverInfo(result, outcome.percentile, outcome.isNewRecord)) }
+            setState { copy(gameOver = outcome.toGameOverInfo(result)) }
         }
     }
 
-    /** Puntaje final: [NeonSudokuConfig.BASE_SCORE] menos una penalización por
-     *  cada choque cometido y por cada segundo transcurrido, sin bajar de 0.
-     *  Recompensa precisión y velocidad sin que el reloj termine la partida. */
+    /**
+     * Puntaje final: [NeonSudokuConfig.BASE_SCORE] menos los choques, el tiempo y
+     * **las ayudas por anuncio** (pistas y revivir), sin bajar de 0.
+     *
+     * Las ayudas restan porque son exactamente lo que el ranking mundial pretende
+     * medir: una pista resuelve por ti la celda que costaba deducir. Como las pistas
+     * NO tienen tope de uso, sin castigo la forma óptima de encabezar la tabla sería
+     * rellenar el tablero a base de anuncios. Los importes y su calibración están en
+     * [NeonSudokuConfig.HINT_SCORE_PENALTY] y [NeonSudokuConfig.REVIVE_SCORE_PENALTY].
+     *
+     * Ambos contadores se persisten en [NeonSudokuSavedState], así que salir y
+     * reanudar no limpia las ayudas ya cobradas.
+     */
     private fun calculateScore(elapsedMs: Long, errorCount: Int): Int {
         val elapsedSeconds = elapsedMs / 1_000
         val penalty = errorCount * NeonSudokuConfig.ERROR_SCORE_PENALTY +
-            elapsedSeconds * NeonSudokuConfig.TIME_SCORE_PENALTY_PER_SEC
+            elapsedSeconds * NeonSudokuConfig.TIME_SCORE_PENALTY_PER_SEC +
+            hintsUsed.toLong() * NeonSudokuConfig.HINT_SCORE_PENALTY +
+            (if (reviveOffered) NeonSudokuConfig.REVIVE_SCORE_PENALTY.toLong() else 0L)
         return (NeonSudokuConfig.BASE_SCORE - penalty).coerceAtLeast(0L).toInt()
     }
 

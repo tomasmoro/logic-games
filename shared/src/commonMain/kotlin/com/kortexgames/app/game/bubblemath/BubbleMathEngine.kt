@@ -108,7 +108,9 @@ data class BubbleMathState(
  * Bucle de juego: un [loopJob] recalcula ~60 veces/s la posición de cada burbuja
  * en función del tiempo real transcurrido en la ronda ([roundElapsedMs]), de modo
  * que la caída es **independiente de la tasa de refresco** y las pausas no la
- * adelantan. La velocidad de caída aumenta con la ronda (curva de dificultad).
+ * adelantan. La velocidad de caída sube durante las primeras rondas y luego se
+ * congela (ver [BubbleMathGenerator.fallDurationMs]): a partir de ahí la dificultad
+ * la aportan las cuentas, no el reloj.
  *
  * Reglas:
  *  - **Acierto** (tocar la burbuja objetivo): suma puntos —más cuanto más arriba se
@@ -146,7 +148,7 @@ class BubbleMathEngine(
     // Cronómetro propio de la ronda (para la física de caída), consciente de pausas.
     private var roundMark: TimeSource.Monotonic.ValueTimeMark? = null
     private var roundAccumMs: Long = 0
-    private var fallDurationMs: Long = BASE_FALL_MS
+    private var fallDurationMs: Long = BubbleMathGenerator.fallDurationMs(1)
 
     private var loopJob: Job? = null
     private var transitionJob: Job? = null
@@ -195,7 +197,7 @@ class BubbleMathEngine(
         val round = _state.value.round + 1
         val spec = BubbleMathGenerator.generateRound(round, random)
         val n = spec.options.size
-        fallDurationMs = (BASE_FALL_MS - (round - 1) * FALL_STEP_MS).coerceAtLeast(MIN_FALL_MS)
+        fallDurationMs = BubbleMathGenerator.fallDurationMs(round)
 
         val bubbles = spec.options.mapIndexed { i, expr ->
             // Reparte en columnas con jitter para que no queden alineadas.
@@ -410,10 +412,10 @@ class BubbleMathEngine(
 
     private companion object {
         // --- Física de la caída ---
+        // La curva de velocidad (cuánto dura la caída en cada ronda y cuándo deja de
+        // acelerar) vive en [BubbleMathGenerator.fallDurationMs], junto al resto de la
+        // curva de dificultad, para poder testearla sin arrancar el bucle.
         const val FRAME_MS = 16L          // ~60 fps
-        const val BASE_FALL_MS = 7000L    // tiempo de caída en la ronda 1
-        const val FALL_STEP_MS = 280L     // aceleración por ronda
-        const val MIN_FALL_MS = 2600L     // caída más rápida posible
         const val MAX_ENTER_DELAY = 0.30f // escalonado de entrada (fracción)
         const val ROUND_GAP_MS = 650L     // pausa entre rondas
 

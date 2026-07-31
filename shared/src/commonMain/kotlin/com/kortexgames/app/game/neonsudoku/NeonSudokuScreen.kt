@@ -146,6 +146,20 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
         // dure la pantalla y solo dan a cada celebración una identidad propia.
         var waveSeed = 0
         var fireworksSeed = 0
+
+        // Registra una onda y la anima hasta apagarla. Se anima en `scope` y no en
+        // el colector: este es secuencial, y esperar dentro retrasaría los efectos
+        // siguientes (el sonido de la jugada posterior llegaría tarde). Así, además,
+        // varias ondas pueden solaparse — que es justo lo que pasa cuando una jugada
+        // cierra una unidad y agota un dígito a la vez.
+        fun launchCompletionWave(wave: CompletionWave) {
+            completionWaves += wave
+            scope.launch {
+                wave.progress.animateTo(1f, tween(WAVE_MS, easing = LinearEasing))
+                completionWaves.remove(wave)
+            }
+        }
+
         vm.effect.collect { effect ->
             when (effect) {
                 is NeonSudokuEffect.PlaySound -> graph.audio.playSound(effect.sound)
@@ -153,6 +167,21 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
                 is NeonSudokuEffect.DigitCompleted -> {
                     fireworksSeed++
                     digitFireworks = DigitFireworks(id = fireworksSeed, digit = effect.digit)
+                    // Además de los fuegos, la MISMA onda expansiva de una unidad
+                    // completada, pero recorriendo las 9 apariciones del dígito: es
+                    // lo que le dice al jugador QUÉ acaba de completar (los fuegos
+                    // solo dicen "algo grande"). Comparte lista y mecánica con las
+                    // ondas de unidad, así que las dos pueden solaparse si una misma
+                    // jugada cierra fila y dígito a la vez.
+                    waveSeed++
+                    launchCompletionWave(
+                        CompletionWave(
+                            id = waveSeed,
+                            cells = effect.cells,
+                            origin = effect.origin,
+                            progress = Animatable(0f),
+                        ),
+                    )
                 }
                 is NeonSudokuEffect.ShakeCell -> {
                     shakeCell = effect.position
@@ -164,20 +193,14 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
                 }
                 is NeonSudokuEffect.UnitsCompleted -> {
                     waveSeed++
-                    val wave = CompletionWave(
-                        id = waveSeed,
-                        cells = effect.cells,
-                        origin = effect.origin,
-                        progress = Animatable(0f),
+                    launchCompletionWave(
+                        CompletionWave(
+                            id = waveSeed,
+                            cells = effect.cells,
+                            origin = effect.origin,
+                            progress = Animatable(0f),
+                        ),
                     )
-                    completionWaves += wave
-                    // Se anima en `scope` y no aquí: este colector es secuencial, y
-                    // esperar dentro bloquearía los efectos siguientes (el sonido de
-                    // la jugada posterior llegaría tarde). Así las ondas se solapan.
-                    scope.launch {
-                        wave.progress.animateTo(1f, tween(WAVE_MS, easing = LinearEasing))
-                        completionWaves.remove(wave)
-                    }
                 }
                 NeonSudokuEffect.SweepVictory -> {
                     sweep.snapTo(0f)

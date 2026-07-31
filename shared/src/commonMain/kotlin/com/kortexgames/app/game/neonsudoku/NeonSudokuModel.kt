@@ -250,6 +250,28 @@ object NeonSudokuConfig {
      *  perder. `1` = una segunda oportunidad ajustada (mismo espíritu que la vida
      *  extra de "Burbujas de Cálculo"), no un reinicio del contador. */
     const val REVIVE_ERROR_GRANT = 1
+
+    /**
+     * Puntos que resta cada **pista** (revelar un dígito viendo un anuncio).
+     *
+     * Está calibrado por encima de lo que la pista le ahorra al jugador: una celda
+     * resuelta se lleva por delante como mucho un choque ([ERROR_SCORE_PENALTY], 25)
+     * y el minuto largo de deducción que costaría sacarla (~60 puntos a
+     * [TIME_SCORE_PENALTY_PER_SEC]). Si pedir la pista saliera más barato que
+     * pensarla, la forma óptima de encabezar la tabla mundial sería rellenar el
+     * tablero a base de anuncios, y eso vaciaría de sentido el ranking.
+     *
+     * El anuncio sigue mereciendo la pena para TERMINAR el tablero (que es para lo
+     * que está); lo que no da es puesto en la tabla.
+     */
+    const val HINT_SCORE_PENALTY = 150
+
+    /**
+     * Puntos que resta **revivir** con anuncio tras el tercer choque. Es más caro que
+     * una pista porque rescata la partida entera —sin él el tablero se pierde—, pero
+     * no tanto como para que revivir sea peor que rendirse: una derrota puntúa 0.
+     */
+    const val REVIVE_SCORE_PENALTY = 200
 }
 
 /**

@@ -51,14 +51,15 @@ import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.di.AppGraph
 import com.kortexgames.app.domain.model.AuthState
 import com.kortexgames.app.ui.components.KortexIcons
+import com.kortexgames.app.ui.components.LegalLinksSection
 import com.kortexgames.app.ui.components.NeonIcon
 import com.kortexgames.app.ui.components.bounceClick
 import kotlinx.coroutines.flow.collectLatest
 
 /**
- * Pantalla de **Ajustes**: gestión de la cuenta (nombre de usuario, borrado) y,
- * más adelante, el resto de preferencias de la app. Se abre desde el icono de
- * engranaje en Perfil.
+ * Pantalla de **Ajustes**: gestión de la cuenta (nombre de usuario, borrado),
+ * acceso a los documentos legales y, más adelante, el resto de preferencias de la
+ * app. Se abre desde el icono de engranaje en Perfil.
  *
  * Solo tiene sentido gestionar "cuenta" con sesión iniciada: en modo invitado
  * muestra un aviso con CTA a iniciar sesión, igual que hace Perfil.
@@ -111,6 +112,13 @@ fun SettingsScreen(
                 }
                 AuthState.Guest -> GuestAccountPrompt(onSignIn = onOpenAuth)
             }
+
+            // Legal: fuera del `when` a propósito. Las condiciones y la privacidad
+            // aplican igual a un invitado, y las tiendas esperan que se puedan leer
+            // desde dentro de la App sin tener que registrarse antes.
+            Text("Legal", style = MaterialTheme.typography.titleLarge, color = LogicColors.OnDark)
+
+            LegalLinksSection()
 
             Spacer(Modifier.height(4.dp))
         }

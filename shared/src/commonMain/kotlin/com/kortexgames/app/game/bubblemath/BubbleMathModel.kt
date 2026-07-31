@@ -65,6 +65,33 @@ object BubbleMathGenerator {
     /** Nº de burbujas de la ronda (incluida la correcta). Sube poco a poco, tope 6. */
     fun optionCount(round: Int): Int = (3 + round / 4).coerceIn(3, 6)
 
+    /**
+     * Duración de la caída (ms) de la ronda [round]: el tiempo que tarda una burbuja
+     * en ir de la línea de aparición al suelo.
+     *
+     * La velocidad **solo acelera durante las primeras rondas** y a partir de
+     * [SPEED_CAP_ROUND] queda congelada en [MIN_FALL_MS]. El porqué: la dificultad
+     * de este juego crece por DOS ejes a la vez —cálculos más duros (entra ×, luego
+     * ÷, operandos mayores) y más burbujas simultáneas que leer (hasta 6)—. Si además
+     * se recortaba el tiempo ronda tras ronda, los tres ejes se multiplicaban y la
+     * curva se volvía injugable enseguida. Congelando el reloj, a partir de la ronda 5
+     * el reto es puramente cognitivo: mismo tiempo, cuentas más difíciles.
+     */
+    fun fallDurationMs(round: Int): Long =
+        BASE_FALL_MS - (round.coerceIn(1, SPEED_CAP_ROUND) - 1) * FALL_STEP_MS
+
+    /** Tiempo de caída en la ronda 1, el más holgado (ms). */
+    const val BASE_FALL_MS = 7_000L
+
+    /** Recorte de tiempo de caída por ronda mientras la velocidad aún sube (ms). */
+    const val FALL_STEP_MS = 280L
+
+    /** Ronda a partir de la cual la velocidad deja de subir (queda congelada). */
+    const val SPEED_CAP_ROUND = 5
+
+    /** Caída más rápida del juego: la de [SPEED_CAP_ROUND] en adelante (ms). */
+    const val MIN_FALL_MS = BASE_FALL_MS - (SPEED_CAP_ROUND - 1) * FALL_STEP_MS
+
     /** Operaciones habilitadas según la ronda (curva de dificultad progresiva). */
     fun opsFor(round: Int): List<MathOp> = when {
         round < 3 -> listOf(MathOp.ADD, MathOp.SUB)
