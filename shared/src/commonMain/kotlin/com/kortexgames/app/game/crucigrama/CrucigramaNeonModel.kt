@@ -364,6 +364,16 @@ object CrucigramaNeonGenerator {
         ),
         LevelDef(
             listOf(
+                "KILO" to "Unidad de masa del Sistema Internacional equivalente a mil gramos",
+                "LISO" to "Que tiene la superficie suave, uniforme y libre de arrugas o relieves",
+                "SILO" to "Construcción o depósito grande para almacenar granos u otros materiales",
+                "KOI" to "Pez ornamental de origen japonés, muy apreciado por su belleza y colores vivos",
+                "SOL" to "Estrella que ilumina el cielo",
+            ),
+            extras = listOf("LOS", "ISO"),
+        ),
+        LevelDef(
+            listOf(
                 "CAPO" to "Jefe de una organización",
                 "COPA" to "Vaso con pie para beber",
                 "CAPA" to "Prenda de vestir larga y suelta",
@@ -509,16 +519,6 @@ object CrucigramaNeonGenerator {
         ),
         LevelDef(
             listOf(
-                "KILO" to "Unidad de masa del Sistema Internacional equivalente a mil gramos",
-                "LISO" to "Que tiene la superficie suave, uniforme y libre de arrugas o relieves",
-                "SILO" to "Construcción o depósito grande para almacenar granos u otros materiales",
-                "KOI" to "Pez ornamental de origen japonés, muy apreciado por su belleza y colores vivos",
-                "SOL" to "Estrella que ilumina el cielo",
-            ),
-            extras = listOf("LOS", "ISO"),
-        ),
-        LevelDef(
-            listOf(
                 "QUERER" to "Tener el deseo, la voluntad o el cariño por alguien o algo",
                 "ARQUEAR" to "Dar forma de arco a un objeto o encorvar una parte del cuerpo",
                 "AURA" to "Atmósfera ideológica o energía sutil que se dice que rodea a un ser vivo",
@@ -534,7 +534,7 @@ object CrucigramaNeonGenerator {
                 "TINTA" to "Líquido coloreado que se utiliza para escribir, dibujar o imprimir",
                 "ANIS" to "Planta aromática de la que se obtiene un licor dulce y transparente",
                 "SANTA" to "Mujer de gran virtud y bondad, o declarada venerable por la Iglesia",
-                "SATAN" to "Figura del mal en varias religiones, especialmente en el cristianismo",
+                "TITAN" to "Satélite natural de Saturno, o persona de gran fuerza y poder",
                 "SATIN" to "Tejido de textura densa y superficie bastante brillante, parecido al raso",
             ),
             extras = listOf( "NATA", "SANA", "SITIA", "ANTI", "TANTA", "TAN", "SIN"),

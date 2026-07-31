@@ -34,9 +34,10 @@ progreso medible y fuerte gancho de retención.
   transiciones y **feedback inmediato** (visual, sonoro y háptico) al acertar o
   fallar.
 
-> Estado actual: la arquitectura y dos juegos de ejemplo (Memoria de Secuencias
-> y Reflejos) están implementados; faltan los 28 juegos restantes, la UI de auth,
-> los acertijos y el leaderboard de desafíos. Ver la tabla de fases (§2).
+> Estado actual: arquitectura, sistema de diseño, auth (Google + email en ambas
+> plataformas), anuncios, logros, objetivo diario y **17 juegos** están
+> implementados. Faltan ~13 juegos, los acertijos, el leaderboard de desafíos y
+> la compra del plan Premium. Ver el detalle en la tabla de fases (§2).
 
 ### Stack técnico
 
@@ -61,12 +62,42 @@ siguiente sin que el usuario lo confirme explícitamente.
 | 2 | RLS + RPC percentiles + Edge Function | ✅ aplicado |
 | 3 | Arquitectura app (MVI, local-first, AdManager, tema, gráficos, audio/háptica) | ✅ |
 | 4 | `GameEngine` + 2 juegos ejemplo + Daily Goal | ✅ |
-| 5 | Sistema de Diseño visual (tema, animaciones, navegación, pantallas Home/Games/Profile) | 🚧 en curso |
+| 5 | Sistema de Diseño visual (tema, animaciones, navegación, pantallas Home/Games/Profile) | ✅ |
+| 6 | Catálogo de juegos (los 30 minijuegos de las 11 categorías) | 🚧 en curso |
+| 7 | Acertijos + leaderboard de Desafíos Diarios | ⬜ pendiente |
+| 8 | Monetización real (compra del plan Premium) y publicación en tiendas | ⬜ pendiente |
 
 Al terminar una fase: resume lo hecho y **espera confirmación** antes de seguir.
 
 > El **Sistema de Diseño** (paleta, tipografía, principios de animación) está
 > especificado en la §9. Es la referencia obligatoria para toda UI nueva.
+
+### Estado real a 29/07/2026
+
+La Fase 5 se dio por cerrada: el tema (`core/theme`) y ~23 componentes de
+`ui/components` están en producción, y las pantallas Home / Games / Profile /
+Settings / Auth existen y navegan. Lo que queda de UI son detalles, no cimientos,
+y vive en `BACKLOG.md`.
+
+**Fase 6 (en curso) — juegos.** Hay **17 juegos jugables** (`playable = true`) en
+`game/GameCatalog.kt`, de los cuales **14 están publicados**; 3 quedan ocultos
+tras `published = false` (Palabras Conectadas, Tornillos Neón, Neon Starport
+Escape) a la espera de pulido. Faltan ~13 para llegar a los 30 de la visión, y
+las categorías **Flexibilidad Cognitiva** y **Reconocimiento de Patrones** aún no
+tienen ningún juego implementado. Cada juego nuevo necesita su seed en Supabase
+(`supabase/migrations/`, ya van 25) además del código.
+
+**Transversales ya resueltos** (no son fase, pero conviene saber que existen para
+no reimplementarlos): auth con Google en Android **e** iOS + email/password,
+borrado de cuenta (`AccountViewModel` + Edge Function `delete-account`), AdMob
+con consentimiento UMP, logros (`game/achievements`), objetivo diario y rachas
+(`game/daily`), progresión y récords por nivel.
+
+**Bloqueantes conocidos de la Fase 8** (publicación): el plan Premium está
+modelado en el dominio pero **no se puede comprar** (no hay SDK de billing), y la
+app se dirige a público mixto con menores de 13 sin la pantalla neutral de edad
+ni el `tagForChildDirectedTreatment` que exigen COPPA y la Política de Familias
+de Google Play. La política de privacidad ya está redactada en `legal-site/`.
 
 ---
 

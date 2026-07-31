@@ -7,12 +7,15 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -32,6 +35,29 @@ private const val EXPAND_MS = 520
 private const val EXPAND_NAV_DELAY_MS = 300L
 
 /**
+ * Velo de contraste que [CategoryMotifSurface] pinta sobre el motivo para que el
+ * texto se lea por brillante que sea el fondo temático.
+ *
+ * Es un enum y no un booleano porque **un velo solo protege si cae debajo del
+ * texto**: la variante correcta depende de dónde viva el texto en la tarjeta, y
+ * oscurecerla entera para cubrir todos los casos mataría el motivo (que es
+ * precisamente lo que identifica al juego).
+ */
+enum class MotifScrim {
+    /** Sin velo: la tarjeta no lleva texto sobre el motivo. */
+    None,
+
+    /** Transparente → oscuro hacia ABAJO. Para tarjetas con el texto al pie. */
+    Bottom,
+
+    /**
+     * Oscuro → transparente hacia la DERECHA. Para tarjetas **anchas** con el
+     * texto a la izquierda y el motivo escorado a la derecha (fila del catálogo).
+     */
+    Start,
+}
+
+/**
  * Contenedor de tarjeta de categoría: fondo con degradado de acento + textura
  * temática ([CategoryTexture]) + **animación de expansión al pulsar** (un
  * resplandor radial que crece del centro hacia afuera y hace "brillar más" el
@@ -45,9 +71,14 @@ private const val EXPAND_NAV_DELAY_MS = 300L
  * @param bgTopAlpha opacidad del acento en la parte superior del degradado de fondo.
  * @param motif motivo visual propio del juego para el fondo; null = usa el de la
  *   categoría (útil para las tarjetas de categoría, que no representan un juego).
- * @param scrim si true, oscurece la mitad inferior de la tarjeta con un degradado
- *   (transparente arriba → oscuro abajo) para garantizar el contraste del texto
- *   sobre el motivo, por brillante que sea. Útil en tarjetas con texto abajo.
+ * @param scrim velo de contraste bajo el texto; ver [MotifScrim].
+ * @param squareMotif si true, el motivo se dibuja en un recuadro **cuadrado**
+ *   anclado al borde derecho en vez de ocupar toda la tarjeta. Las texturas de
+ *   [CategoryTexture] colocan sus elementos como fracción del ANCHO pero los
+ *   escalan con `minDimension`: en una tarjeta ancha eso los dispersa
+ *   horizontalmente sin agrandarlos y el arte pierde cohesión. Acotarlo a un
+ *   cuadrado le devuelve la proporción ~1:1 para la que fue diseñado y, de paso,
+ *   despeja la mitad izquierda para el texto.
  * @param content contenido de la tarjeta (icono, textos…), ya con su propio padding.
  */
 @Composable
@@ -59,7 +90,8 @@ fun CategoryMotifSurface(
     enabled: Boolean = true,
     bgTopAlpha: Float = 0.18f,
     motif: GameMotif? = null,
-    scrim: Boolean = false,
+    scrim: MotifScrim = MotifScrim.None,
+    squareMotif: Boolean = false,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -100,15 +132,21 @@ fun CategoryMotifSurface(
         // Fondo temático; se ilumina con el "boost" durante la expansión.
         CategoryTexture(
             category = category,
-            modifier = Modifier.matchParentSize(),
+            modifier = if (squareMotif) {
+                Modifier.fillMaxHeight().aspectRatio(1f).align(Alignment.CenterEnd)
+            } else {
+                Modifier.matchParentSize()
+            },
             boost = glow.value,
             motif = motif,
         )
 
-        // Velo inferior: protege la legibilidad del texto (abajo) sobre el motivo.
-        // Transparente en la mitad superior para no tapar icono ni fondo temático.
-        if (scrim) {
-            Box(
+        // Velo de contraste: protege la legibilidad del texto sobre el motivo,
+        // dejando transparente la zona donde vive el arte (ver [MotifScrim]).
+        when (scrim) {
+            MotifScrim.None -> Unit
+
+            MotifScrim.Bottom -> Box(
                 modifier = Modifier
                     .matchParentSize()
                     .background(
@@ -116,6 +154,18 @@ fun CategoryMotifSurface(
                             0f to Color.Transparent,
                             0.45f to Color.Transparent,
                             1f to LogicColors.BackgroundDark.copy(alpha = 0.72f),
+                        ),
+                    ),
+            )
+
+            MotifScrim.Start -> Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.horizontalGradient(
+                            0f to LogicColors.BackgroundDark.copy(alpha = 0.80f),
+                            0.55f to LogicColors.BackgroundDark.copy(alpha = 0.30f),
+                            1f to Color.Transparent,
                         ),
                     ),
             )

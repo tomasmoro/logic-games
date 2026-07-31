@@ -120,6 +120,10 @@ kotlin {
             // Back del sistema (PlatformBackHandler.android.kt): el BackHandler común
             // de Compose Multiplatform no publica variante Android (ver su KDoc).
             implementation(libs.androidx.activity.compose)
+            // `WindowInsetsControllerCompat` (ImmersiveMode.android.kt) llega vía
+            // androidx.core, transitivo de activity-compose. No se declara explícito
+            // porque el `androidx-core` del catálogo (1.19.0) exige AGP 9.1.0 y aquí
+            // usamos 9.0.1; al subir el AGP conviene declararlo de forma directa.
             // FASE 3: driver SQLite Android + motor Ktor para Supabase
             implementation(libs.sqldelight.android.driver)
             implementation(libs.ktor.client.okhttp)

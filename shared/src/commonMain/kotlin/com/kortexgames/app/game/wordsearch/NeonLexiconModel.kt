@@ -168,6 +168,14 @@ data class NeonLexiconPuzzle(
  *
  * @property words palabras a esconder; se normalizan a mayúscula y se validan
  *           contra el tamaño de la rejilla en `init`.
+ * @property traps señuelos: sílabas o palabras parecidas a las [words] reales
+ *           (mismo prefijo, casi el mismo largo, etc.) que [NeonLexiconGenerator]
+ *           esconde igual que una palabra real pero SIN registrarlas como
+ *           [TargetWord] jugable. Al no existir como entrada en
+ *           `NeonLexiconGameState.words`, una selección que las recorra nunca
+ *           puede matchear en `NeonLexiconEngine.commitSelection` (que compara
+ *           solo contra esa lista) — quedan en la rejilla puramente para
+ *           confundir al ojo, nunca como opción válida.
  */
 data class NeonLexiconLevelSpec(
     val rows: Int,
@@ -186,6 +194,13 @@ data class NeonLexiconLevelSpec(
             // orientación (ni siquiera en diagonal, que usa min(rows, cols)).
             require(w.length <= maxLen) {
                 "La palabra '$w' (${w.length}) no cabe en una rejilla ${rows}x$cols."
+            }
+        }
+        traps.forEach { t ->
+            require(t.isNotBlank()) { "Las trampas no pueden estar vacías." }
+            require(t == t.uppercase()) { "La trampa '$t' debe ir en mayúsculas." }
+            require(t.length <= maxLen) {
+                "La trampa '$t' (${t.length}) no cabe en una rejilla ${rows}x$cols."
             }
         }
     }
@@ -210,6 +225,13 @@ data class NeonLexiconLevelSpec(
  *  - El relleno usa letras uniformes A–Z. Un generador real sesgaría el relleno
  *    hacia la frecuencia del idioma para que "camufle" mejor las palabras; se
  *    deja fuera del mock a propósito.
+ *  - Las trampas ([NeonLexiconLevelSpec.traps]) se colocan DESPUÉS de todas las
+ *    palabras reales, con el mismo algoritmo de encaje/cruce, y nunca entran al
+ *    [NeonLexiconPuzzle.words] resultante: quedan en la rejilla como letras
+ *    "sueltas" indistinguibles del resto hasta que el jugador las traza, momento
+ *    en el que el motor las rechaza por no ser una palabra objetivo (ver KDoc de
+ *    [NeonLexiconLevelSpec.traps]). Que no encajen no es un error de generación
+ *    —a diferencia de una palabra real— porque son puro adorno de dificultad.
  */
 object NeonLexiconGenerator {
 
@@ -487,6 +509,20 @@ object NeonLexiconGenerator {
             val target = placeWord(word, spec, grid, random) ?: return null
             target.cells.forEachIndexed { i, c -> grid[c.row][c.col] = word[i] }
             placed += target
+        }
+
+        // Trampas: se colocan con la MISMA lógica de encaje/cruce que las
+        // palabras reales (así se camuflan igual de bien), pero su TargetWord
+        // se descarta en vez de sumarse a `placed`. No formar parte de la lista
+        // de palabras objetivo es lo que las hace "incorrectas" — el motor
+        // (`NeonLexiconEngine.commitSelection`) valida un acierto comparando
+        // contra esa lista, así que una trampa jamás puede matchear por más que
+        // el jugador la trace exacta. Si una trampa no encuentra hueco tras los
+        // reintentos se omite sin más: son decorativas, no bloquean el nivel.
+        val orderedTraps = spec.traps.sortedByDescending { it.length }
+        for (trap in orderedTraps) {
+            val target = placeWord(trap, spec, grid, random) ?: continue
+            target.cells.forEachIndexed { i, c -> grid[c.row][c.col] = trap[i] }
         }
 
         // Relleno aleatorio de los huecos restantes.

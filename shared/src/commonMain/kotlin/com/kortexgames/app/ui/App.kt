@@ -55,6 +55,7 @@ import com.kortexgames.app.game.starport.StarportScreen
 import com.kortexgames.app.game.watersort.WaterSortScreen
 import com.kortexgames.app.game.wordconnect.WordConnectScreen
 import com.kortexgames.app.ui.auth.AuthScreen
+import com.kortexgames.app.ui.components.ImmersiveMode
 import com.kortexgames.app.ui.components.RandomGameFab
 import com.kortexgames.app.ui.games.GameListScreen
 import com.kortexgames.app.ui.home.HomeScreen
@@ -136,6 +137,14 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean) {
         LaunchedEffect(Unit) {
             graph.adManager.adEvents.collect { graph.adManager.showInterstitialAd() }
         }
+
+        // Inmersión en TODA la app (no solo en la partida): la barra de navegación del
+        // sistema se esconde también en Home/Catálogo/Perfil. Se activa una sola vez en
+        // la raíz, y no por ruta, a propósito: si solo se ocultara en unas pantallas, la
+        // barra aparecería y desaparecería al cambiar de pestaña —un salto de layout
+        // constante— y el fondo azul noche se cortaría abajo con la banda del sistema.
+        // Sigue siendo recuperable con un deslizamiento desde el borde inferior.
+        ImmersiveMode(enabled = true)
 
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,

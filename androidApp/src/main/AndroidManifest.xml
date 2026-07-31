@@ -20,9 +20,23 @@
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="${admobAppId}" />
 
+        <!-- Bloqueo de orientación en pantallas grandes: desde Android 16 (targetSdk 36)
+             el sistema IGNORA android:screenOrientation en displays de ancho >= 600dp
+             (tablets, plegables abiertos). Esta propiedad reactiva el respeto por la
+             orientación fija que declara la Activity. Google la marca como transitoria
+             (deja de funcionar con targetSdk 37): si algún día se sube el target, habrá
+             que rediseñar los tableros para landscape en vez de prohibirlo. -->
+        <property
+            android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY"
+            android:value="true" />
+
+        <!-- screenOrientation: los tableros (rejillas, crucigrama, teclados) están
+             dimensionados para vertical; en horizontal quedarían aplastados. Se fija
+             portrait "normal" (sin boca abajo, que en un móvil solo desorienta). -->
         <activity
             android:exported="true"
-            android:name=".MainActivity">
+            android:name=".MainActivity"
+            android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
