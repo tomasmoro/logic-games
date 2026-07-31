@@ -59,6 +59,42 @@ class NeonCircuitLevelsTest {
     }
 
     @Test
+    fun laDificultadDelRepartoNoDecreceDentroDelMismoEscalon() {
+        // Niveles del mismo escalón comparten tablero (gridSize/pairCount); lo que
+        // debe subir es la dificultad del reparto elegido (hardnessScore), no el
+        // tamaño. Se comprueba en varios escalones, incluido uno más allá del techo
+        // de tamaño (nivel 13+), donde la única palanca que queda es esta.
+        val firstLevelOfEachTier = listOf(1, 3, 5, 7, 9, 11, 13, 15)
+        firstLevelOfEachTier.forEach { first ->
+            val gridSize = NeonCircuitLevels.forNumber(first).gridSize
+            val pairCount = NeonCircuitLevels.forNumber(first).pairCount
+
+            val scores = (0 until 2).map { offset ->
+                NeonCircuitLevels.chosenCandidate(first + offset).hardnessScore
+            }
+            assertEquals(gridSize, NeonCircuitLevels.forNumber(first + 1).gridSize, "escalón de $first")
+            assertEquals(pairCount, NeonCircuitLevels.forNumber(first + 1).pairCount, "escalón de $first")
+            assertTrue(
+                scores[0] <= scores[1],
+                "nivel $first (${scores[0]}) debería ser igual o más fácil que nivel ${first + 1} (${scores[1]})",
+            )
+        }
+    }
+
+    @Test
+    fun laRutaRealNuncaEsMasCortaQueLaDistanciaDirectaEntreNodos() {
+        // hardnessScore se basa en winding ratio >= 1.0 (la ruta real nunca es más
+        // corta que la línea recta entre los dos extremos de un canal): si algún
+        // candidato rompiera esa cota, el ranking de dificultad dejaría de tener
+        // sentido (ratios < 1 serían imposibles geométricamente, así que su aparición
+        // delataría un bug en el cálculo, no una variación válida de dificultad).
+        (1..15).forEach { number ->
+            val candidate = NeonCircuitLevels.chosenCandidate(number)
+            assertTrue(candidate.hardnessScore >= 1.0, "nivel $number: hardnessScore=${candidate.hardnessScore}")
+        }
+    }
+
+    @Test
     fun todoNivelGeneradoEsValidoParaVariosTamanosYNumeros() {
         (1..24).forEach { number ->
             val level = NeonCircuitLevels.forNumber(number)

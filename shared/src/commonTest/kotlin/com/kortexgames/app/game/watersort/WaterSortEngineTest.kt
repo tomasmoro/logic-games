@@ -100,6 +100,25 @@ class WaterSortEngineTest {
     }
 
     @Test
+    fun elTableroSeMantieneIgualDentroDeUnTramoYCreceAlCambiarDeTramo() {
+        // Tramo de 3 niveles (ver LEVELS_PER_TIER): niveles 1-3 comparten tablero
+        // (mismo nº de tubos/capacidad); el nivel 4 ya pertenece al siguiente tramo y
+        // debe crecer. Así la progresión no depende SOLO de agrandar el tablero en
+        // cada nivel, como pidió el usuario.
+        val sizesInFirstTier = (1..3).map { level ->
+            val s = engineAtLevel(level).state.value
+            s.tubes.size to s.capacity
+        }
+        assertEquals(1, sizesInFirstTier.toSet().size, "Los niveles 1-3 deberían compartir tablero")
+
+        val fourthLevelSize = engineAtLevel(4).state.value.tubes.size
+        assertTrue(
+            fourthLevelSize > sizesInFirstTier.first().first,
+            "El nivel 4 (nuevo tramo) debería tener más tubos que el tramo anterior",
+        )
+    }
+
+    @Test
     fun reiniciarConservaElTuboExtra() {
         val engine = engineAtLevel(1)
         val n = engine.state.value.tubes.size

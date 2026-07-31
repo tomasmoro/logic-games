@@ -137,4 +137,29 @@ class WaterSortModelTest {
         val b = WaterSortGenerator.generate(config, Random(seed = 7L))
         assertEquals(a.tubes, b.tubes)
     }
+
+    @Test
+    fun elHardnessRankOrdenaLosNivelesDelMismoTramoPorDificultadCreciente() {
+        // Con el MISMO tablero (config) y el MISMO pool de candidatos (misma semilla),
+        // pedir un hardnessRank mayor nunca debe devolver un nivel más fácil (minMoves
+        // menor): es la garantía de que dentro de un tramo el nivel N+1 sea igual o más
+        // difícil que el N, sin cambiar colores ni tubos.
+        val config = LevelConfig.forDifficulty(2)
+        val poolSize = 3
+        var previousMinMoves = 0
+        for (rank in 0 until poolSize) {
+            val level = WaterSortGenerator.generate(
+                config = config,
+                random = Random(seed = 99L),
+                hardnessRank = rank,
+                hardnessPoolSize = poolSize,
+            )
+            assertEquals(config.colorCount + config.emptyTubes, level.tubes.size)
+            assertTrue(
+                level.minMoves >= previousMinMoves,
+                "El rank $rank (minMoves=${level.minMoves}) no debería ser más fácil que el rank ${rank - 1} (minMoves=$previousMinMoves)",
+            )
+            previousMinMoves = level.minMoves
+        }
+    }
 }

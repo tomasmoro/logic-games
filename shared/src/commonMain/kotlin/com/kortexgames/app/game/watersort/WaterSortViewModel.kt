@@ -63,14 +63,7 @@ sealed interface WaterSortIntent : UiIntent {
     /** La UI confirma que el anuncio recompensado terminó → se concede el tubo extra. */
     data object ExtraTubeRewarded : WaterSortIntent
 
-    /**
-     * El jugador pulsó "Reiniciar": pide ver un anuncio antes de rehacer el nivel.
-     * Dispara [WaterSortEffect.ShowRestartAd]; el reinicio real ([Restart]) lo envía
-     * la UI al terminar el anuncio.
-     */
-    data object WatchAdForRestart : WaterSortIntent
-
-    /** Reinicia de verdad el nivel. La UI lo envía tras completarse el anuncio. */
+    /** El jugador pulsó "Reiniciar": rehace el nivel al momento, sin anuncio. */
     data object Restart : WaterSortIntent
     data object Pause : WaterSortIntent
     data object Resume : WaterSortIntent
@@ -96,13 +89,6 @@ sealed interface WaterSortEffect : UiEffect {
      * recomposición (CLAUDE.md §4, patrón MVI).
      */
     data object ShowRewardedAd : WaterSortEffect
-
-    /**
-     * Pide a la UI mostrar un anuncio **antes de reiniciar** el nivel. Al terminar, la
-     * UI devuelve [WaterSortIntent.Restart] para rehacer la partida. Mismo mecanismo
-     * one-shot que [ShowRewardedAd].
-     */
-    data object ShowRestartAd : WaterSortEffect
 
     /**
      * Pide a la UI mostrar un anuncio **antes de deshacer** (a partir del segundo
@@ -148,7 +134,6 @@ class WaterSortViewModel(
             is WaterSortIntent.TapTube -> engine.onTubeTap(intent.index)
             WaterSortIntent.Undo -> requestUndo()
             WaterSortIntent.UndoRewarded -> engine.undo()
-            WaterSortIntent.WatchAdForRestart -> sendEffect(WaterSortEffect.ShowRestartAd)
             WaterSortIntent.Restart -> engine.restart()
             WaterSortIntent.Pause -> engine.pause()
             WaterSortIntent.Resume -> engine.resume()

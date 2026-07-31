@@ -67,6 +67,7 @@ import com.kortexgames.app.di.AppGraph
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.LeveledGamePhase
+import com.kortexgames.app.ui.components.AdLoadingOverlay
 import com.kortexgames.app.ui.components.GameExitGuard
 import com.kortexgames.app.ui.components.GameIntroScreen
 import com.kortexgames.app.game.GameHelpContent
@@ -281,6 +282,12 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
             accent = CategoryPalette.Language,
             exitKeepsProgress = true,
         )
+
+        // Feedback de "cargando anuncio" mientras se resuelve el rewarded de la
+        // pista (ver el LaunchedEffect de `awaitingHintAd` más arriba): sin esto,
+        // pulsar "Pista" no mostraba nada en pantalla durante la carga real del
+        // anuncio (puede tardar varios segundos) y parecía que el botón no hacía nada.
+        AdLoadingOverlay(visible = awaitingHintAd, accent = CategoryPalette.Language)
 
         // Atrás del sistema: reanuda si estaba en pausa, o pregunta antes de salir
         // mientras se juega (la partida se guarda al confirmar, ver exitWithSave).

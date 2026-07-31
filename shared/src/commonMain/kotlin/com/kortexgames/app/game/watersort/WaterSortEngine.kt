@@ -128,17 +128,36 @@ class WaterSortEngine(
     private var currentRoundMinMoves = 0
     private var pourSeq = 0L
 
+    private fun tierOf(level: Int): Int = (level.coerceAtLeast(1) - 1) / LEVELS_PER_TIER
+
+    /** Posición 0-based del nivel dentro de su tramo; la usa el generador como `hardnessRank`. */
+    private fun positionInTier(level: Int): Int = (level.coerceAtLeast(1) - 1) % LEVELS_PER_TIER
+
     /**
-     * Curva de dificultad: nivel N → configuración. El **nivel 1 conserva la config
-     * base** del juego (5 colores, capacidad 4, 2 tubos libres); a mayor nivel suben
-     * los colores y la capacidad. Se acota (colores ≤ 7, capacidad ≤ 5) para que el
-     * generador —con solver DFS— siga produciendo niveles resolubles en tiempo razonable.
+     * Curva de dificultad: nivel N → configuración de tablero. Sube de tramo cada
+     * [LEVELS_PER_TIER] niveles; dentro del tramo el tablero no crece (la dificultad la da
+     * el reparto, ver [startCurrentLevel]). Se acota (colores ≤ 7, capacidad ≤ 5) para que
+     * el generador —con solver DFS— siga produciendo niveles resolubles en tiempo razonable.
+     *
+     * Orden de las palancas, de la más barata a la más "cara" de sufrir:
+     *  1. `colorCount` sube primero (5→6→7): más colores para barajar.
+     *  2. `capacity` sube después, ya con `colorCount` al tope: tubos más altos alargan
+     *     las cadenas de vertido.
+     *  3. `emptyTubes` baja el último y solo cuando el tablero ya está al máximo tamaño
+     *     que soporta el solver: quitar el 2º tubo libre es la palanca que más aprieta
+     *     (mucho menos margen de maniobra), así que se reserva para cuando ya no queda
+     *     más tablero que agrandar.
      */
     private fun configForLevel(level: Int): LevelConfig {
-        val l = level.coerceAtLeast(1)
-        val colorCount = (5 + (l - 1) / 2).coerceIn(5, 7)
-        val capacity = (4 + (l - 1) / 6).coerceIn(4, 5)
-        return LevelConfig(colorCount = colorCount, emptyTubes = 2, capacity = capacity)
+        val tier = tierOf(level)
+        val colorCount = when {
+            tier <= 0 -> 5
+            tier == 1 -> 6
+            else -> 7
+        }
+        val capacity = if (tier <= 2) 4 else 5
+        val emptyTubes = if (tier <= 8) 2 else 1
+        return LevelConfig(colorCount = colorCount, emptyTubes = emptyTubes, capacity = capacity)
     }
 
     /**
@@ -156,7 +175,15 @@ class WaterSortEngine(
     }
 
     private fun startCurrentLevel() {
-        val level = WaterSortGenerator.generate(configForLevel(currentLevel), random)
+        // hardnessRank/hardnessPoolSize: dentro de un mismo tramo (mismo tablero, ver
+        // configForLevel) el reparto elegido es cada vez más enredado, así el nivel 1 del
+        // tramo sale el más fácil de los LEVELS_PER_TIER candidatos y el último el más difícil.
+        val level = WaterSortGenerator.generate(
+            config = configForLevel(currentLevel),
+            random = random,
+            hardnessRank = positionInTier(currentLevel),
+            hardnessPoolSize = LEVELS_PER_TIER,
+        )
         initialTubes = level.tubes
         currentRoundMinMoves = level.minMoves
         history.clear()
@@ -371,6 +398,15 @@ class WaterSortEngine(
     override fun reachedMetric(): Int = currentLevel
 
     private companion object {
+        /**
+         * Nº de niveles que comparten el mismo tamaño de tablero antes de subir de tramo
+         * (ver [configForLevel]). Dentro de un tramo la config no cambia; lo que sube es la
+         * dificultad relativa del reparto ([positionInTier] como `hardnessRank`) — así el
+         * nivel 1 y el 2 pueden tener idénticos colores/tubos y aun así el 2 ser más difícil,
+         * en vez de que la única palanca de dificultad sea agrandar el tablero.
+         */
+        const val LEVELS_PER_TIER = 3
+
         /**
          * Puntos que vale cada nivel. Es la escala que separa un nivel del siguiente:
          * el castigo total se topa en `BASE_PER_LEVEL - 1` para no invadir el tramo

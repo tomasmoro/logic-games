@@ -72,6 +72,7 @@ import com.kortexgames.app.di.AppGraph
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.LeveledGamePhase
+import com.kortexgames.app.ui.components.AdLoadingOverlay
 import com.kortexgames.app.ui.components.ArcadeBrickBackground
 import com.kortexgames.app.ui.components.GameIntroScreen
 import com.kortexgames.app.game.GameHelpContent
@@ -209,20 +210,26 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
     // y (2) saber si el `progress` actual corresponde ya al vertido en curso.
     var animId by remember { mutableStateOf<Long?>(null) }
 
-    // Anuncios: "Tubo extra", "Reiniciar" y el deshacer de pago piden el rewarded real al
+    // Anuncios: "Tubo extra" y el deshacer de pago piden el rewarded real al
     // AdManager (mismo trato que Neon Sudoku/Desactivador — pulsar el botón YA es
     // la confirmación del jugador, así que el anuncio se lanza directo, sin overlay
     // de por medio) y, si concede la recompensa, envían el intent que ejecuta la
     // acción. El `collect` es secuencial pero el Channel del efecto está bufferizado
     // (ver Mvi.kt), así que no se pierde ningún efecto mientras se espera el anuncio.
+    // `awaitingAd` solo alimenta el feedback visual (AdLoadingOverlay más abajo): sin
+    // él, pulsar el botón no mostraba nada en pantalla durante la carga real del
+    // anuncio (puede tardar varios segundos) y parecía que el botón no hacía nada.
+    var awaitingAd by remember { mutableStateOf(false) }
     LaunchedEffect(vm) {
         vm.effect.collect { effect ->
             val onEarned = when (effect) {
                 WaterSortEffect.ShowRewardedAd -> WaterSortIntent.ExtraTubeRewarded
-                WaterSortEffect.ShowRestartAd -> WaterSortIntent.Restart
                 WaterSortEffect.ShowUndoAd -> WaterSortIntent.UndoRewarded
             }
-            if (graph.adManager.showRewardedAd() == RewardResult.EARNED) {
+            awaitingAd = true
+            val result = graph.adManager.showRewardedAd()
+            awaitingAd = false
+            if (result == RewardResult.EARNED) {
                 vm.onIntent(onEarned)
             }
         }
@@ -415,8 +422,9 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
                     label = "Reiniciar",
                     tint = LogicColors.Amber,
                     enabled = !animating,
-                    // Reiniciar también pasa por un anuncio (petición del usuario).
-                    onClick = { vm.onIntent(WaterSortIntent.WatchAdForRestart) },
+                    // Reinicio inmediato, sin anuncio (petición del usuario: demasiados
+                    // anuncios en este juego).
+                    onClick = { vm.onIntent(WaterSortIntent.Restart) },
                 )
                 // Ayuda opcional monetizada: ver un anuncio para sumar un tubo vacío.
                 // Se oculta al agotar el cupo (canAddTube = false) para no ofrecer una
@@ -459,6 +467,10 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
             help = GameHelpContent.waterSort,
             accent = CategoryPalette.Logic,
         )
+
+        // Feedback de "cargando anuncio" mientras se resuelve el rewarded del tubo
+        // extra o el deshacer de pago (ver el LaunchedEffect de `awaitingAd` más arriba).
+        AdLoadingOverlay(visible = awaitingAd, accent = CategoryPalette.Logic)
     }
 }
 

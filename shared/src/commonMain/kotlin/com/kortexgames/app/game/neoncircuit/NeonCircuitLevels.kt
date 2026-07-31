@@ -1,5 +1,6 @@
 package com.kortexgames.app.game.neoncircuit
 
+import kotlin.math.abs
 import kotlin.random.Random
 
 /**
@@ -26,8 +27,30 @@ import kotlin.random.Random
  *
  * El tablero crece de lado en lado (nunca salta al máximo ni decrece) y los
  * canales suben de forma escalonada, no uno por nivel (saturaría los tableros
- * pequeños). Al tocar el techo (9×9 con 8 canales) la dificultad se estabiliza
- * ahí para siempre, dando una progresión infinita.
+ * pequeños). Al tocar el techo (9×9 con 8 canales, escalón 5) el TAMAÑO se
+ * estabiliza ahí para siempre — no hay más tablero que agrandar ni más canales
+ * que meter sin desbordar los [WireColor] disponibles.
+ *
+ * ## Dificultad dentro de un escalón (sin agrandar el tablero)
+ *
+ * Fijar el tamaño no fija la dificultad: con el MISMO (tablero, nº de canales)
+ * un reparto de nodos puede ser "obvio" (cada cable es casi la línea recta entre
+ * sus dos extremos) o "enredado" (el cable real serpentea muy lejos de esa línea
+ * recta, así que el extremo no delata por dónde pasa la solución). Esa distancia
+ * es gratis de medir —no hace falta resolver el nivel, solo mirar el segmento del
+ * camino hamiltoniano que ya se generó— así que sirve de proxy de dificultad sin
+ * coste de solver (ver [windingRatio]).
+ *
+ * Por cada escalón se generan [LEVELS_PER_GRID_SIZE] repartos candidatos (mismo
+ * tablero, distinta semilla), se ordenan por su dificultad media y el nivel N
+ * dentro del escalón recibe el candidato que le toca por posición: el primer
+ * nivel del escalón es el reparto más "obvio" de los candidatos y el último el
+ * más "enredado". Así el nivel 1 y el 2 pueden compartir tablero y aun así el 2
+ * ser más difícil, en vez de que la única palanca de dificultad sea agrandar el
+ * tablero. La semilla de cada escalón NO se topa al llegar al escalón 5 (a
+ * diferencia del tamaño de tablero, que sí): cada nuevo par de niveles post-techo
+ * sigue sorteando un reparto fresco, así la dificultad post-techo no se repite
+ * siempre igual, solo dentro del mismo rango acotado.
  *
  * ## Cómo se garantiza que el nivel sea resoluble (el "porqué" del algoritmo)
  *
@@ -85,16 +108,40 @@ object NeonCircuitLevels {
      * Nivel [number] (1-based), generado de forma determinista.
      *
      * "Siguiente nivel" nunca revienta: la progresión es infinita (el tamaño de
-     * tablero y el nº de canales se estabilizan al llegar al máximo), y la
-     * puntuación sigue reflejando el nº de nivel real jugado.
+     * tablero y el nº de canales se estabilizan al llegar al máximo, pero la
+     * dificultad del reparto sigue variando dentro de cada escalón, ver el KDoc
+     * de la clase), y la puntuación sigue reflejando el nº de nivel real jugado.
      */
     fun forNumber(number: Int): CircuitLevel {
         val n = number.coerceAtLeast(1)
-        val tier = tierForLevel(n)
-        val gridSize = tier.gridSize
-        val pairCount = tier.pairCount
-        val seed = n.toLong()
+        val chosen = chosenCandidate(n)
+        return CircuitLevel(number = n, gridSize = tierForLevel(n).gridSize, nodes = chosen.nodes)
+    }
 
+    /**
+     * Candidato que le toca al nivel [number] tras rankear el pool de su escalón por
+     * dificultad (ver el KDoc de la clase). `internal` —no `private`— solo para que los
+     * tests puedan comprobar el orden de dificultad ([Candidate.hardnessScore]) sin
+     * duplicar esta lógica de selección.
+     */
+    internal fun chosenCandidate(number: Int): Candidate {
+        val n = number.coerceAtLeast(1)
+        val tier = tierForLevel(n)
+        val tierIndex = rawTierIndex(n) // sin topar: sigue variando el pool tras el techo
+        val position = (n - 1) % LEVELS_PER_GRID_SIZE
+
+        val pool = (0 until LEVELS_PER_GRID_SIZE).map { candidateIndex ->
+            val seed = tierIndex.toLong() * 1_000_003L + candidateIndex
+            buildCandidate(tier.gridSize, tier.pairCount, seed)
+        }
+        return pool.sortedBy { it.hardnessScore }[position.coerceIn(0, pool.lastIndex)]
+    }
+
+    /** Un reparto candidato con su puntaje de dificultad relativa (ver [windingRatio]). */
+    internal data class Candidate(val nodes: List<Node>, val hardnessScore: Double)
+
+    /** Genera un único reparto (tablero, canales) para la [seed] dada. */
+    private fun buildCandidate(gridSize: Int, pairCount: Int, seed: Long): Candidate {
         val path = hamiltonianPath(gridSize, seed)
         val segments = splitIntoSegments(path, pairCount, seed)
         val colors = WireColor.entries.take(pairCount).shuffled(Random(seed * 31 + 7))
@@ -103,18 +150,36 @@ object NeonCircuitLevels {
             val color = colors[index]
             listOf(Node(color, segment.first()), Node(color, segment.last()))
         }
-        return CircuitLevel(number = n, gridSize = gridSize, nodes = nodes)
+        val hardness = segments.map(::windingRatio).average()
+        return Candidate(nodes, hardness)
     }
+
+    /**
+     * Cuánto más larga es la ruta real de un canal que la distancia mínima (Manhattan)
+     * entre sus dos extremos. `1.0` = la ruta más corta posible entre los nodos —el
+     * jugador ve un camino directo y "obvio"—; cuanto mayor, más rodeos da el cable
+     * respecto a la línea recta entre sus nodos y menos delata la posición de los
+     * nodos por dónde pasa la solución. Es la señal de dificultad que no depende de
+     * agrandar el tablero (ver el KDoc de la clase).
+     */
+    private fun windingRatio(segment: List<GridPosition>): Double {
+        val start = segment.first()
+        val end = segment.last()
+        val manhattan = (abs(start.row - end.row) + abs(start.col - end.col)).coerceAtLeast(1)
+        val pathSteps = segment.size - 1
+        return pathSteps.toDouble() / manhattan
+    }
+
+    /** Índice de escalón SIN topar al máximo (a diferencia de [tierForLevel]); ver su uso como semilla. */
+    private fun rawTierIndex(number: Int): Int = (number - 1) / LEVELS_PER_GRID_SIZE
 
     /**
      * Escalón de dificultad ([gridSize], [pairCount]) del nivel [number]: sube uno
      * cada [LEVELS_PER_GRID_SIZE] niveles y se estanca en el último tramo definido
      * (progresión infinita).
      */
-    private fun tierForLevel(number: Int): DifficultyTier {
-        val index = (number - 1) / LEVELS_PER_GRID_SIZE
-        return DIFFICULTY_TIERS[index.coerceIn(0, DIFFICULTY_TIERS.lastIndex)]
-    }
+    private fun tierForLevel(number: Int): DifficultyTier =
+        DIFFICULTY_TIERS[rawTierIndex(number).coerceIn(0, DIFFICULTY_TIERS.lastIndex)]
 
     /**
      * Un escalón de la curva de dificultad: lado del tablero y nº de canales que

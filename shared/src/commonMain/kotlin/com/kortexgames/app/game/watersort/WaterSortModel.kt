@@ -174,11 +174,34 @@ object WaterSortGenerator {
     private const val MAX_SHUFFLE_ATTEMPTS = 200
 
     /**
-     * Genera un nivel resoluble para la [config] dada.
+     * Genera un nivel resoluble para la [config] dada, con dificultad **relativa** dentro
+     * de un grupo de niveles que comparten tablero.
      *
-     * @throws IllegalStateException si no logra un reparto resoluble (improbable).
+     * Un solo reparto solventable no distingue "fácil" de "difícil": con la MISMA [config]
+     * el reparto puede salir casi ya ordenado o muy enredado. Eso es justo lo que hace falta
+     * para poder subir la dificultad SIN agrandar el tablero, necesario en cuanto
+     * `colorCount`/`capacity` tocan su tope (ver [com.kortexgames.app.game.watersort.WaterSortEngine.configForLevel]):
+     * se generan [hardnessPoolSize] repartos candidatos, se ordenan por
+     * [WaterSortLevel.minMoves] (proxy de dificultad: más vertidos en la solución hallada =
+     * tablero más enredado) y se devuelve el que ocupa la posición [hardnessRank] (0 = el
+     * más fácil del grupo). Con los valores por defecto (`hardnessPoolSize = 1`) se comporta
+     * como antes de introducir este parámetro: un único reparto, sin discriminar dificultad.
+     *
+     * @throws IllegalStateException si algún candidato no logra un reparto resoluble (improbable).
      */
-    fun generate(config: LevelConfig, random: Random = Random.Default): WaterSortLevel {
+    fun generate(
+        config: LevelConfig,
+        random: Random = Random.Default,
+        hardnessRank: Int = 0,
+        hardnessPoolSize: Int = 1,
+    ): WaterSortLevel {
+        val pool = List(hardnessPoolSize.coerceAtLeast(1)) { generateOne(config, random) }
+        val rank = hardnessRank.coerceIn(0, pool.size - 1)
+        return pool.sortedBy { it.minMoves }[rank]
+    }
+
+    /** Un único reparto barajado y verificado resoluble (sin noción de dificultad relativa). */
+    private fun generateOne(config: LevelConfig, random: Random): WaterSortLevel {
         repeat(MAX_SHUFFLE_ATTEMPTS) {
             // Bolsa con `capacity` segmentos de cada color, barajada.
             val bag = buildList {

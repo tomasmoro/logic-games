@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -108,19 +110,32 @@ fun DefuserBoard(
         // encoja con el panel.
         val flagSizeDp = with(density) { (cell * FLAG_ICON_FRACTION).toDp() }
 
+        // Geometría vigente para el hit-test. Va en un holder actualizado por
+        // composición (`rememberUpdatedState`) y NO capturada por el closure del
+        // gesto: el bloque de `pointerInput` solo se reejecuta si cambia su clave,
+        // así que si leyera `originX/originY/cell` directamente se quedaría con los
+        // valores del momento en que arrancó. Eso desplazaba el toque respecto a lo
+        // dibujado en cuanto cambiaba el alto disponible sin cambiar el lado de
+        // celda —`cell` está topado por [BoardMaxCellSize] y suele mandarlo el
+        // ancho, pero `originY` depende del alto—, p. ej. al aparecer/desaparecer el
+        // botón del escáner o su banner, o al ocultarse las barras del sistema.
+        val geometry by rememberUpdatedState(BoardGeometry(originX, originY, cell, board))
+        val currentOnReveal by rememberUpdatedState(onReveal)
+        val currentOnFlag by rememberUpdatedState(onFlag)
+
         Box(modifier = Modifier.fillMaxSize()) {
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
-                    // Clave: reinicia el detector si cambia la geometría (dificultad
-                    // o lado de celda), para que el hit-test use los valores vigentes.
-                    .pointerInput(state.difficulty, cell) {
+                    // Clave fija: el detector no necesita reiniciarse nunca, porque
+                    // lee la geometría vigente de `geometry` en cada toque.
+                    .pointerInput(Unit) {
                         detectTapGestures(
                             onTap = { pos ->
-                                positionAt(pos, originX, originY, cell, board)?.let(onReveal)
+                                geometry.positionAt(pos)?.let { currentOnReveal(it) }
                             },
                             onLongPress = { pos ->
-                                positionAt(pos, originX, originY, cell, board)?.let(onFlag)
+                                geometry.positionAt(pos)?.let { currentOnFlag(it) }
                             },
                         )
                     },
@@ -204,23 +219,38 @@ private fun FlagMarker(sizeDp: Dp, modifier: Modifier = Modifier) {
 }
 
 /**
- * Celda bajo el punto [pos], o `null` si el toque cayó en el margen exterior del
- * panel. Invierte la geometría de la rejilla (ver KDoc del archivo).
+ * Geometría con la que se pinta el panel en el frame actual: dónde empieza la
+ * rejilla dentro del `Canvas` y cuánto mide cada celda.
+ *
+ * Existe como tipo propio para poder pasar el **conjunto** al detector de gestos de
+ * una sola vez y garantizar que dibujo y hit-test comparten exactamente los mismos
+ * valores (ver el comentario de `pointerInput` en [DefuserBoard]).
+ *
+ * @property originX x de la esquina superior izquierda del panel, ya centrado.
+ * @property originY y de la esquina superior izquierda del panel, ya centrado.
+ * @property cell lado de celda en píxeles.
+ * @property board panel vigente, para validar los límites de la coordenada.
  */
-private fun positionAt(
-    pos: Offset,
-    originX: Float,
-    originY: Float,
-    cell: Float,
-    board: MineBoard,
-): CellPosition? {
-    val col = ((pos.x - originX) / cell).toInt()
-    val row = ((pos.y - originY) / cell).toInt()
-    // toInt() trunca hacia cero, así que un toque a la izquierda/arriba del origen
-    // daría 0 en vez de negativo: se comprueban explícitamente los dos márgenes.
-    if (pos.x < originX || pos.y < originY) return null
-    val position = CellPosition(row, col)
-    return if (board.contains(position)) position else null
+private data class BoardGeometry(
+    val originX: Float,
+    val originY: Float,
+    val cell: Float,
+    val board: MineBoard,
+) {
+    /**
+     * Celda bajo el punto [pos], o `null` si el toque cayó en el margen exterior del
+     * panel. Invierte la geometría de la rejilla (ver KDoc del archivo).
+     */
+    fun positionAt(pos: Offset): CellPosition? {
+        // toInt() trunca hacia cero, así que un toque a la izquierda/arriba del
+        // origen daría 0 en vez de negativo: se comprueban los dos márgenes antes.
+        if (pos.x < originX || pos.y < originY) return null
+        val position = CellPosition(
+            row = ((pos.y - originY) / cell).toInt(),
+            col = ((pos.x - originX) / cell).toInt(),
+        )
+        return if (board.contains(position)) position else null
+    }
 }
 
 // ---------------------------------------------------------------------------
