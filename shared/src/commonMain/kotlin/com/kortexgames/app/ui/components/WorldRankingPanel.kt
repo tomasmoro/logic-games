@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.core.theme.LogicGradients
 import com.kortexgames.app.domain.model.GameRanking
+import com.kortexgames.app.domain.model.formatDurationShort
 import com.kortexgames.app.domain.model.LeaderboardEntry
 import kotlin.math.roundToInt
 
@@ -146,8 +147,20 @@ private fun GameRanking.myBestScore(): Int? =
  * Un empate cuenta como "no superado" pero tampoco como récord conservado: repetir
  * clavado tu propia marca no merece ni celebración ni consuelo.
  */
-private fun GameRanking.recordStillHeld(currentScore: Int): Boolean =
-    (myBestScore() ?: return false) > currentScore
+private fun GameRanking.recordStillHeld(currentScore: Int): Boolean {
+    val best = myBestScore() ?: return false
+    // "Mejor" es más ALTO por puntos pero más BAJO por tiempo: sin este giro, un juego
+    // rankeado por tiempo felicitaría al jugador justo cuando ha ido más lento.
+    return if (rankedByTime) best < currentScore else best > currentScore
+}
+
+/**
+ * Formatea una marca del ranking en la unidad que le corresponde: tiempo cuando la tabla se ordena
+ * por rapidez y puntos en el resto. Es el único sitio donde se decide, para que la lista, la nota
+ * del récord y el mensaje del campeón no puedan contarlo de dos formas distintas.
+ */
+private fun GameRanking.formatMetric(value: Int): String =
+    if (rankedByTime) formatDurationShort(value.toLong()) else "$value puntos"
 
 /**
  * Textos del bloque. Se resuelven de una pieza —y no en tres funciones sueltas—
@@ -174,7 +187,7 @@ private fun WorldRankTier.copyFor(ranking: GameRanking, currentScore: Int): Rank
     val best = ranking.myBestScore()
     val held = ranking.recordStillHeld(currentScore)
     // Nota común a todos los tramos salvo CHAMPION, que la integra en su mensaje.
-    val note = if (held && best != null) "Tu récord sigue en $best puntos." else null
+    val note = if (held && best != null) "Tu récord sigue en ${ranking.formatMetric(best)}." else null
 
     return when (this) {
         WorldRankTier.PIONEER -> RankingCopy(
@@ -207,7 +220,7 @@ private fun WorldRankTier.copyFor(ranking: GameRanking, currentScore: Int): Rank
         WorldRankTier.CHAMPION -> if (held && best != null) {
             RankingCopy(
                 title = "Sigues siendo el nº1 del mundo",
-                message = "Tu récord de $best puntos aguanta: esta partida no lo ha superado.",
+                message = "Tu récord de ${ranking.formatMetric(best)} aguanta: esta partida no lo ha superado.",
                 note = null,
             )
         } else {
@@ -235,9 +248,10 @@ private fun WorldRankTier.copyFor(ranking: GameRanking, currentScore: Int): Rank
  * (y solo cuando la partida ha batido algo de verdad, ver `GameOverOverlay`).
  *
  * @param ranking comparativa ya resuelta; el llamador no pinta este bloque si es null.
- * @param currentScore puntaje de ESTA partida. Hace falta para distinguirlo de la mejor
- *   marca del jugador —que es lo que muestra el ranking— y así poder decirle que su
- *   récord sigue en pie cuando esta partida no lo ha superado.
+ * @param currentScore marca de ESTA partida, **en la unidad con la que se ordena la
+ *   tabla** (puntos, o milisegundos si [GameRanking.rankedByTime]). Hace falta para
+ *   distinguirla de la mejor marca del jugador —que es lo que muestra el ranking— y así
+ *   poder decirle que su récord sigue en pie cuando esta partida no lo ha superado.
  */
 @Composable
 fun WorldRankingPanel(
@@ -315,7 +329,12 @@ fun WorldRankingPanel(
             }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 ranking.entries.forEachIndexed { index, entry ->
-                    LeaderboardRow(entry = entry, accent = accent, index = index)
+                    LeaderboardRow(
+                        entry = entry,
+                        accent = accent,
+                        index = index,
+                        metricLabel = ranking::formatMetric,
+                    )
                 }
             }
         }
@@ -335,6 +354,7 @@ private fun LeaderboardRow(
     entry: LeaderboardEntry,
     accent: Color,
     index: Int,
+    metricLabel: (Int) -> String,
 ) {
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
@@ -391,7 +411,7 @@ private fun LeaderboardRow(
             modifier = Modifier.weight(1f),
         )
         Text(
-            "${entry.score}",
+            metricLabel(entry.score),
             style = MaterialTheme.typography.titleMedium,
             color = if (entry.isCurrentUser) accent else LogicColors.OnDark,
             fontWeight = FontWeight.Bold,

@@ -250,6 +250,14 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
       de iOS serán otros (AdMob los da por plataforma) y hoy no los cubre `AdMobSecrets`.
 
 ## Técnico / limpieza
+- [ ] **La recompensa diaria no se reclama desde ningún sitio.**
+  `DailyGoalManager.claimReward()` (y `DailyGoalState.canClaim`) existen y
+  persisten la fecha de reclamación, pero ninguna pantalla los invoca: el antiguo
+  `DailyGoalCard` recibía un `onClaim` que nunca llegaba a llamar, y el rediseño
+  de la tarjeta de entrenamiento (`TrainingCard` en `ui/home/HomeScreen.kt`)
+  eliminó ese parámetro muerto. Decidir **qué otorga** la recompensa (monedas,
+  estrella, tema) y añadir el gesto de reclamarla en el estado "completado" de la
+  tarjeta, o retirar la API si el objetivo diario se queda sin premio material.
 - [ ] **Automatizar particiones de `user_progress`.** La tabla está particionada
   por mes sobre `created_at`, pero solo existen las particiones jul/ago/sep 2026
   (`0001_initial_schema.sql`). A partir de **octubre 2026** todos los inserts caen
@@ -302,3 +310,7 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
       anuncio carga). Sin límite por partida — cada pista cuesta un anuncio.
       `NeonSudokuSavedState` persiste ahora también la solución para poder
       reanudar partidas guardadas.
+
+  - [ ] **Proximos juegos** Unir puntos evitando puntos rojos. Anagramas. Recordar parejas. Encontrar parejas(juego de a dos tambien)
+        Torre de Hanoi. acertijo, deslizar piezas para encajar una cuadricula. 
+  - [ ] Ver sonidos, sonidos todo el tiempo puede hartar

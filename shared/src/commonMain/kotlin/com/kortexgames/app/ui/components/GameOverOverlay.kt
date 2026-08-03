@@ -56,7 +56,7 @@ import kotlin.math.roundToInt
  * jugada, tablero resuelto) antes de que el modal robe la atención. CLAUDE.md
  * §9.4: la animación sirve al usuario, no lo apura.
  */
-private const val REVEAL_DELAY_MS = 1000L
+private const val REVEAL_DELAY_MS = 500L
 
 /**
  * Capa modal de fin de partida. Muestra puntaje, precisión y tiempo, y si hay
@@ -235,7 +235,14 @@ fun GameOverOverlay(
             when {
                 ranking != null -> WorldRankingPanel(
                     ranking = ranking,
-                    currentScore = info.result.score,
+                    // La marca de ESTA partida, en la unidad con la que se ordena la tabla: si el
+                    // ranking va por tiempo hay que comparar tiempos, o el panel diría que el
+                    // jugador conserva su récord justo cuando acaba de mejorarlo.
+                    currentScore = if (ranking.rankedByTime) {
+                        info.result.completionTimeMs.toInt()
+                    } else {
+                        info.result.score
+                    },
                 )
                 percentile != null -> PercentileBanner(percentile)
                 else -> WorldRankingUnavailable()

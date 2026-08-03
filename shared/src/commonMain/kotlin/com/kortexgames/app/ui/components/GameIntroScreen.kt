@@ -63,6 +63,11 @@ import com.kortexgames.app.game.GameMotif
  * @property bestTimes mejor tiempo por nivel (nivel → ms, menor = mejor); vacío en
  *   juegos que no lo miden. Se muestra bajo cada nivel superado como incentivo de
  *   rejugar para mejorar la marca.
+ * @property maxLevel último nivel que existe, o `null` si el juego tiene niveles
+ *   ilimitados (el caso habitual: se generan sobre la marcha). Cuando el juego tiene
+ *   un catálogo FINITO —p. ej. Neon Hyper-Cube, cuya rampa se detiene donde el nivel
+ *   deja de ser distinguible— el carril debe cortarse ahí: mostrar niveles bloqueados
+ *   que nunca llegarán prometería contenido inexistente.
  */
 data class LevelStripState(
     val maxUnlocked: Int,
@@ -70,6 +75,7 @@ data class LevelStripState(
     val onSelect: (Int) -> Unit,
     val lockedPreview: Int = 6,
     val bestTimes: Map<Int, Long> = emptyMap(),
+    val maxLevel: Int? = null,
 )
 
 /**
@@ -381,7 +387,8 @@ private fun GameIconHero(icon: ImageVector?, motif: GameMotif?, accent: Color) {
 @Composable
 private fun LevelStrip(state: LevelStripState, accent: Color) {
     val frontier = state.maxUnlocked + 1
-    val total = frontier + state.lockedPreview
+    // En juegos de catálogo finito el carril se corta en su último nivel (ver `maxLevel`).
+    val total = (frontier + state.lockedPreview).coerceAtMost(state.maxLevel ?: Int.MAX_VALUE)
     val levels = (1..total).toList()
     val listState = rememberLazyListState()
 

@@ -461,4 +461,35 @@ object GameHelpContent {
             ),
         ),
     )
+
+    /** Neon Hyper-Cube / cubo mágico 3×3 (Visión Espacial). */
+    val hyperCube = GameHelp(
+        title = "Neon Hyper-Cube",
+        summary = "Gira las capas hasta dejar cada cara de un solo color.",
+        accent = CategoryPalette.SpatialVision,
+        art = motifHelpArt(GameMotif.HYPER_CUBE),
+        steps = listOf(
+            HelpStep(
+                icon = KortexIcons.Play,
+                title = "Gira una capa",
+                text = "Arrastra el dedo sobre una fila o columna del cubo y esa capa gira 90°.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Refresh,
+                title = "Mira alrededor",
+                text = "Arrastra fuera del cubo para orbitar la cámara y ver las caras ocultas.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Check,
+                title = "Reconstrúyelo",
+                text = "Cada nivel mezcla con un giro más. Deshaz la mezcla dejando las seis " +
+                    "caras de un color.",
+            ),
+        ),
+        tips = listOf(
+            "El contador marca tus movimientos frente a los de la mezcla: resolverlo en esos " +
+                "giros es la solución perfecta.",
+            "¿Ya sabes resolver un cubo? El modo libre de la antesala lo mezcla entero.",
+        ),
+    )
 }

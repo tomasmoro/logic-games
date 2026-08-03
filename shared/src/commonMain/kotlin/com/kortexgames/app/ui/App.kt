@@ -49,6 +49,7 @@ import com.kortexgames.app.game.neoncircuit.NeonCircuitScreen
 import com.kortexgames.app.game.neon2048.Neon2048Screen
 import com.kortexgames.app.game.neonpulse.NeonPulseScreen
 import com.kortexgames.app.game.defuser.DefuserScreen
+import com.kortexgames.app.game.hypercube.HyperCubeScreen
 import com.kortexgames.app.game.neonsudoku.NeonSudokuScreen
 import com.kortexgames.app.game.polarity.PolarityCollisionScreen
 import com.kortexgames.app.game.starport.StarportScreen
@@ -302,6 +303,9 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean) {
                 }
                 composable(Routes.NEON_DEFUSER) {
                     DefuserScreen(graph) { navController.popBackStack() }
+                }
+                composable(Routes.HYPER_CUBE) {
+                    HyperCubeScreen(graph) { navController.popBackStack() }
                 }
             }
         }

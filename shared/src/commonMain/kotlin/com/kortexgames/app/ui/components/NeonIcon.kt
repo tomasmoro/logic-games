@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Backspace
 import androidx.compose.material.icons.automirrored.rounded.ExitToApp
 import androidx.compose.material.icons.rounded.Casino
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Vibration
@@ -73,8 +75,22 @@ object KortexIcons {
     /** Check en círculo: tarea/objetivo cumplido (p. ej. entrenamiento diario). */
     val Check: ImageVector = Icons.Rounded.CheckCircle
 
+    /**
+     * Check "suelto" (sin círculo): marca que se dibuja DENTRO de una forma que ya
+     * es redonda (los puntos de la semana en la tarjeta de entrenamiento). Usar ahí
+     * [Check] pintaría un círculo dentro de otro círculo.
+     */
+    val CheckMark: ImageVector = Icons.Rounded.Check
+
     /** Estrella: destacado / mejor rendimiento (p. ej. "tu juego estrella"). */
     val Star: ImageVector = Icons.Rounded.Star
+
+    /**
+     * Barras de estadísticas: **las cifras propias del jugador** (su progreso en el
+     * perfil). No confundir con [Leaderboard], que es la tabla comparativa contra el
+     * resto del mundo.
+     */
+    val Stats: ImageVector = Icons.Rounded.BarChart
 
     /**
      * Podio: la comparativa mundial de fin de partida cuando el jugador aún está
