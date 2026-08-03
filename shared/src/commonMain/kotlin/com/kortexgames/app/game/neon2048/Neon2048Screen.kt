@@ -233,7 +233,7 @@ fun Neon2048Screen(graph: AppGraph, onExit: () -> Unit) {
         }
 
         // Salva corta al fusionar una ficha >64: más discreta que la de victoria
-        // (menos estallidos, sin sonido propio — ya suena Neon2048Effect.PlaySound.Merge)
+        // (menos estallidos, sin sonido — el juego solo vibra en fusión/movimiento)
         // y teñida del color de la ficha resultante para que cada hito se sienta
         // suyo. `key(id)` reinicia el patrón de FireworksOverlay si dos fusiones
         // grandes llegan una detrás de otra en vez de continuar la anterior.

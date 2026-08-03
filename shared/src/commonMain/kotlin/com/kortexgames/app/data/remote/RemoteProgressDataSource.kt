@@ -83,6 +83,12 @@ class RemoteProgressDataSource(
         // dificultad para que un Fácil rápido no aplaste a un Experto (ver
         // `GameRankingScopes`). null ⇒ tabla única para todo el juego.
         @SerialName("p_difficulty_level") val difficultyLevel: Int? = null,
+        // Criterio de orden: por defecto puntos (mayor gana). Los juegos donde lo que
+        // se compara es la velocidad piden tiempo (menor gana); ver `GameRankingScopes`.
+        @SerialName("p_rank_by_time") val rankByTime: Boolean = false,
+        // Tiempo de ESTA partida; el backend solo lo mira al rankear por tiempo, para
+        // decidir el récord mundial con la misma métrica con la que ordena.
+        @SerialName("p_completion_time_ms") val completionTimeMs: Int? = null,
     )
 
     /**
@@ -148,6 +154,7 @@ class RemoteProgressDataSource(
         // La dificultad solo viaja en los juegos que separan su tabla por ella; en el
         // resto va null y el backend rankea el juego entero de una pieza.
         val byDifficulty = GameRankingScopes.isRankedByDifficulty(result.gameId)
+        val byTime = GameRankingScopes.isRankedByTime(result.gameId)
         val row = client.postgrest.rpc(
             function = "get_game_ranking",
             parameters = RankingParams(
@@ -155,6 +162,8 @@ class RemoteProgressDataSource(
                 score = result.score,
                 progressId = progressId,
                 difficultyLevel = result.difficultyLevel.takeIf { byDifficulty },
+                rankByTime = byTime,
+                completionTimeMs = result.completionTimeMs.toInt().takeIf { byTime },
             ),
         ).decodeAsOrNull<RankingRow>() ?: return null
 
@@ -164,6 +173,7 @@ class RemoteProgressDataSource(
             betterThanPct = row.betterThanPct,
             isGlobalRecord = row.isGlobalRecord,
             difficultyLabel = GameRankingScopes.difficultyLabel(result.gameId, result.difficultyLevel),
+            rankedByTime = byTime,
             entries = row.entries.map {
                 LeaderboardEntry(
                     rank = it.rank,

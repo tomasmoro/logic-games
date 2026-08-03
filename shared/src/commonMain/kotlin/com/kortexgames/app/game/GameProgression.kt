@@ -142,6 +142,13 @@ object GameProgressions {
         GameIds.NEON_2048 to GameProgression(
             ProgressionKind.ENDLESS, MetricDirection.HIGHER_IS_BETTER, "Mejor", MetricUnit.POINTS,
         ),
+        // Neon Hyper-Cube: niveles discretos (cada uno mezcla con un giro más). El cubo SIEMPRE
+        // es resoluble y la partida solo termina al resolverlo —nunca se "falla"—, así que el
+        // tiempo por nivel es comparable entre partidas: tracksLevelTime, como Flujo de Energía.
+        GameIds.HYPER_CUBE to GameProgression(
+            ProgressionKind.LEVELED, MetricDirection.HIGHER_IS_BETTER, "Nivel máx", MetricUnit.LEVEL,
+            tracksLevelTime = true,
+        ),
     )
 
     /** Progresión de un juego, o null si el id es null o no está registrado. */

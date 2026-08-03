@@ -460,7 +460,18 @@ private fun RowScope.AudioToggle(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        NeonIcon(icon = if (enabled) iconOn else iconOff, tint = tint, size = 26.dp, glow = enabled)
+        // Tamaño de icono fijo (el máximo que ocupa CON halo) para que activar/desactivar
+        // no cambie la altura del chip: si el Box de NeonIcon se ajustara al contenido,
+        // el halo (26dp * 1.9) solo existe cuando enabled, así que al deshabilitar el
+        // icono "encogería" su hueco y el chip entero (borde incluido) se reflowearía,
+        // desalineando el icono en vez de solo apagar su brillo.
+        NeonIcon(
+            icon = if (enabled) iconOn else iconOff,
+            tint = tint,
+            size = 26.dp,
+            glow = enabled,
+            modifier = Modifier.size(26.dp * 1.9f),
+        )
         Text(label, style = MaterialTheme.typography.bodyMedium, color = tint)
     }
 }

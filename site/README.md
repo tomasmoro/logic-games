@@ -1,10 +1,12 @@
 # site — Sitio web público de KortexGames
 
-Sitio estático con la **página principal** de la App, su **política de privacidad** y sus
-**condiciones del servicio** (español e inglés). Se publica en GitHub Pages. Sus URLs se
-pegan en tres sitios: Google Play Console, App Store Connect y el *Branding* del OAuth
-consent screen de Google Cloud (que exige homepage + política para sacar la app de modo
-Testing; el enlace a condiciones es opcional ahí, pero conviene rellenarlo).
+Sitio estático con la **página principal** de la App, su **política de privacidad**, sus
+**condiciones del servicio** y la página de **eliminación de cuenta** (español e inglés).
+Se publica en GitHub Pages. Sus URLs se pegan en varios sitios: Google Play Console (Data
+safety pide una URL de eliminación de cuenta además de la de privacidad), App Store Connect
+y el *Branding* del OAuth consent screen de Google Cloud (que exige homepage + política para
+sacar la app de modo Testing; el enlace a condiciones es opcional ahí, pero conviene
+rellenarlo).
 
 ```
 site/
@@ -14,8 +16,17 @@ site/
 ├── privacidad/         Política de Privacidad (ES)  → /privacidad/
 ├── privacy/            Privacy Policy (EN)          → /privacy/
 ├── condiciones/        Condiciones del Servicio (ES) → /condiciones/
-└── terms/              Terms of Service (EN)        → /terms/
+├── terms/               Terms of Service (EN)        → /terms/
+├── eliminar-cuenta/     Eliminar cuenta y datos (ES) → /eliminar-cuenta/
+└── delete-account/      Delete account and data (EN) → /delete-account/
 ```
+
+> **Google Play — "Eliminación de cuenta" en Data safety.** Pega ahí la URL de
+> `delete-account/` (inglesa, igual que con privacidad). La página describe el borrado
+> desde la App (`Perfil → Ajustes → Cuenta → Eliminar cuenta`, inmediato vía la Edge
+> Function `delete-account`) y la alternativa por email si el usuario no puede abrir la
+> App. Si cambia el texto o la ubicación de ese botón en la UI, actualiza ambos idiomas de
+> esta página para que sigan describiendo los pasos reales.
 
 > Las condiciones declaran en su §9 que **la App no tiene compras dentro de la
 > aplicación**, y en su §2 que **no es un producto sanitario ni promete beneficios
@@ -58,9 +69,11 @@ primer despliegue se puede lanzar a mano desde la pestaña *Actions* → *Deploy
   del OAuth consent screen y la ficha de Play)
 - `https://tomasmoro.github.io/logic-games/privacidad/`
 - `https://tomasmoro.github.io/logic-games/privacy/`
+- `https://tomasmoro.github.io/logic-games/eliminar-cuenta/`
+- `https://tomasmoro.github.io/logic-games/delete-account/`
 
-La segunda es la que se pega en las tiendas (usa la inglesa como principal; ambas
-enlazan a la otra).
+La versión inglesa es la que se pega en las tiendas en cada caso (privacidad y
+eliminación de cuenta; ambas enlazan a su equivalente en español).
 
 > La ventaja de publicar desde este mismo repo es que no hay copia que sincronizar: el
 > texto vive versionado junto al código, así que cuando cambies de SDK o añadas un

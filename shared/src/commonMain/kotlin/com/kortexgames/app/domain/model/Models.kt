@@ -116,7 +116,11 @@ data class PercentileResult(
  * @property displayName nombre público del jugador; **null** si aún no ha elegido
  *   uno (la UI lo sustituye por un genérico). El backend nunca envía el `user_id`,
  *   así que este modelo no puede identificar a nadie más allá de su nombre público.
- * @property score la **mejor marca** de ese jugador en el juego, no la última.
+ * @property score la **mejor marca** de ese jugador en el juego, no la última. La unidad depende
+ *   del criterio del ranking ([GameRanking.rankedByTime]): puntos en la mayoría de juegos,
+ *   milisegundos en los que se rankean por tiempo. Se comparte el campo porque para el ranking es
+ *   el mismo concepto —"el valor por el que se ordena"— y duplicarlo obligaría a que cada
+ *   consumidor eligiera cuál mirar.
  * @property isCurrentUser true en la fila del jugador que acaba de jugar; la UI la
  *   resalta para que encuentre su posición de un vistazo.
  */
@@ -147,6 +151,11 @@ data class LeaderboardEntry(
  *   ("Experto"), en los juegos cuyo ranking se separa por dificultad; null cuando el
  *   juego tiene una tabla única. La UI lo rotula para que se entienda por qué el top
  *   cambia según la dificultad elegida (ver `GameRankingScopes`).
+ * @property rankedByTime la tabla se ordena por **tiempo de resolución** (gana el más rápido) en
+ *   vez de por puntos. Lo usan los juegos donde el reto es idéntico para todos y lo único que
+ *   distingue a un jugador es cuánto tarda —Neon Hyper-Cube y su nivel de mezcla fijo—, donde
+ *   rankear por puntos mezclaría estilo de juego con velocidad. Cambia dos cosas en la UI: cómo se
+ *   formatean las marcas (tiempo, no "puntos") y hacia qué lado es "mejor" (menor gana).
  */
 data class GameRanking(
     val rank: Long,
@@ -155,6 +164,7 @@ data class GameRanking(
     val isGlobalRecord: Boolean,
     val entries: List<LeaderboardEntry>,
     val difficultyLabel: String? = null,
+    val rankedByTime: Boolean = false,
 )
 
 /**

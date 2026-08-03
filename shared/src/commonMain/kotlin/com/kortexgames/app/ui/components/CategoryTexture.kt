@@ -142,6 +142,7 @@ private fun MotifTexture(
         GameMotif.NUMBER_TILES -> NumberTilesTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
         GameMotif.MINESWEEPER -> MinesweeperTexture(accent = accent, modifier = modifier, intensity = intensity)
         GameMotif.CIRCUIT_FLOW -> CircuitFlowTexture(accent = accent, modifier = modifier, intensity = intensity)
+        GameMotif.HYPER_CUBE -> HyperCubeTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
         GameMotif.HYPERGATE -> HypergateTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
         GameMotif.NEON_PULSE -> NeonPulseTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
         GameMotif.SEQUENCE_GRID -> SequenceGridTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
@@ -1049,6 +1050,102 @@ private fun SequenceGridTexture(accent: Color, modifier: Modifier, intensity: Fl
         }
     }
 }
+
+/**
+ * Pegatinas "encendidas" del cubo: cara (0 = superior, 1 = izquierda, 2 = derecha) y celda
+ * (columna, fila) → intensidad.
+ *
+ * Están repartidas a propósito **sin formar ninguna cara completa**: un cubo con una cara ya
+ * resuelta contaría lo contrario de lo que es el juego. Este dibujo es un cubo **mezclado**, que
+ * es como el jugador se lo va a encontrar.
+ */
+private val HYPER_CUBE_LIT = mapOf(
+    Triple(0, 0, 1) to 1f, Triple(0, 2, 0) to 0.7f, Triple(0, 1, 2) to 0.55f,
+    Triple(1, 1, 0) to 0.9f, Triple(1, 0, 2) to 0.6f, Triple(1, 2, 1) to 0.75f,
+    Triple(2, 2, 2) to 1f, Triple(2, 0, 1) to 0.65f, Triple(2, 1, 1) to 0.5f,
+)
+
+/**
+ * **Neon Hyper-Cube**: un cubo 3×3 en **proyección isométrica** con sus tres caras visibles
+ * subdivididas en nueve pegatinas cada una.
+ *
+ * ## Por qué isométrica y no la perspectiva del juego
+ * El juego proyecta en perspectiva porque ahí el cubo se manipula y gira, y la deformación es lo
+ * que le da volumen. Una miniatura de tarjeta no se gira: en isométrica las tres caras miden lo
+ * mismo y las aristas quedan paralelas, así que la silueta se lee al instante incluso a 40 dp — y
+ * es, además, la forma en que todo el mundo dibuja un cubo de un vistazo.
+ *
+ * La construcción son tres vectores en el plano: `u` (derecha-abajo), `v` (izquierda-abajo) y `w`
+ * (vertical). El rombo superior lo forman `u` y `v` desde el vértice más alto; las dos caras
+ * laterales cuelgan de sus aristas con `w`. Cada cara se subdivide recorriendo sus dos vectores en
+ * tercios, que es lo que produce las 27 pegatinas sin ninguna trigonometría.
+ */
+@Composable
+private fun HyperCubeTexture(accent: Color, modifier: Modifier, intensity: Float, centered: Boolean = false) {
+    Canvas(modifier = modifier) {
+        val side = size.height * 0.42f
+        // Los ejes de la isométrica clásica: 30° a cada lado y la vertical.
+        val u = Offset(ISO_COS, ISO_SIN) * side
+        val v = Offset(-ISO_COS, ISO_SIN) * side
+        val w = Offset(0f, 1f) * side
+
+        // Ancho y alto reales del cubo dibujado, para poder anclarlo sin recortes raros.
+        val cubeWidth = 2f * ISO_COS * side
+        val cubeHeight = (2f * ISO_SIN + 1f) * side
+        val topX = if (centered) size.width / 2f else size.width - cubeWidth / 2f + side * 0.30f
+        val top = Offset(topX, (size.height - cubeHeight) / 2f)
+
+        val stroke = 1.5f.dp.toPx()
+
+        // (origen de la cara, primer eje, segundo eje) — el orden de los ejes no importa para
+        // dibujar, solo para que las celdas encendidas caigan donde dice HYPER_CUBE_LIT.
+        val faces = listOf(
+            Triple(top, u, v),                 // 0: cara superior (rombo)
+            Triple(top + v, u, w),             // 1: cara izquierda
+            Triple(top + u, v, w),             // 2: cara derecha
+        )
+
+        faces.forEachIndexed { faceIndex, (origin, axisA, axisB) ->
+            // Las caras laterales se pintan algo más apagadas que la superior: es el sombreado
+            // mínimo que hace que el dibujo se lea como un volumen y no como un hexágono plano.
+            val faceDim = if (faceIndex == 0) 1f else 0.72f
+            for (i in 0 until 3) {
+                for (j in 0 until 3) {
+                    val a = axisA / 3f
+                    val b = axisB / 3f
+                    val corner = origin + a * i.toFloat() + b * j.toFloat()
+                    // Se encoge cada pegatina hacia su centro para dejar la junta entre ellas,
+                    // igual que en el tablero real del juego.
+                    val inset = (a + b) * 0.12f
+                    val p0 = corner + inset
+                    val quad = Path().apply {
+                        moveTo(p0.x, p0.y)
+                        val p1 = p0 + a * 0.76f
+                        val p2 = p1 + b * 0.76f
+                        val p3 = p0 + b * 0.76f
+                        lineTo(p1.x, p1.y)
+                        lineTo(p2.x, p2.y)
+                        lineTo(p3.x, p3.y)
+                        close()
+                    }
+                    val lit = HYPER_CUBE_LIT[Triple(faceIndex, i, j)] ?: 0f
+                    if (lit > 0f) {
+                        drawPath(quad, color = accent.copy(alpha = lit * 0.3f * faceDim * intensity))
+                    }
+                    drawPath(
+                        quad,
+                        color = accent.copy(alpha = (lit * 0.5f + 0.32f) * faceDim * intensity),
+                        style = Stroke(width = stroke),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Coseno y seno de 30°: los ejes de la proyección isométrica de [HyperCubeTexture]. */
+private const val ISO_COS = 0.866f
+private const val ISO_SIN = 0.5f
 
 /** Una burbuja de cálculo: centro, radio, texto y si es la correcta (resaltada). */
 private data class Bubble(val xf: Float, val yf: Float, val rF: Float, val text: String, val correct: Boolean)

@@ -96,6 +96,15 @@ object GameIds {
      * huérfanaría sin ganar nada (el identificador no describe la geometría).
      */
     const val NEON_DEFUSER = "7b3f1e02-9d4c-4a8e-b1c6-2f5a9d0e4c37"
+
+    /**
+     * Neon Hyper-Cube / cubo mágico 3×3 holográfico (categoría "spatial" / Visión Espacial).
+     * UUID v4 aleatorio (ya no quedan nibbles libres para un mnemotécnico como en [NEON_2048]).
+     *
+     * Reservado desde la FASE 2 (motor + ViewModel) del juego; se añade su [GameInfo] al catálogo
+     * cuando la pantalla Compose (FASE 3) esté lista para publicarse.
+     */
+    const val HYPER_CUBE = "3d5c8a17-6b24-4e9f-9a80-1c7e5b2d4f63"
 }
 
 /**
@@ -170,6 +179,9 @@ enum class GameMotif {
     /** Neon Circuit Flow / flow free: nodos unidos por tuberías redondeadas en rejilla. */
     CIRCUIT_FLOW,
 
+    /** Neon Hyper-Cube: cubo 3×3 en isométrica con sus tres caras visibles subdivididas. */
+    HYPER_CUBE,
+
     /** Hypergate: portal circular con cometas que se precipitan hacia él. */
     HYPERGATE,
 
@@ -234,6 +246,7 @@ object GameCatalog {
         GameInfo(GameIds.NEON_DEFUSER, "Buscaminas", GameCategory.ATTENTION, playable = true, motif = GameMotif.MINESWEEPER),
         GameInfo(GameIds.ENERGY_FLOW, "Flujo de Energía", GameCategory.SPATIAL, playable = true, motif = GameMotif.ENERGY_PIPES),
         GameInfo(GameIds.BUBBLE_MATH, "Burbujas de Cálculo", GameCategory.MENTAL_MATH, playable = true, motif = GameMotif.MATH_BUBBLES),
+        GameInfo(GameIds.HYPER_CUBE, "Hyper Cubo", GameCategory.SPATIAL, playable = true, motif = GameMotif.HYPER_CUBE),
         GameInfo(GameIds.NEON_BLOCK_GRID, "Tetris Neón", GameCategory.LOGIC, playable = true, motif = GameMotif.TETROMINO),
         GameInfo(GameIds.CRUCIGRAMA_NEON, "Crucigrama Neón", GameCategory.LANGUAGE, playable = true, motif = GameMotif.CROSSWORD),
         GameInfo(GameIds.NEON_SUDOKU_MATRIX, "Neon Sudoku", GameCategory.MENTAL_MATH, playable = true, motif = GameMotif.SUDOKU_GRID),

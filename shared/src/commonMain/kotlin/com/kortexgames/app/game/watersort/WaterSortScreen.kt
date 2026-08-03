@@ -76,6 +76,7 @@ import com.kortexgames.app.ui.components.AdLoadingOverlay
 import com.kortexgames.app.ui.components.ArcadeBrickBackground
 import com.kortexgames.app.ui.components.GameIntroScreen
 import com.kortexgames.app.game.GameHelpContent
+import com.kortexgames.app.ui.components.GameActionButton
 import com.kortexgames.app.ui.components.GameOverOverlay
 import com.kortexgames.app.ui.components.GamePauseControls
 import com.kortexgames.app.ui.components.KortexIcons
@@ -405,7 +406,7 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
 
             // Barra de acciones: Deshacer y Reiniciar (bloqueadas mientras sirve).
             Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
-                ActionButton(
+                GameActionButton(
                     icon = KortexIcons.Undo,
                     label = "Deshacer",
                     tint = LogicColors.NeonCyan,
@@ -417,7 +418,7 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
                     costsAd = !game.nextUndoIsFree,
                     onClick = { vm.onIntent(WaterSortIntent.Undo) },
                 )
-                ActionButton(
+                GameActionButton(
                     icon = KortexIcons.Refresh,
                     label = "Reiniciar",
                     tint = LogicColors.Amber,
@@ -430,7 +431,7 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
                 // Se oculta al agotar el cupo (canAddTube = false) para no ofrecer una
                 // acción imposible; deshabilitado mientras un vertido está en curso.
                 if (game.canAddTube) {
-                    ActionButton(
+                    GameActionButton(
                         icon = KortexIcons.RewardedAd,
                         label = "Tubo extra",
                         tint = LogicColors.NeonGreen,
@@ -768,54 +769,6 @@ private fun DrawScope.drawTube(
     drawPath(glass, borderColor, style = Stroke(borderWidthPx)) // borde neón/tenue
 }
 
-/**
- * Botón de acción con icono neón y etiqueta. El icono se envuelve en un contenedor
- * de **tamaño fijo** para que activar/desactivar el halo (glow) no cambie su
- * footprint y, con ello, no desplace el resto de la UI (bug de "salto" al servir).
- *
- * @param costsAd si la acción cuesta un anuncio recompensado, superpone el distintivo
- *   [KortexIcons.RewardedAd] en la esquina del icono. Es la misma señal que usa Neon
- *   Defuser en su escáner: el jugador debe saber ANTES de pulsar que va a ver un
- *   anuncio. Como es una superposición, el botón no cambia de tamaño al pasar de
- *   gratis a de pago (p. ej. el "Deshacer" tras gastar el gratuito).
- */
-@Composable
-private fun ActionButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    tint: Color,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    costsAd: Boolean = false,
-) {
-    val effectiveTint = if (enabled) tint else LogicColors.OnDarkMuted
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
-            .bounceClick(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        // Reserva fija (~1.9x el glifo) para que el halo no altere el layout.
-        Box(Modifier.size(54.dp), contentAlignment = Alignment.Center) {
-            NeonIcon(icon = icon, tint = effectiveTint, glow = enabled, size = 28.dp)
-            if (costsAd) {
-                NeonIcon(
-                    icon = KortexIcons.RewardedAd,
-                    tint = LogicColors.OnDarkMuted,
-                    glow = false,
-                    size = 14.dp,
-                    contentDescription = "Cuesta ver un anuncio",
-                    modifier = Modifier.align(Alignment.BottomEnd),
-                )
-            }
-        }
-        Spacer(Modifier.height(4.dp))
-        Text(label, style = MaterialTheme.typography.labelLarge, color = effectiveTint)
-    }
-}
-
 @Preview
 @Composable
 private fun PreviewTubeNormal() {
@@ -933,14 +886,14 @@ private fun PreviewActionButtons() {
         ) {
             // Deshacer en sus dos estados: gratis (el primero) y de pago (con el
             // distintivo de anuncio), para poder comparar ambos de un vistazo.
-            ActionButton(
+            GameActionButton(
                 icon = KortexIcons.Undo,
                 label = "Deshacer",
                 tint = LogicColors.NeonCyan,
                 enabled = true,
                 onClick = {},
             )
-            ActionButton(
+            GameActionButton(
                 icon = KortexIcons.Undo,
                 label = "Deshacer",
                 tint = LogicColors.NeonCyan,
@@ -948,7 +901,7 @@ private fun PreviewActionButtons() {
                 onClick = {},
                 costsAd = true,
             )
-            ActionButton(
+            GameActionButton(
                 icon = KortexIcons.Refresh,
                 label = "Reiniciar",
                 tint = LogicColors.Amber,
