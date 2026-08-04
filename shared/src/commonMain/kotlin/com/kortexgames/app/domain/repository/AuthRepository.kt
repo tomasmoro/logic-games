@@ -20,6 +20,17 @@ interface AuthRepository {
     /** Estado de sesión reactivo (invitado / autenticado). */
     val sessionState: StateFlow<AuthState>
 
+    /**
+     * true cuando la sesión ya está **resuelta**: se restauró la guardada en disco
+     * o se confirmó que no hay ninguna.
+     *
+     * Existe porque [sessionState] arranca en [AuthState.Guest] y no distingue
+     * "invitado" de "todavía cargando", así que la UI que depende de la sesión
+     * (saludo, banner de "inicia sesión") parpadearía al restaurarse una cuenta.
+     * El arranque lo espera antes de mostrar la Home.
+     */
+    val sessionResolved: StateFlow<Boolean>
+
     /** Inicia sesión con email y contraseña ya existentes. */
     suspend fun signInWithEmail(email: String, password: String): Result<Unit>
 

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "store-screenshots",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8934", "-d", "marketing/play-store"],
+      "port": 8934
+    }
+  ]
+}

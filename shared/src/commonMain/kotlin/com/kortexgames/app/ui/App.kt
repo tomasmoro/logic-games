@@ -1,6 +1,7 @@
 package com.kortexgames.app.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -8,12 +9,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -22,9 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -34,7 +28,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.kortexgames.app.core.audio.HapticFeedback
 import com.kortexgames.app.core.audio.SoundEffect
-import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.core.theme.LogicGamesTheme
 import com.kortexgames.app.di.AppGraph
 import com.kortexgames.app.game.bubblemath.BubbleMathScreen
@@ -65,38 +58,45 @@ import com.kortexgames.app.ui.navigation.Routes
 import com.kortexgames.app.ui.navigation.TopLevelTab
 import com.kortexgames.app.ui.profile.ProfileScreen
 import com.kortexgames.app.ui.settings.SettingsScreen
+import com.kortexgames.app.ui.splash.SplashScreen
 
 /**
  * Raíz de la app Compose Multiplatform, compartida por Android e iOS.
  *
- * Antes de montar la navegación resuelve la **puerta de onboarding**
- * ([AppGraph.onboardingGate]): mientras el flag no se ha leído de DataStore
- * (`null`) muestra un splash; luego decide si el destino inicial es el login
- * (primera apertura) o el Home.
+ * Arranca con la **splash de marca** ([SplashScreen]): el logo neón prendiendo. Esa
+ * animación es además la ventana de carga del arranque —mientras corre, el
+ * [AppGraph.startup] resuelve la puerta de onboarding, la sesión y el historial—,
+ * así que cuando cede el paso, la pantalla siguiente ya tiene todos sus datos y
+ * solo le queda animarse a la vista.
+ *
+ * El destino de después lo decide la **puerta de onboarding**
+ * ([AppGraph.onboardingGate]): login en la primera apertura, Home el resto de veces.
  */
 @Composable
 fun App(graph: AppGraph) {
     LogicGamesTheme {
-        // null = aún leyendo DataStore → splash (evita parpadear la bienvenida a
-        // quien ya la pasó). false = primera apertura → login. true = ya decidió.
+        // La splash NO se salta aunque los datos lleguen antes: es identidad de
+        // marca, y su duración está acotada (~2,4 s) por diseño.
+        var splashDone by remember { mutableStateOf(false) }
+        // Para cuando la splash termina, la puerta ya está resuelta (el arranque la
+        // espera). El caso degradado —DataStore agotó el tope de espera y sigue en
+        // `null`— cae en `null == false` → false → Home: preferimos no enseñar la
+        // bienvenida a quien ya la pasó antes que enseñarla dos veces.
         val hasDecided by graph.onboardingGate.hasDecided.collectAsStateWithLifecycle()
-        when (hasDecided) {
-            null -> SplashScreen()
-            else -> MainNavigation(graph = graph, startAtAuth = hasDecided == false)
-        }
-    }
-}
 
-/** Splash mínimo mientras se resuelve la puerta de onboarding. */
-@Composable
-private fun SplashScreen() {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-        contentAlignment = Alignment.Center,
-    ) {
-        CircularProgressIndicator(color = LogicColors.NeonCyan, modifier = Modifier.size(36.dp))
+        // Crossfade: la Home entra POR ENCIMA de la splash aún encendida (el logo no
+        // se apaga solo), así que su revelado escalonado de tarjetas ya está en
+        // marcha cuando queda visible y no hay ningún instante a negro entre medias.
+        Crossfade(targetState = splashDone, animationSpec = tween(420), label = "arranque") { ready ->
+            if (ready) {
+                MainNavigation(graph = graph, startAtAuth = hasDecided == false)
+            } else {
+                SplashScreen(
+                    awaitData = { graph.startup.awaitReady() },
+                    onFinished = { splashDone = true },
+                )
+            }
+        }
     }
 }
 

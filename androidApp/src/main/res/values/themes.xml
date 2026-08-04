@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Tema de la ventana Android. Solo gobierna lo que se ve ANTES de que Compose pinte
+  su primer frame (y el color del hueco del sistema): el tema visual real de la app
+  vive en `core/theme` (LogicGamesTheme).
+
+  Existe por la splash: con el tema por defecto (Material.Light) el sistema pintaba
+  la ventana en blanco durante el arranque, así que el usuario veía un fogonazo
+  blanco justo antes del logo apagado sobre azul noche. Con `windowBackground` en
+  el mismo azul noche del fondo de la app, el arranque es continuo: negro-azulado
+  desde el primer milisegundo hasta que el neón prende.
+-->
+<resources>
+    <style name="Theme.KortexGames" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/kortex_background</item>
+    </style>
+</resources>

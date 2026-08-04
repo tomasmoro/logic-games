@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Espejo de LogicColors.BackgroundDark (#0A0E1A). Duplicado aquí a la fuerza:
+         el sistema necesita el color en recursos Android antes de que exista Compose.
+         Si cambia la paleta, cambia también aquí. -->
+    <color name="kortex_background">#0A0E1A</color>
+</resources>

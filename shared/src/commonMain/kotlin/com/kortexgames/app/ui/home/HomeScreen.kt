@@ -65,6 +65,7 @@ import com.kortexgames.app.ui.components.CategoryMotifSurface
 import com.kortexgames.app.ui.components.GameMotifIcon
 import com.kortexgames.app.ui.components.KortexIcons
 import com.kortexgames.app.ui.components.NeonIcon
+import com.kortexgames.app.ui.components.StaggeredReveal
 import com.kortexgames.app.ui.components.alphaIf
 import com.kortexgames.app.ui.components.bounceClick
 import com.kortexgames.app.ui.components.dashedBorder
@@ -93,8 +94,11 @@ fun HomeScreen(
     onOpenAuth: () -> Unit,
 ) {
     val dailyGoal by graph.dailyGoalManager.state.collectAsStateWithLifecycle()
-    val history by graph.progressRepository.observeHistory(null)
-        .collectAsStateWithLifecycle(initialValue = emptyList())
+    // Historial ya precargado durante la splash y compartido por toda la app
+    // (StartupPreloader): al montarse esta pantalla el valor está en memoria, no se
+    // vuelve a consultar la BD. `null` solo si algo se degradó → lista vacía.
+    val loadedHistory by graph.startup.history.collectAsStateWithLifecycle()
+    val history = loadedHistory ?: emptyList()
     val streak = calculateStreakDays(history)
     // La tira de la semana se recalcula solo cuando cambia el historial: recorre todas
     // las partidas para agrupar por día y no debe rehacerse en cada recomposición.
@@ -120,46 +124,61 @@ fun HomeScreen(
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(22.dp),
         ) {
-            HomeHeader(name = playerName)
+            // Entrada escalonada: los bloques aparecen de arriba abajo, desfasados,
+            // en lugar de materializarse todos a la vez al salir de la splash. El
+            // índice es la posición visual, así que el desfase se mantiene aunque el
+            // banner de invitado no esté.
+            var slot = 0
+            StaggeredReveal(index = slot++) {
+                HomeHeader(name = playerName)
+            }
 
             // Invitado: banner que invita a iniciar sesión para guardar en la nube.
             if (isGuest) {
-                SignInBanner(onClick = onOpenAuth)
+                StaggeredReveal(index = slot++) {
+                    SignInBanner(onClick = onOpenAuth)
+                }
             }
 
             // Tarjeta de entrenamiento: racha + semana + progreso de hoy + misión. Se
             // muestra siempre (también con el objetivo cumplido, donde cambia a estado
             // de celebración) para que la racha no desaparezca de la Home al completarlo.
-            TrainingCard(
-                goal = dailyGoal,
-                streakDays = streak,
-                week = week,
-                onPlay = onQuickPlay,
-                onOpenGame = { game ->
-                    Routes.gameRoute(game.id)?.let(onOpenGame) ?: onSeeGames()
-                },
-            )
+            StaggeredReveal(index = slot++) {
+                TrainingCard(
+                    goal = dailyGoal,
+                    streakDays = streak,
+                    week = week,
+                    onPlay = onQuickPlay,
+                    onOpenGame = { game ->
+                        Routes.gameRoute(game.id)?.let(onOpenGame) ?: onSeeGames()
+                    },
+                )
+            }
 
             // Juego estrella: el más jugado. Los siguientes más jugados (excluido el
             // estrella) alimentan "Otros juegos que te gustan" en la misma tarjeta.
             val rankedGames = remember(history) { rankedPlayedGames(history) }
             val starGame = rankedGames.firstOrNull()
             if (starGame != null) {
-                StarGameCard(
-                    star = starGame,
-                    others = rankedGames.drop(1).take(3),
-                    onPlay = { Routes.gameRoute(starGame.game.id)?.let(onOpenGame) },
-                    onPlayOther = { other -> Routes.gameRoute(other.game.id)?.let(onOpenGame) },
+                StaggeredReveal(index = slot++) {
+                    StarGameCard(
+                        star = starGame,
+                        others = rankedGames.drop(1).take(3),
+                        onPlay = { Routes.gameRoute(starGame.game.id)?.let(onOpenGame) },
+                        onPlayOther = { other -> Routes.gameRoute(other.game.id)?.let(onOpenGame) },
+                    )
+                }
+            }
+            StaggeredReveal(index = slot) {
+                CategoryRow(
+                    onOpenCategory = { category ->
+                        val route = GameCatalog.games
+                            .firstOrNull { it.category == category && it.playable }
+                            ?.let { Routes.gameRoute(it.id) }
+                        if (route != null) onOpenGame(route) else onSeeGames()
+                    },
                 )
             }
-            CategoryRow(
-                onOpenCategory = { category ->
-                    val route = GameCatalog.games
-                        .firstOrNull { it.category == category && it.playable }
-                        ?.let { Routes.gameRoute(it.id) }
-                    if (route != null) onOpenGame(route) else onSeeGames()
-                },
-            )
 
             Spacer(Modifier.height(4.dp))
         }
