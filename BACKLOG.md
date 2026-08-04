@@ -266,6 +266,25 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
   particionado. Automatizar la creación mensual anticipada (job/cron con `SECURITY
   DEFINER` que haga `create table … partition of …`, o la extensión `pg_partman`).
   Nueva migración; no editar la `0001` ya aplicada. Ref: `supabase/migrations/`.
+- [ ] **Activar R8/ProGuard en `release` (minify + mapping.txt).** Hoy
+  `androidApp/build.gradle.kts` tiene `isMinifyEnabled = false`: el AAB no va
+  ofuscado ni reducido, y Play Console avisa (advertencia, no bloqueante) de
+  que falta archivo de desofuscación asociado al code de versión. Activarlo
+  reduce tamaño de la app y protege el código, pero R8 puede romper en
+  silencio lo que se usa por reflection si faltan reglas `-keep`
+  (kotlinx.serialization de los modelos de Supabase, clases generadas por
+  SQLDelight, Compose) — son bugs que solo aparecen en `release`, nunca en
+  `debug`. No conviene meterlo justo antes de subir una build a testear;
+  hacerlo en un pase propio:
+  1. Crear `androidApp/proguard-rules.pro` con las reglas `-keep` para
+     Supabase (`io.github.jan-tennert.supabase`), `kotlinx.serialization` y
+     las clases `*Entity`/`*Queries` generadas por SQLDelight.
+  2. `isMinifyEnabled = true` + `shrinkResources = true` en `release`.
+  3. Probar la app ENTERA en `release` (no debug) en dispositivo real: los
+     18 juegos, login (Google + email + invitado→sync), anuncios,
+     borrado de cuenta — antes de dar por buena la build.
+  4. `bundleRelease` empaqueta `mapping.txt` dentro del AAB automáticamente
+     (no hace falta subirlo a mano en Play Console).
 
 ## Extras
 
