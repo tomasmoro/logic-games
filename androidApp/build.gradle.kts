@@ -144,6 +144,14 @@ android {
             manifestPlaceholders["admobAppId"] = realAdmobAppId ?: TEST_ADMOB_APP_ID
             signingConfig = signingConfigs.findByName("release")
                 ?: signingConfigs.getByName("debug")
+            // El AAB trae .so nativos de dependencias (Compose, DataStore), no de código
+            // propio. SYMBOL_TABLE hace que AGP genere el zip de símbolos y lo empaquete
+            // DENTRO del propio bundle en `bundleRelease` (nada que subir a mano en Play
+            // Console); solo agrega metadata de depuración, no cambia el binario que corre
+            // en el dispositivo. Silencia el aviso de Play "código nativo sin símbolos".
+            ndk {
+                debugSymbolLevel = "SYMBOL_TABLE"
+            }
         }
     }
     compileOptions {
