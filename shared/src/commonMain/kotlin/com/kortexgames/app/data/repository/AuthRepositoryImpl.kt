@@ -60,6 +60,17 @@ class AuthRepositoryImpl(
             .map { it.toAuthState() }
             .stateIn(scope, SharingStarted.Eagerly, AuthState.Guest)
 
+    /**
+     * Se apoya en [SessionStatus.Initializing], el único estado del SDK que
+     * significa "aún estoy leyendo la sesión de disco". Cualquier otro
+     * (autenticado, no autenticado o fallo de refresco) ya es una respuesta
+     * definitiva para la UI.
+     */
+    override val sessionResolved: StateFlow<Boolean> =
+        client.auth.sessionStatus
+            .map { it !is SessionStatus.Initializing }
+            .stateIn(scope, SharingStarted.Eagerly, false)
+
     override suspend fun signInWithEmail(email: String, password: String): Result<Unit> =
         runCatching {
             client.auth.signInWith(Email) {

@@ -5,6 +5,7 @@ import com.kortexgames.app.core.ads.installPlatformAdPresenters
 import com.kortexgames.app.core.audio.AudioAndHapticManager
 import com.kortexgames.app.core.audio.PlatformContext
 import com.kortexgames.app.core.audio.createAudioAndHapticManager
+import com.kortexgames.app.core.startup.StartupPreloader
 import com.kortexgames.app.data.local.DatabaseDriverFactory
 import com.kortexgames.app.data.local.SqlDelightLocalAchievementsDataSource
 import com.kortexgames.app.data.local.SqlDelightLocalLevelTimeDataSource
@@ -172,6 +173,19 @@ class AppGraph(context: PlatformContext) {
     val dailyGoalManager = DailyGoalManager(
         progress = progressRepository,
         store = DailyGoalStore(preferences),
+        scope = appScope,
+    )
+
+    /**
+     * Precarga de arranque: calienta durante la splash lo que la Home necesita
+     * (historial, sesión, puerta de onboarding) y lo comparte para que la pantalla
+     * se pinte ya completa. Se declara al final porque depende de casi todo lo
+     * anterior.
+     */
+    val startup = StartupPreloader(
+        onboardingGate = onboardingGate,
+        authRepository = authRepository,
+        progressRepository = progressRepository,
         scope = appScope,
     )
 

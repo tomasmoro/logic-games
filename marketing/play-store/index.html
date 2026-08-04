@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KortexGames — Capturas Play Store</title>
+<style>
+  /*
+   * Generador de capturas de marketing para la ficha de Play Store.
+   *
+   * Cada frame se dibuja en un <canvas> a 1080×1920 (9:16, el formato que pide
+   * Play Store) siguiendo el Sistema de Diseño de la app (CLAUDE.md §9):
+   * fondo azul noche #0A0E1A→#141B2E, acentos neón con halo y titulares black.
+   * El canvas es a la vez la previsualización y la fuente del PNG exportado,
+   * así lo que ves es exactamente lo que descargas.
+   */
+  :root {
+    --bg: #0A0E1A;
+    --surface: #141B2E;
+    --surface-2: #1E2740;
+    --text: #F2F5FF;
+    --muted: #9AA3BE;
+    --green: #25E17E;
+    --cyan: #00E5FF;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 32px 24px 64px;
+  }
+  header { max-width: 1240px; margin: 0 auto 8px; }
+  h1 { font-weight: 900; font-size: 28px; letter-spacing: -0.5px; }
+  h1 span { color: var(--cyan); }
+  .hint {
+    color: var(--muted); font-size: 14px; line-height: 1.55; margin-top: 8px; max-width: 860px;
+  }
+  .hint code { color: var(--green); background: var(--surface); padding: 1px 6px; border-radius: 6px; }
+  .toolbar {
+    max-width: 1240px; margin: 18px auto 26px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+  }
+  .toolbar label { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 14px; cursor: pointer; }
+  button {
+    background: var(--surface); color: var(--text); border: 1px solid var(--surface-2);
+    border-radius: 12px; padding: 10px 16px; font-size: 14px; font-weight: 600; cursor: pointer;
+    transition: transform .12s ease, border-color .12s ease;
+  }
+  button:hover { border-color: var(--cyan); transform: translateY(-1px); }
+  button.primary { background: var(--green); color: #06210f; border-color: transparent; }
+  button.primary:hover { box-shadow: 0 0 24px rgba(37,225,126,.35); }
+  .grid {
+    max-width: 1240px; margin: 0 auto;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 22px;
+  }
+  .card {
+    background: var(--surface); border: 1px solid var(--surface-2); border-radius: 20px;
+    padding: 12px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .card.dragover { border-color: var(--cyan); box-shadow: 0 0 0 2px var(--cyan), 0 0 30px rgba(0,229,255,.25); }
+  .card canvas {
+    width: 100%; aspect-ratio: 1080 / 1920; border-radius: 12px; display: block;
+    background: var(--bg); cursor: pointer;
+  }
+  .card .meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 4px 2px; }
+  .card .name { font-size: 13px; color: var(--muted); }
+  .card .name b { color: var(--text); font-weight: 700; display: block; font-size: 14px; }
+  .card .actions { display: flex; gap: 6px; }
+  .card .actions button { padding: 7px 11px; font-size: 12.5px; border-radius: 10px; }
+  input[type="file"] { display: none; }
+  .feature-wrap { max-width: 1240px; margin: 0 auto 26px; }
+  .feature canvas { aspect-ratio: 1024 / 500; cursor: default; }
+  .section-head { max-width: 1240px; margin: 54px auto 0; padding-top: 26px; border-top: 1px solid var(--surface-2); }
+  .section-head h2 { font-size: 21px; font-weight: 800; }
+  .tablet-grid { grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); }
+  .tablet-grid canvas { aspect-ratio: 16 / 9; cursor: default; }
+  .icon-wrap { max-width: 1240px; margin: 0 auto 26px; display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; }
+  .icon-wrap .card { width: 330px; }
+  .icon-wrap .card canvas { aspect-ratio: 1 / 1; }
+  .icon-note { flex: 1; min-width: 280px; color: var(--muted); font-size: 14px; line-height: 1.65; }
+  .icon-note b { color: var(--text); }
+  .icon-note ul { margin: 10px 0 0 18px; }
+  .icon-note li { margin-bottom: 7px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Capturas Play Store — <span>KortexGames</span></h1>
+  <p class="hint">
+    Arrastra cada captura del juego sobre su tarjeta (o haz clic en la tarjeta para elegir el archivo).
+    También puedes copiar los PNG en <code>marketing/play-store/img/</code> con los nombres
+    <code>rubik.png</code>, <code>sudoku.png</code>, <code>tetris.png</code>, <code>pociones.png</code>,
+    <code>sopa.png</code>, <code>crucigrama.png</code>, <code>circuit.png</code>, <code>buscaminas.png</code>
+    y recargar: se cargan solas. Cada frame se exporta como PNG de <b>1080×1920</b> listo para subir.
+  </p>
+</header>
+
+<div class="toolbar">
+  <label><input type="checkbox" id="cropStatusBar" checked> Recortar barra de estado (hora, batería…)</label>
+  <button class="primary" id="downloadAll">⬇ Descargar todas (1080×1920)</button>
+</div>
+
+<div class="section-head" style="margin-top:0; border-top:none; padding-top:0;">
+  <h2>Icono de la app — 512×512</h2>
+</div>
+
+<div class="icon-wrap">
+  <div class="card icon-card" id="iconCard">
+    <canvas id="iconCanvas" width="512" height="512"></canvas>
+    <div class="meta">
+      <div class="name"><b>Icono</b>512×512 PNG</div>
+      <div class="actions">
+        <button id="iconPng">PNG</button>
+      </div>
+    </div>
+    <input type="file" accept="image/*" id="iconFile">
+  </div>
+  <div class="icon-note">
+    <b>Se genera el monograma neón por defecto.</b> Si ya tienes un logo propio, arrástralo sobre
+    la tarjeta (o haz clic) y se coloca centrado sobre el fondo de marca — ideal si tu logo es un
+    PNG con transparencia.
+    <ul>
+      <li>La imagen se exporta <b>a sangre, sin esquinas redondeadas</b>: Play Store aplica su
+        propia máscara redondeada, así que si las redondeas tú se ven bordes recortados.</li>
+      <li>La guía punteada marca la <b>zona segura</b>: todo lo importante debe quedar dentro,
+        porque las esquinas se recortan al aplicar la máscara.</li>
+      <li>Activa <em>Mostrar guía</em> solo para revisar — la guía nunca se incluye en el PNG.</li>
+    </ul>
+    <label style="display:flex;gap:8px;align-items:center;margin-top:14px;cursor:pointer;">
+      <input type="checkbox" id="iconGuide"> Mostrar guía de zona segura
+    </label>
+    <div id="iconCustomOpts" style="display:none;margin-top:16px;padding-top:14px;border-top:1px solid var(--surface-2);">
+      <b style="display:block;margin-bottom:10px;">Ajustes del logo cargado</b>
+      <label style="display:flex;gap:8px;align-items:center;margin-bottom:10px;cursor:pointer;">
+        <input type="checkbox" id="iconKnockout" checked> Quitar el fondo negro del logo
+      </label>
+      <label style="display:flex;gap:8px;align-items:center;">
+        Encaje:
+        <select id="iconFit" style="background:var(--surface-2);color:var(--text);border:1px solid var(--surface-2);border-radius:8px;padding:6px 10px;font-size:13px;">
+          <option value="sangre">A sangre (ocupa todo)</option>
+          <option value="contener" selected>Contenido (con bezel neón)</option>
+        </select>
+      </label>
+      <button id="iconReset" style="margin-top:12px;">Volver al monograma</button>
+    </div>
+  </div>
+</div>
+
+<div class="section-head" style="border-top:none; padding-top:0;">
+  <h2>Gráfico destacado — 1024×500</h2>
+</div>
+
+<div class="feature-wrap">
+  <div class="card feature">
+    <canvas id="featureCanvas" width="1024" height="500"></canvas>
+    <div class="meta">
+      <div class="name"><b>Gráfico destacado (feature graphic)</b>1024×500 — usa las capturas de Rubik, Sudoku y Tetris</div>
+      <div class="actions">
+        <button id="featurePng">PNG</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<div class="section-head">
+  <h2>Capturas para tablet — 16:9 apaisado</h2>
+  <p class="hint">
+    Mismos mensajes que las verticales, recompuestos en horizontal. Usan las capturas ya cargadas arriba,
+    así que no hay que volver a subir nada. Se exportan en <b>1920×1080</b> (tablet de 7") y
+    <b>2560×1440</b> (tablet de 10"), ambos dentro de los límites de tamaño de Play Store.
+  </p>
+</div>
+
+<div class="toolbar">
+  <button class="primary" id="downloadTablet7">⬇ Descargar todas 7" (1920×1080)</button>
+  <button class="primary" id="downloadTablet10">⬇ Descargar todas 10" (2560×1440)</button>
+</div>
+
+<div class="grid tablet-grid" id="tabletGrid"></div>
+
+<script>
+/**
+ * Definición de los 8 frames de la ficha. El orden importa: Play Store muestra
+ * los primeros 2-3 sin hacer scroll, así que el hero (+15 juegos) va primero y
+ * los mensajes clave (offline, pocos anuncios) van en las posiciones 3 y 4.
+ * `accent` sale de la paleta del Sistema de Diseño (LogicColors) — nunca
+ * colores inventados. `rotate` alterna el ángulo del teléfono para dar ritmo
+ * visual al carrusel.
+ */
+const FRAMES = [
+  { id: 'rubik',      title: 'Cubo Rubik',      accent: '#00E5FF', rotate: -2.2, headline: '+15 JUEGOS\nPARA TU MENTE',      sub: 'Sudoku, Tetris, 2048, Cubo Rubik y más' },
+  { id: 'sudoku',     title: 'Sudoku',          accent: '#3D9BFF', rotate:  2.2, headline: 'SUDOKU\nCON ESTILO NEÓN',        sub: 'El clásico 9×9, renovado' },
+  { id: 'tetris',     title: 'Tetris Neón',     accent: '#25E17E', rotate: -2.2, headline: 'JUEGA\n100% OFFLINE',            sub: 'Sin conexión, sin excusas' },
+  { id: 'pociones',   title: 'Ordena Pociones', accent: '#FFC24B', rotate:  2.2, headline: 'POCOS ANUNCIOS\nMÁXIMO ENFOQUE', sub: 'Entrena sin interrupciones' },
+  { id: 'sopa',       title: 'Sopa de Letras',  accent: '#FF3D8B', rotate: -2.2, headline: 'ENCUENTRA\nLAS PALABRAS',        sub: 'Sopa de letras contrarreloj' },
+  { id: 'crucigrama', title: 'Crucigrama',      accent: '#9D4EDD', rotate:  2.2, headline: 'DESAFÍA TU\nVOCABULARIO',        sub: 'Crucigramas con chispa' },
+  { id: 'circuit',    title: 'Circuit Flow',    accent: '#00E676', rotate: -2.2, headline: 'CONECTA\nLOS CIRCUITOS',         sub: 'Lógica pura en cada nivel' },
+  { id: 'buscaminas', title: 'Buscaminas',      accent: '#FF7A2F', rotate:  2.2, headline: 'CADA CASILLA\nCUENTA',           sub: 'El buscaminas, renovado' },
+];
+
+const W = 1080, H = 1920;
+/** Fracción de la captura original que ocupa la barra de estado de Android (~4.5%). */
+const STATUS_BAR_FRACTION = 0.045;
+
+/** PRNG determinista (mulberry32) para que las estrellas del fondo no cambien entre renders/exports. */
+function mulberry32(seed) {
+  return function () {
+    let t = (seed += 0x6D2B79F5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Convierte un hex #RRGGBB a "r,g,b" para componer rgba() con alfa variable. */
+function rgb(hex) {
+  return [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(',');
+}
+
+function roundedRectPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/**
+ * Dibuja la imagen en modo "cover" anclada arriba: si sobra alto se recorta por
+ * abajo (la parte útil de las capturas — marcador, título del juego — está
+ * arriba). `cropTop` descuenta la barra de estado de la fuente.
+ */
+function drawCover(ctx, img, dx, dy, dw, dh, cropTop) {
+  const sy0 = img.height * cropTop;
+  const sw = img.width, sh = img.height - sy0;
+  const dAspect = dw / dh;
+  let sx = 0, sy = sy0, cw = sw, ch = sh;
+  if (sw / sh > dAspect) { cw = sh * dAspect; sx = (sw - cw) / 2; }
+  else { ch = sw / dAspect; }
+  ctx.drawImage(img, sx, sy, cw, ch, dx, dy, dw, dh);
+}
+
+/** Renderiza un frame completo (fondo + titular + teléfono con la captura) en su canvas. */
+function render(frame) {
+  const ctx = frame.canvas.getContext('2d');
+  const a = frame.accent, aRgb = rgb(a);
+  const cropTop = document.getElementById('cropStatusBar').checked ? STATUS_BAR_FRACTION : 0;
+
+  // — Fondo azul noche con degradado sutil (nunca negro puro) —
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#0A0E1A');
+  bg.addColorStop(1, '#10182B');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // — Estrellas tenues, deterministas por frame —
+  const rnd = mulberry32(frame.seed);
+  for (let i = 0; i < 90; i++) {
+    ctx.fillStyle = `rgba(242,245,255,${0.04 + rnd() * 0.22})`;
+    ctx.beginPath();
+    ctx.arc(rnd() * W, rnd() * H, 0.8 + rnd() * 1.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // — Halo radial del color de acento detrás del teléfono (acento escaso: uno solo) —
+  const glow = ctx.createRadialGradient(W / 2, 1000, 60, W / 2, 1000, 760);
+  glow.addColorStop(0, `rgba(${aRgb},0.16)`);
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+
+  // — Chip de marca —
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  try { ctx.letterSpacing = '7px'; } catch (e) { /* navegadores sin soporte */ }
+  ctx.font = '600 30px system-ui, sans-serif';
+  const brand = 'KORTEXGAMES';
+  const bw = ctx.measureText(brand).width + 76;
+  roundedRectPath(ctx, (W - bw) / 2, 72, bw, 62, 31);
+  ctx.fillStyle = 'rgba(20,27,46,0.9)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(30,39,64,1)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = a;
+  ctx.shadowColor = a;
+  ctx.shadowBlur = 14;
+  ctx.beginPath();
+  ctx.arc((W - bw) / 2 + 34, 103, 7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#F2F5FF';
+  ctx.fillText(brand, W / 2 + 12, 105);
+  try { ctx.letterSpacing = '0px'; } catch (e) {}
+
+  // — Titular (2 líneas, peso black, glow del acento) —
+  const lines = frame.headline.split('\n');
+  ctx.font = '900 96px system-ui, sans-serif';
+  ctx.fillStyle = '#F2F5FF';
+  ctx.shadowColor = `rgba(${aRgb},0.85)`;
+  ctx.shadowBlur = 34;
+  lines.forEach((line, i) => ctx.fillText(line, W / 2, 268 + i * 116));
+  ctx.shadowBlur = 0;
+
+  // — Subtítulo atenuado —
+  ctx.font = '400 42px system-ui, sans-serif';
+  ctx.fillStyle = '#9AA3BE';
+  ctx.fillText(frame.sub, W / 2, 268 + lines.length * 116 + 26);
+
+  // — Teléfono inclinado con la captura real (desborda por abajo a propósito) —
+  const pw = 760;
+  const ph = 1560;
+  const px = (W - pw) / 2;
+  const py = 620;
+  ctx.save();
+  ctx.translate(W / 2, py + ph / 2);
+  ctx.rotate((frame.rotate * Math.PI) / 180);
+  ctx.translate(-W / 2, -(py + ph / 2));
+
+  // Sombra + borde neón sutil (bezel oscuro, no un marco que compita con el contenido)
+  ctx.shadowColor = `rgba(${aRgb},0.55)`;
+  ctx.shadowBlur = 70;
+  roundedRectPath(ctx, px, py, pw, ph, 58);
+  ctx.fillStyle = '#05070D';
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = `rgba(${aRgb},0.75)`;
+  ctx.lineWidth = 5;
+  ctx.stroke();
+
+  const bezel = 16;
+  roundedRectPath(ctx, px + bezel, py + bezel, pw - bezel * 2, ph - bezel * 2, 44);
+  if (frame.img) {
+    ctx.save();
+    ctx.clip();
+    drawCover(ctx, frame.img, px + bezel, py + bezel, pw - bezel * 2, ph - bezel * 2, cropTop);
+    ctx.restore();
+  } else {
+    // Placeholder mientras no hay captura cargada
+    ctx.fillStyle = '#0D1322';
+    ctx.fill();
+    ctx.setLineDash([14, 12]);
+    ctx.strokeStyle = 'rgba(154,163,190,0.5)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#9AA3BE';
+    ctx.font = '600 38px system-ui, sans-serif';
+    ctx.fillText('Suelta aquí la captura', W / 2, py + 560);
+    ctx.font = '400 32px system-ui, sans-serif';
+    ctx.fillText(`(${frame.id}.png — o haz clic)`, W / 2, py + 620);
+  }
+  ctx.restore();
+}
+
+// ————— Montaje de la página —————
+const grid = document.getElementById('grid');
+FRAMES.forEach((frame, idx) => {
+  frame.seed = 1000 + idx * 7919; // semilla estable por frame para las estrellas
+  frame.img = null;
+
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <canvas width="${W}" height="${H}"></canvas>
+    <div class="meta">
+      <div class="name"><b>${String(idx + 1).padStart(2, '0')} · ${frame.title}</b>${frame.id}.png</div>
+      <div class="actions">
+        <button data-act="load">Cargar</button>
+        <button data-act="png">PNG</button>
+      </div>
+    </div>
+    <input type="file" accept="image/*">
+  `;
+  grid.appendChild(card);
+  frame.canvas = card.querySelector('canvas');
+  const fileInput = card.querySelector('input[type="file"]');
+
+  /** Carga un File del usuario en el frame y re-renderiza. */
+  const loadFile = (file) => {
+    if (!file || !file.type.startsWith('image/')) return;
+    const img = new Image();
+    img.onload = () => { frame.img = img; render(frame); renderFeature(); renderAllTablets(); };
+    img.src = URL.createObjectURL(file);
+  };
+
+  // Clic en el canvas o en "Cargar" → selector de archivo
+  frame.canvas.addEventListener('click', () => fileInput.click());
+  card.querySelector('[data-act="load"]').addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => loadFile(fileInput.files[0]));
+
+  // Drag & drop sobre la tarjeta
+  card.addEventListener('dragover', (e) => { e.preventDefault(); card.classList.add('dragover'); });
+  card.addEventListener('dragleave', () => card.classList.remove('dragover'));
+  card.addEventListener('drop', (e) => {
+    e.preventDefault();
+    card.classList.remove('dragover');
+    loadFile(e.dataTransfer.files[0]);
+  });
+
+  // Exportar este frame a PNG 1080×1920
+  card.querySelector('[data-act="png"]').addEventListener('click', () => downloadFrame(frame, idx));
+
+  // Carga automática desde img/<id>.png si el archivo existe junto a la página
+  const auto = new Image();
+  auto.onload = () => { frame.img = auto; render(frame); renderFeature(); renderAllTablets(); };
+  auto.onerror = () => render(frame); // sin archivo: se queda el placeholder
+  auto.src = `img/${frame.id}.png`;
+});
+
+/** Descarga el canvas del frame como PNG con nombre ordenado para subir en orden. */
+function downloadFrame(frame, idx) {
+  frame.canvas.toBlob((blob) => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${String(idx + 1).padStart(2, '0')}-${frame.id}-1080x1920.png`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }, 'image/png');
+}
+
+document.getElementById('downloadAll').addEventListener('click', () => {
+  // Descarga secuencial con retardo: los navegadores bloquean ráfagas de descargas
+  FRAMES.forEach((frame, idx) => setTimeout(() => downloadFrame(frame, idx), idx * 350));
+});
+
+document.getElementById('cropStatusBar').addEventListener('change', () => {
+  FRAMES.forEach(render);
+  renderFeature();
+  renderAllTablets();
+});
+
+// ————— Gráfico destacado (feature graphic) 1024×500 —————
+const FW = 1024, FH = 500;
+const featureCanvas = document.getElementById('featureCanvas');
+const frameById = (id) => FRAMES.find((f) => f.id === id);
+
+/**
+ * Mini-teléfono inclinado para el banner: versión reducida del teléfono de los
+ * frames verticales (mismo bezel oscuro + borde de acento, sin marco intenso).
+ */
+function drawMiniPhone(ctx, frame, cx, cy, w, h, rotDeg, cropTop) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate((rotDeg * Math.PI) / 180);
+  const x = -w / 2, y = -h / 2;
+  const aRgb = rgb(frame.accent);
+
+  ctx.shadowColor = `rgba(${aRgb},0.5)`;
+  ctx.shadowBlur = 32;
+  roundedRectPath(ctx, x, y, w, h, 22);
+  ctx.fillStyle = '#05070D';
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = `rgba(${aRgb},0.75)`;
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  const bz = 6;
+  roundedRectPath(ctx, x + bz, y + bz, w - bz * 2, h - bz * 2, 17);
+  if (frame.img) {
+    ctx.save();
+    ctx.clip();
+    drawCover(ctx, frame.img, x + bz, y + bz, w - bz * 2, h - bz * 2, cropTop);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = '#0D1322';
+    ctx.fill();
+    ctx.setLineDash([8, 7]);
+    ctx.strokeStyle = 'rgba(154,163,190,0.45)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.restore();
+}
+
+/** Chip informativo con punto neón (sin emojis: regla de iconografía del DS). */
+function drawFeatureChip(ctx, text, x, y, accent) {
+  ctx.font = '600 27px system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  const w = ctx.measureText(text).width + 66;
+  roundedRectPath(ctx, x, y, w, 48, 24);
+  ctx.fillStyle = 'rgba(20,27,46,0.92)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(30,39,64,1)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = accent;
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.arc(x + 26, y + 24, 5.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#F2F5FF';
+  ctx.fillText(text, x + 44, y + 25);
+  return w;
+}
+
+/**
+ * Banner destacado de la ficha: marca a la izquierda + tres mini-teléfonos con
+ * capturas reales a la derecha. El texto se mantiene lejos de los bordes porque
+ * Play Store recorta/superpone controles sobre este gráfico en algunos sitios.
+ */
+function renderFeature() {
+  const ctx = featureCanvas.getContext('2d');
+  const cropTop = document.getElementById('cropStatusBar').checked ? STATUS_BAR_FRACTION : 0;
+
+  // Fondo azul noche + estrellas deterministas
+  const bg = ctx.createLinearGradient(0, 0, FW, FH);
+  bg.addColorStop(0, '#0A0E1A');
+  bg.addColorStop(1, '#131B30');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, FW, FH);
+  const rnd = mulberry32(42);
+  for (let i = 0; i < 60; i++) {
+    ctx.fillStyle = `rgba(242,245,255,${0.04 + rnd() * 0.2})`;
+    ctx.beginPath();
+    ctx.arc(rnd() * FW, rnd() * FH, 0.7 + rnd() * 1.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Halos: cian tras los teléfonos, violeta muy tenue abajo-izquierda
+  let glow = ctx.createRadialGradient(790, 250, 40, 790, 250, 420);
+  glow.addColorStop(0, 'rgba(0,229,255,0.15)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, FW, FH);
+  glow = ctx.createRadialGradient(180, 470, 30, 180, 470, 380);
+  glow.addColorStop(0, 'rgba(157,78,221,0.10)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, FW, FH);
+
+  // — Marca: "Kortex" blanco + "Games" cian con glow —
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = '900 68px system-ui, sans-serif';
+  const kortexW = ctx.measureText('Kortex').width;
+  ctx.fillStyle = '#F2F5FF';
+  ctx.shadowColor = 'rgba(0,229,255,0.6)';
+  ctx.shadowBlur = 26;
+  ctx.fillText('Kortex', 70, 168);
+  ctx.fillStyle = '#00E5FF';
+  ctx.shadowColor = '#00E5FF';
+  ctx.shadowBlur = 30;
+  ctx.fillText('Games', 70 + kortexW, 168);
+  ctx.shadowBlur = 0;
+
+  // Tagline
+  ctx.font = '400 34px system-ui, sans-serif';
+  ctx.fillStyle = '#9AA3BE';
+  ctx.fillText('Entrena tu mente cada día', 72, 224);
+
+  // Chips apilados con los tres mensajes clave de la ficha
+  drawFeatureChip(ctx, '+15 juegos', 72, 268, '#25E17E');
+  drawFeatureChip(ctx, '100% offline', 72, 330, '#00E5FF');
+  drawFeatureChip(ctx, 'Pocos anuncios', 72, 392, '#FFC24B');
+
+  // — Tres mini-teléfonos: laterales detrás, Rubik (hero) delante —
+  drawMiniPhone(ctx, frameById('sudoku'), 672, 262, 158, 330, -8, cropTop);
+  drawMiniPhone(ctx, frameById('tetris'), 952, 262, 158, 330, 8, cropTop);
+  drawMiniPhone(ctx, frameById('rubik'), 812, 252, 186, 390, 0, cropTop);
+}
+
+// ————— Icono de la app (512×512) —————
+const ICON = 512;
+const iconCanvas = document.getElementById('iconCanvas');
+/** Logo propio del usuario, si carga uno; si es null se dibuja el monograma generado. */
+let iconCustomImg = null;
+/** Versión del logo con el fondo negro convertido en transparencia (cacheada). */
+let iconKnockedImg = null;
+
+/**
+ * Dibuja `img` centrada y contenida en un cuadrado, sin deformarla.
+ * Se usa para el logo propio: cabe entero dentro de la zona segura aunque sea
+ * apaisado o vertical.
+ */
+function drawContain(ctx, img, cx, cy, maxSize) {
+  const scale = Math.min(maxSize / img.width, maxSize / img.height);
+  const w = img.width * scale, h = img.height * scale;
+  ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
+}
+
+/**
+ * Convierte el fondo oscuro de un logo en transparencia.
+ *
+ * Muchos logos neón se exportan sobre negro opaco en vez de con canal alfa; al
+ * componerlos sobre el fondo de marca se ven como un recuadro negro pegado.
+ * En vez de un recorte duro por umbral (que dejaría un borde dentado y mataría
+ * el halo del neón), la opacidad se interpola en una rampa de luminancia: lo
+ * casi negro desaparece del todo y el resplandor se desvanece de forma suave.
+ *
+ * Devuelve un canvas, que `drawImage` acepta igual que una imagen.
+ */
+function knockoutDarkBackground(img, threshold = 26, feather = 58) {
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth || img.width;
+  c.height = img.naturalHeight || img.height;
+  const cx = c.getContext('2d', { willReadFrequently: true });
+  cx.drawImage(img, 0, 0);
+  const data = cx.getImageData(0, 0, c.width, c.height);
+  const p = data.data;
+  for (let i = 0; i < p.length; i += 4) {
+    // Luminancia perceptual (Rec. 709): el azul aporta mucho menos brillo.
+    const lum = 0.2126 * p[i] + 0.7152 * p[i + 1] + 0.0722 * p[i + 2];
+    if (lum <= threshold) {
+      p[i + 3] = 0;
+    } else if (lum < threshold + feather) {
+      p[i + 3] = Math.round(p[i + 3] * ((lum - threshold) / feather));
+    }
+  }
+  cx.putImageData(data, 0, 0);
+  return c;
+}
+
+/**
+ * Recorta el margen transparente de un canvas.
+ *
+ * Los logos suelen venir con mucho aire alrededor del dibujo; si se compone tal
+ * cual, el arte queda diminuto dentro del bezel y desaprovecha los 512 px. Al
+ * ajustar al contenido real, el encuadre lo controla esta página y no el
+ * margen que traía el archivo.
+ *
+ * @param alphaMin alfa por debajo del cual un píxel cuenta como vacío; evita
+ *   que un halo casi invisible impida el recorte.
+ * @return el canvas recortado, o el original si está completamente vacío.
+ */
+function trimTransparent(canvas, alphaMin = 8) {
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const { width: w, height: h } = canvas;
+  const p = ctx.getImageData(0, 0, w, h).data;
+  let top = h, left = w, right = -1, bottom = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (p[(y * w + x) * 4 + 3] > alphaMin) {
+        if (y < top) top = y;
+        if (y > bottom) bottom = y;
+        if (x < left) left = x;
+        if (x > right) right = x;
+      }
+    }
+  }
+  if (right < 0) return canvas; // todo transparente: nada que recortar
+  const out = document.createElement('canvas');
+  out.width = right - left + 1;
+  out.height = bottom - top + 1;
+  out.getContext('2d').drawImage(canvas, -left, -top);
+  return out;
+}
+
+/**
+ * Icono de la ficha, a sangre y sin esquinas redondeadas: Play Store aplica su
+ * propia máscara redondeada sobre el PNG, así que redondearlo aquí produciría
+ * un doble recorte con bordes feos.
+ *
+ * @param showGuide dibuja la zona segura (solo previsualización, nunca se exporta).
+ */
+function renderIconTo(ctx, scale, showGuide) {
+  ctx.save();
+  ctx.scale(scale, scale);
+
+  // Qué se pinta encima: el logo cargado (con o sin fondo recortado) o el monograma.
+  const useKnockout = document.getElementById('iconKnockout').checked;
+  const fit = document.getElementById('iconFit').value;
+  const source = iconCustomImg ? (useKnockout ? iconKnockedImg : iconCustomImg) : null;
+  // A sangre el arte del usuario manda: el bezel y la rejilla quedarían tapados
+  // o compitiendo con su propio encuadre, así que se omiten.
+  const fullBleedArt = source && fit === 'sangre';
+
+  // Fondo azul noche a sangre
+  const bg = ctx.createLinearGradient(0, 0, ICON, ICON);
+  bg.addColorStop(0, '#0A0E1A');
+  bg.addColorStop(1, '#18213B');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, ICON, ICON);
+
+  if (!fullBleedArt) {
+    // Rejilla tenue: guiño al "lienzo lógico" sobre el que piensa el jugador
+    ctx.strokeStyle = 'rgba(0,229,255,0.055)';
+    ctx.lineWidth = 2;
+    for (let i = 1; i < 6; i++) {
+      const p = (ICON / 6) * i;
+      ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, ICON); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(ICON, p); ctx.stroke();
+    }
+  }
+
+  // Halo central del acento
+  const glow = ctx.createRadialGradient(256, 240, 20, 256, 240, 290);
+  glow.addColorStop(0, 'rgba(0,229,255,0.20)');
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, ICON, ICON);
+
+  if (!fullBleedArt) {
+    // Bezel neón (mismas capas que drawNeonTile: halo ancho → intermedio → nítido)
+    const inset = 46, radius = 112;
+    const layers = [
+      { w: 26, color: 'rgba(0,229,255,0.10)' },
+      { w: 14, color: 'rgba(0,229,255,0.22)' },
+      { w: 5,  color: 'rgba(0,229,255,0.95)' },
+    ];
+    layers.forEach((l) => {
+      roundedRectPath(ctx, inset, inset, ICON - inset * 2, ICON - inset * 2, radius);
+      ctx.lineWidth = l.w;
+      ctx.strokeStyle = l.color;
+      ctx.stroke();
+    });
+  }
+
+  if (source) {
+    // A sangre se agranda casi al borde, pero no del todo: la máscara redondeada
+    // de Play Store recorta las esquinas. Contenido cabe dentro del bezel.
+    drawContain(ctx, source, 256, 256, fullBleedArt ? 470 : 296);
+  } else {
+    // Monograma "K": degradado cian→verde de LogicGradients.ring, con halo
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '900 268px system-ui, sans-serif';
+    const grad = ctx.createLinearGradient(150, 130, 380, 380);
+    grad.addColorStop(0, '#00E5FF');
+    grad.addColorStop(1, '#25E17E');
+    ctx.shadowColor = 'rgba(0,229,255,0.9)';
+    ctx.shadowBlur = 46;
+    ctx.fillStyle = grad;
+    ctx.fillText('K', 256, 246);
+    ctx.shadowBlur = 0;
+  }
+
+  if (showGuide) {
+    ctx.setLineDash([12, 10]);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(255,61,139,0.85)';
+    ctx.beginPath();
+    ctx.arc(256, 256, 205, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  ctx.restore();
+}
+
+/** Redibuja la previsualización del icono (con guía si el checkbox está activo). */
+function renderIcon() {
+  renderIconTo(iconCanvas.getContext('2d'), 1, document.getElementById('iconGuide').checked);
+}
+
+const iconFile = document.getElementById('iconFile');
+const iconCard = document.getElementById('iconCard');
+
+/** Carga un logo propio, precalcula su versión sin fondo y lo compone sobre la marca. */
+function loadIconFile(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const img = new Image();
+  img.onload = () => {
+    iconCustomImg = img;
+    // Se calcula una sola vez al cargar: recorrer los píxeles de un logo grande
+    // en cada repintado haría que los controles respondieran a tirones.
+    iconKnockedImg = trimTransparent(knockoutDarkBackground(img));
+    document.getElementById('iconCustomOpts').style.display = 'block';
+    renderIcon();
+  };
+  img.src = URL.createObjectURL(file);
+}
+
+iconCanvas.addEventListener('click', () => iconFile.click());
+iconFile.addEventListener('change', () => loadIconFile(iconFile.files[0]));
+iconCard.addEventListener('dragover', (e) => { e.preventDefault(); iconCard.classList.add('dragover'); });
+iconCard.addEventListener('dragleave', () => iconCard.classList.remove('dragover'));
+iconCard.addEventListener('drop', (e) => {
+  e.preventDefault();
+  iconCard.classList.remove('dragover');
+  loadIconFile(e.dataTransfer.files[0]);
+});
+document.getElementById('iconGuide').addEventListener('change', renderIcon);
+document.getElementById('iconKnockout').addEventListener('change', renderIcon);
+document.getElementById('iconFit').addEventListener('change', renderIcon);
+document.getElementById('iconReset').addEventListener('click', () => {
+  iconCustomImg = null;
+  iconKnockedImg = null;
+  iconFile.value = '';
+  document.getElementById('iconCustomOpts').style.display = 'none';
+  renderIcon();
+});
+
+document.getElementById('iconPng').addEventListener('click', () => {
+  // Se exporta desde un canvas aparte y SIN guía: lo que sube a la ficha debe
+  // ser el arte limpio, no la ayuda de encuadre de la previsualización.
+  const off = document.createElement('canvas');
+  off.width = ICON;
+  off.height = ICON;
+  renderIconTo(off.getContext('2d'), 1, false);
+  off.toBlob((blob) => {
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'icono-512x512.png';
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }, 'image/png');
+});
+
+renderIcon();
+
+// ————— Capturas de tablet (16:9 apaisado) —————
+/**
+ * Lienzo base del diseño apaisado. Se dibuja siempre en estas coordenadas y se
+ * escala con ctx.scale() al exportar, así una sola maqueta sirve para las dos
+ * resoluciones que pide Play Store (7" y 10") sin duplicar código ni perder
+ * nitidez: el canvas de salida es del tamaño final y el trazado es vectorial.
+ */
+const TW = 1920, TH = 1080;
+/** Resoluciones de exportación. Ambas 16:9 y dentro de los límites de lado de Play Store. */
+const TABLET_SIZES = {
+  '7': { w: 1920, h: 1080, label: '7in' },
+  '10': { w: 2560, h: 1440, label: '10in' },
+};
+
+/**
+ * Reduce el tamaño de fuente hasta que el texto quepa en `maxWidth`.
+ * Los titulares varían mucho de longitud ("CADA CASILLA CUENTA" vs "SUDOKU") y
+ * en apaisado el ancho disponible es fijo, así que ajustamos en vez de recortar.
+ */
+function fitFont(ctx, lines, maxWidth, startSize, weight) {
+  let size = startSize;
+  for (;;) {
+    ctx.font = `${weight} ${size}px system-ui, sans-serif`;
+    const widest = Math.max(...lines.map((l) => ctx.measureText(l).width));
+    if (widest <= maxWidth || size <= 40) break;
+    size -= 2;
+  }
+  return size;
+}
+
+/** Dibuja el frame apaisado completo en el contexto dado, escalado por `scale`. */
+function renderTabletTo(ctx, frame, scale, cropTop) {
+  ctx.save();
+  ctx.scale(scale, scale);
+
+  const a = frame.accent, aRgb = rgb(a);
+
+  // Fondo azul noche en diagonal + estrellas deterministas
+  const bg = ctx.createLinearGradient(0, 0, TW, TH);
+  bg.addColorStop(0, '#0A0E1A');
+  bg.addColorStop(1, '#121A2D');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, TW, TH);
+  const rnd = mulberry32(frame.seed + 555);
+  for (let i = 0; i < 110; i++) {
+    ctx.fillStyle = `rgba(242,245,255,${0.04 + rnd() * 0.2})`;
+    ctx.beginPath();
+    ctx.arc(rnd() * TW, rnd() * TH, 0.7 + rnd() * 1.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Halo del acento detrás del bloque de teléfonos (único foco de color)
+  const glow = ctx.createRadialGradient(1420, 540, 60, 1420, 540, 620);
+  glow.addColorStop(0, `rgba(${aRgb},0.17)`);
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, TW, TH);
+
+  // — Chip de marca —
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  try { ctx.letterSpacing = '6px'; } catch (e) {}
+  ctx.font = '600 26px system-ui, sans-serif';
+  const brand = 'KORTEXGAMES';
+  const bw = ctx.measureText(brand).width + 70;
+  roundedRectPath(ctx, 130, 250, bw, 56, 28);
+  ctx.fillStyle = 'rgba(20,27,46,0.9)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(30,39,64,1)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = a;
+  ctx.shadowColor = a;
+  ctx.shadowBlur = 13;
+  ctx.beginPath();
+  ctx.arc(160, 278, 6.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#F2F5FF';
+  ctx.fillText(brand, 180, 279);
+  try { ctx.letterSpacing = '0px'; } catch (e) {}
+
+  // — Titular a la izquierda, ajustado al ancho de la columna —
+  const lines = frame.headline.split('\n');
+  const size = fitFont(ctx, lines, 780, 96, 900);
+  ctx.fillStyle = '#F2F5FF';
+  ctx.shadowColor = `rgba(${aRgb},0.85)`;
+  ctx.shadowBlur = 34;
+  const lineH = size * 1.18;
+  lines.forEach((line, i) => ctx.fillText(line, 130, 420 + i * lineH));
+  ctx.shadowBlur = 0;
+
+  ctx.font = '400 40px system-ui, sans-serif';
+  ctx.fillStyle = '#9AA3BE';
+  ctx.fillText(frame.sub, 130, 420 + lines.length * lineH + 22);
+
+  // — Teléfonos a la derecha: uno secundario detrás (el frame siguiente del
+  //   carrusel, para insinuar variedad de juegos) y el principal delante —
+  const next = FRAMES[(FRAMES.indexOf(frame) + 1) % FRAMES.length];
+  drawMiniPhone(ctx, next, 1670, 566, 372, 792, 7, cropTop);
+  drawMiniPhone(ctx, frame, 1350, 540, 430, 916, -3, cropTop);
+
+  ctx.restore();
+}
+
+/** Redibuja la previsualización de un frame de tablet en su canvas de tarjeta. */
+function renderTablet(frame) {
+  const cropTop = document.getElementById('cropStatusBar').checked ? STATUS_BAR_FRACTION : 0;
+  renderTabletTo(frame.tabletCanvas.getContext('2d'), frame, 1, cropTop);
+}
+
+/**
+ * Redibuja TODAS las tarjetas de tablet. Hace falta redibujar todas (y no solo
+ * la del frame que cambió) porque cada composición apaisada muestra también la
+ * captura del frame siguiente como teléfono secundario.
+ * El guard permite llamarla desde la carga automática de imágenes, que puede
+ * resolverse antes de que existan los canvas de tablet.
+ */
+function renderAllTablets() {
+  FRAMES.forEach((frame) => { if (frame.tabletCanvas) renderTablet(frame); });
+}
+
+/** Exporta un frame de tablet a PNG en la resolución de 7" o 10". */
+function downloadTablet(frame, idx, sizeKey) {
+  const { w, h, label } = TABLET_SIZES[sizeKey];
+  const cropTop = document.getElementById('cropStatusBar').checked ? STATUS_BAR_FRACTION : 0;
+  const off = document.createElement('canvas');
+  off.width = w;
+  off.height = h;
+  renderTabletTo(off.getContext('2d'), frame, w / TW, cropTop);
+  off.toBlob((blob) => {
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `tablet${label}-${String(idx + 1).padStart(2, '0')}-${frame.id}-${w}x${h}.png`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }, 'image/png');
+}
+
+const tabletGrid = document.getElementById('tabletGrid');
+FRAMES.forEach((frame, idx) => {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <canvas width="${TW}" height="${TH}"></canvas>
+    <div class="meta">
+      <div class="name"><b>${String(idx + 1).padStart(2, '0')} · ${frame.title}</b>16:9 apaisado</div>
+      <div class="actions">
+        <button data-size="7">7"</button>
+        <button data-size="10">10"</button>
+      </div>
+    </div>
+  `;
+  tabletGrid.appendChild(card);
+  frame.tabletCanvas = card.querySelector('canvas');
+  card.querySelectorAll('[data-size]').forEach((btn) => {
+    btn.addEventListener('click', () => downloadTablet(frame, idx, btn.dataset.size));
+  });
+  renderTablet(frame);
+});
+
+document.getElementById('downloadTablet7').addEventListener('click', () => {
+  FRAMES.forEach((frame, idx) => setTimeout(() => downloadTablet(frame, idx, '7'), idx * 400));
+});
+document.getElementById('downloadTablet10').addEventListener('click', () => {
+  FRAMES.forEach((frame, idx) => setTimeout(() => downloadTablet(frame, idx, '10'), idx * 400));
+});
+
+document.getElementById('featurePng').addEventListener('click', () => {
+  featureCanvas.toBlob((blob) => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'feature-graphic-1024x500.png';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }, 'image/png');
+});
+
+renderFeature();
+</script>
+</body>
+</html>
