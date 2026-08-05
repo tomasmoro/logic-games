@@ -1,5 +1,7 @@
 package com.kortexgames.app.game.neoncircuit
 
+import com.kortexgames.app.game.grid.GridPathBuilder
+import com.kortexgames.app.game.grid.GridPosition
 import kotlin.math.abs
 import kotlin.random.Random
 
@@ -60,9 +62,9 @@ import kotlin.random.Random
  * revés, desde una solución garantizada**:
  *
  *  1. Se traza un **camino hamiltoniano** sobre el tablero: una ruta que visita
- *     cada celda exactamente una vez ([hamiltonianPath]). Al cubrir el 100% de
- *     las celdas, cualquier sub-tramo contiguo de ese camino es, por
- *     construcción, un cable válido sin cruces.
+ *     cada celda exactamente una vez ([GridPathBuilder.hamiltonianPath]). Al
+ *     cubrir el 100% de las celdas, cualquier sub-tramo contiguo de ese camino es,
+ *     por construcción, un cable válido sin cruces.
  *  2. Se **corta** ese camino en tantos tramos contiguos como canales necesite
  *     el nivel ([splitIntoSegments]). Cada tramo es la solución de un color.
  *  3. Los **nodos** del nivel son solo los dos extremos de cada tramo; el
@@ -72,12 +74,13 @@ import kotlin.random.Random
  * referencia también deja el tablero 100% lleno: todo nivel generado admite
  * tanto la victoria mínima (pares conectados) como la bonus (tablero lleno).
  *
- * La búsqueda del camino usa la heurística de Warnsdorff (prioriza moverse
- * hacia la celda con menos salidas libres) para minimizar el backtracking en
- * tableros de hasta 9×9; si aun así se queda sin presupuesto de pasos en todos
- * los reintentos, cae a un patrón serpenteante ([serpentinePath]), que es
- * hamiltoniano por construcción en cualquier tablero cuadrado y actúa de red de
- * seguridad determinista.
+ * La búsqueda del camino (Warnsdorff + backtracking, con patrón serpenteante como
+ * red de seguridad) **no vive aquí**: es [GridPathBuilder], en `game.grid`, porque
+ * la misma primitiva la necesita "Línea Neón"
+ * ([com.kortexgames.app.game.neonline.NeonLineLevels]) —que en vez de trocear el
+ * camino usa su complemento como obstáculos— y la necesitará cualquier juego de
+ * trazado futuro. Este generador solo aporta lo que es SUYO: la curva de
+ * dificultad, el troceado en canales y el reparto de colores.
  */
 object NeonCircuitLevels {
 
@@ -97,12 +100,6 @@ object NeonCircuitLevels {
         DifficultyTier(gridSize = 9, pairCount = 7),
         DifficultyTier(gridSize = 9, pairCount = 8),
     )
-
-    /** Reintentos con semillas distintas antes de caer al patrón serpenteante. */
-    private const val HAMILTONIAN_ATTEMPTS = 24
-
-    /** Presupuesto de pasos de backtracking por intento, proporcional al tablero. */
-    private const val STEP_BUDGET_PER_CELL = 60
 
     /**
      * Nivel [number] (1-based), generado de forma determinista.
@@ -142,7 +139,7 @@ object NeonCircuitLevels {
 
     /** Genera un único reparto (tablero, canales) para la [seed] dada. */
     private fun buildCandidate(gridSize: Int, pairCount: Int, seed: Long): Candidate {
-        val path = hamiltonianPath(gridSize, seed)
+        val path = GridPathBuilder.hamiltonianPath(gridSize, seed)
         val segments = splitIntoSegments(path, pairCount, seed)
         val colors = WireColor.entries.take(pairCount).shuffled(Random(seed * 31 + 7))
 
@@ -189,72 +186,6 @@ object NeonCircuitLevels {
      * @property pairCount nº de pares de nodos (canales) del nivel; ≤ nº de [WireColor].
      */
     private data class DifficultyTier(val gridSize: Int, val pairCount: Int)
-
-    /** Vecinas ortogonales de la celda dentro de un tablero de lado [gridSize]. */
-    private fun GridPosition.orthogonalNeighbors(gridSize: Int): List<GridPosition> =
-        listOf(
-            GridPosition(row - 1, col),
-            GridPosition(row + 1, col),
-            GridPosition(row, col - 1),
-            GridPosition(row, col + 1),
-        ).filter { it.isInside(gridSize) }
-
-    /**
-     * Camino que visita cada celda del tablero [gridSize]×[gridSize] exactamente
-     * una vez, mediante backtracking con heurística de Warnsdorff y varios
-     * reintentos aleatorios (semillados a partir de [seed] para determinismo).
-     */
-    private fun hamiltonianPath(gridSize: Int, seed: Long): List<GridPosition> {
-        val totalCells = gridSize * gridSize
-        repeat(HAMILTONIAN_ATTEMPTS) { attempt ->
-            val random = Random(seed * 1_000_003L + attempt)
-            val start = GridPosition(random.nextInt(gridSize), random.nextInt(gridSize))
-            val path = ArrayList<GridPosition>(totalCells)
-            val visited = HashSet<GridPosition>(totalCells)
-            var stepBudget = totalCells * STEP_BUDGET_PER_CELL
-
-            fun backtrack(current: GridPosition): Boolean {
-                path.add(current)
-                visited.add(current)
-                if (path.size == totalCells) return true
-
-                // Warnsdorff: probar antes las vecinas con menos salidas libres,
-                // para no encerrar el camino en una celda sin escapatoria.
-                val neighbors = current.orthogonalNeighbors(gridSize)
-                    .filter { it !in visited }
-                    .shuffled(random)
-                    .sortedBy { neighbor ->
-                        neighbor.orthogonalNeighbors(gridSize).count { it !in visited }
-                    }
-
-                for (next in neighbors) {
-                    if (--stepBudget <= 0) return false
-                    if (backtrack(next)) return true
-                }
-
-                path.removeAt(path.size - 1)
-                visited.remove(current)
-                return false
-            }
-
-            if (backtrack(start)) return path
-        }
-        return serpentinePath(gridSize)
-    }
-
-    /**
-     * Patrón serpenteante (izq→der, der→izq, alternando por fila): hamiltoniano
-     * por construcción en cualquier tablero cuadrado. Red de seguridad si
-     * [hamiltonianPath] agota sus reintentos.
-     */
-    private fun serpentinePath(gridSize: Int): List<GridPosition> {
-        val path = ArrayList<GridPosition>(gridSize * gridSize)
-        for (row in 0 until gridSize) {
-            val cols = if (row % 2 == 0) 0 until gridSize else (gridSize - 1) downTo 0
-            for (col in cols) path.add(GridPosition(row, col))
-        }
-        return path
-    }
 
     /**
      * Corta [path] en [count] tramos contiguos (de al menos 2 celdas cada uno,

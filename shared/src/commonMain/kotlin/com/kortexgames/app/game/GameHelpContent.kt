@@ -295,6 +295,36 @@ object GameHelpContent {
         ),
     )
 
+    /** Línea Neón / camino hamiltoniano (Resolución de Problemas). */
+    val neonLine = GameHelp(
+        title = "Línea Neón",
+        summary = "Recorre todas las celdas libres con un solo trazo continuo.",
+        accent = CategoryPalette.ProblemSolving,
+        art = motifHelpArt(GameMotif.SINGLE_LINE),
+        steps = listOf(
+            HelpStep(
+                icon = KortexIcons.Play,
+                title = "Traza sin levantar el dedo",
+                text = "Empieza donde quieras y arrastra en cruz: arriba, abajo, izquierda o derecha.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Warning,
+                title = "Esquiva los bloques",
+                text = "No puedes entrar en un bloque ni pasar dos veces por la misma celda.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Undo,
+                title = "Desanda para corregir",
+                text = "Vuelve con el dedo sobre la celda anterior y la línea se repliega.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Check,
+                title = "Llena el tablero",
+                text = "El nivel se completa cuando la línea cubre todas las celdas libres.",
+            ),
+        ),
+    )
+
     /** Atracción Geométrica / polaridad (Visión Espacial). */
     val polarity = GameHelp(
         title = "Atracción Geométrica",

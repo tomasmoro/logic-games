@@ -39,6 +39,7 @@ import com.kortexgames.app.game.blockgrid.BlockGridScreen
 import com.kortexgames.app.game.wordsearch.NeonLexiconScreen
 import com.kortexgames.app.game.screws.ScrewGameScreen
 import com.kortexgames.app.game.neoncircuit.NeonCircuitScreen
+import com.kortexgames.app.game.neonline.NeonLineScreen
 import com.kortexgames.app.game.neon2048.Neon2048Screen
 import com.kortexgames.app.game.neonpulse.NeonPulseScreen
 import com.kortexgames.app.game.defuser.DefuserScreen
@@ -288,6 +289,9 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean) {
                 }
                 composable(Routes.NEON_CIRCUIT) {
                     NeonCircuitScreen(graph) { navController.popBackStack() }
+                }
+                composable(Routes.NEON_LINE) {
+                    NeonLineScreen(graph) { navController.popBackStack() }
                 }
                 composable(Routes.HYPERGATE) {
                     HypergateScreen(graph) { navController.popBackStack() }

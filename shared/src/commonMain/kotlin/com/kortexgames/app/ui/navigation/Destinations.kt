@@ -48,6 +48,7 @@ object Routes {
     const val NEON_LEXICON = "game/neon-lexicon"
     const val STARPORT_ESCAPE = "game/starport-escape"
     const val NEON_CIRCUIT = "game/neon-circuit"
+    const val NEON_LINE = "game/neon-line"
     const val HYPERGATE = "game/hypergate"
     const val NEON_PULSE = "game/neon-pulse"
     const val NEON_2048 = "game/neon-2048"
@@ -73,6 +74,7 @@ object Routes {
         GameIds.NEON_LEXICON -> NEON_LEXICON
         GameIds.STARPORT_ESCAPE -> STARPORT_ESCAPE
         GameIds.NEON_CIRCUIT -> NEON_CIRCUIT
+        GameIds.NEON_LINE -> NEON_LINE
         GameIds.HYPERGATE -> HYPERGATE
         GameIds.NEON_PULSE -> NEON_PULSE
         GameIds.NEON_2048 -> NEON_2048

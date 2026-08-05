@@ -44,6 +44,7 @@ import kotlin.math.sin
  *  - [GameMotif.NUMBER_TILES] → recuadros con potencias de dos (2048).
  *  - [GameMotif.MINESWEEPER] → rejilla de buscaminas con números, bandera y mina.
  *  - [GameMotif.CIRCUIT_FLOW] → nodos unidos por tuberías redondeadas en rejilla.
+ *  - [GameMotif.SINGLE_LINE] → un único trazo serpenteando entre bloques inertes.
  *  - [GameMotif.HYPERGATE] → portal circular con cometas precipitándose hacia él.
  *  - [GameMotif.NEON_PULSE] → pulsos concéntricos espaciados y escalonados en tamaño.
  *  - [GameMotif.SEQUENCE_GRID] → rejilla 3×3 de pads con uno iluminado.
@@ -149,6 +150,83 @@ private fun MotifTexture(
         GameMotif.MATH_BUBBLES -> MathBubblesTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
         GameMotif.ENERGY_PIPES -> EnergyPipesTexture(accent = accent, modifier = modifier, intensity = intensity)
         GameMotif.POLARITY_SECTORS -> PolaritySectorsTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
+        GameMotif.SINGLE_LINE -> SingleLineTexture(accent = accent, modifier = modifier, intensity = intensity)
+    }
+}
+
+/**
+ * Celdas (col, fila) del trazo del motivo de **Línea Neón**, en una rejilla 4×4. Es
+ * un recorrido serpenteante de 12 celdas: el gesto del juego (un único trazo continuo
+ * que va cubriéndolo todo) resumido en una silueta reconocible.
+ */
+private val SINGLE_LINE_ROUTE = listOf(
+    0 to 0, 1 to 0, 2 to 0,
+    2 to 1, 1 to 1, 0 to 1,
+    0 to 2, 1 to 2, 2 to 2, 3 to 2,
+    3 to 3, 2 to 3,
+)
+
+/** Celdas ocupadas por bloques inertes en el motivo (las que el trazo esquiva). */
+private val SINGLE_LINE_BLOCKS = listOf(3 to 0, 3 to 1, 0 to 3)
+
+/**
+ * **Línea Neón**: rejilla con un par de bloques sólidos y una única línea gruesa que
+ * serpentea entre ellos, con un punto luminoso en la punta.
+ *
+ * Se distingue de [CircuitFlowTexture] —su vecino de categoría— en lo esencial del
+ * juego: allí varios cables cortos entre pares de nodos, aquí un solo trazo que lo
+ * recorre todo.
+ */
+@Composable
+private fun SingleLineTexture(accent: Color, modifier: Modifier, intensity: Float) {
+    Canvas(modifier = modifier) {
+        val n = 4
+        val side = size.height * 1.08f
+        val cell = side / n
+        val originX = size.width - side + cell * 0.35f // bleed sutil a la derecha
+        val originY = (size.height - side) / 2f
+        fun node(c: Int, r: Int) = Offset(originX + (c + 0.5f) * cell, originY + (r + 0.5f) * cell)
+
+        // Puntos de rejilla: las celdas "por llenar", igual que en el tablero real.
+        for (i in 0 until n) {
+            for (j in 0 until n) {
+                drawCircle(accent.copy(alpha = 0.14f * intensity), radius = cell * 0.06f, center = node(i, j))
+            }
+        }
+
+        // Bloques inertes: cuadrados macizos de esquinas casi rectas (aire de chip).
+        SINGLE_LINE_BLOCKS.forEach { (c, r) ->
+            val p = node(c, r)
+            val blockSide = cell * 0.62f
+            drawRoundRect(
+                color = accent.copy(alpha = 0.28f * intensity),
+                topLeft = Offset(p.x - blockSide / 2, p.y - blockSide / 2),
+                size = Size(blockSide, blockSide),
+                cornerRadius = CornerRadius(cell * 0.08f),
+            )
+        }
+
+        // El trazo: halo ancho + línea nítida (misma receta de neón del proyecto).
+        val path = Path().apply {
+            val (c0, r0) = SINGLE_LINE_ROUTE.first()
+            moveTo(node(c0, r0).x, node(c0, r0).y)
+            SINGLE_LINE_ROUTE.drop(1).forEach { (c, r) -> lineTo(node(c, r).x, node(c, r).y) }
+        }
+        drawPath(
+            path = path,
+            color = accent.copy(alpha = 0.25f * intensity),
+            style = Stroke(width = cell * 0.5f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
+        drawPath(
+            path = path,
+            color = accent.copy(alpha = 0.85f * intensity),
+            style = Stroke(width = cell * 0.26f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
+
+        // Punta luminosa: el "dedo" del jugador, el elemento que más brilla.
+        val (hc, hr) = SINGLE_LINE_ROUTE.last()
+        drawCircle(accent.copy(alpha = 0.35f * intensity), radius = cell * 0.30f, center = node(hc, hr))
+        drawCircle(Color.White.copy(alpha = 0.85f * intensity), radius = cell * 0.13f, center = node(hc, hr))
     }
 }
 

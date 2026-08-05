@@ -1,6 +1,6 @@
 package com.kortexgames.app.game.neoncircuit
 
-import kotlin.math.abs
+import com.kortexgames.app.game.grid.GridPosition
 
 /**
  * # Modelos de dominio de "Neon Circuit Flow" (Resolución de Problemas)
@@ -50,34 +50,12 @@ const val MIN_GRID_SIZE: Int = 5
 /** Lado máximo del tablero cuadrado (nivel avanzado). */
 const val MAX_GRID_SIZE: Int = 9
 
-/**
- * Coordenada de celda del tablero: fila y columna, ambas 0-based.
- *
- * Se usa (row, col) —y no (x, y)— para evitar la ambigüedad clásica de qué eje
- * es cuál: `row` crece hacia abajo y `col` hacia la derecha, tal como se dibuja.
- * La UI traduce px→celda (geometría de layout, suya); el dominio solo habla en
- * celdas.
- *
- * @property row fila, 0-based.
- * @property col columna, 0-based.
- */
-data class GridPosition(val row: Int, val col: Int) {
-
-    /** ¿La celda cae dentro de un tablero de lado [size]? */
-    fun isInside(size: Int): Boolean = row in 0 until size && col in 0 until size
-
-    /**
-     * ¿[other] es vecina ortogonal (arriba/abajo/izquierda/derecha)?
-     *
-     * La regla de oro del juego es "nada de diagonales": el cable solo avanza a
-     * celdas contiguas en cruz. Se comprueba con distancia de Manhattan == 1, que
-     * es exactamente el conjunto de las 4 vecinas ortogonales y excluye las
-     * diagonales (Manhattan 2) y la propia celda (Manhattan 0). El motor (FASE 2)
-     * rechaza cualquier [NeonCircuitIntent.ExtendPath] que no cumpla esto.
-     */
-    fun isOrthogonallyAdjacentTo(other: GridPosition): Boolean =
-        abs(row - other.row) + abs(col - other.col) == 1
-}
+// La coordenada de celda ([GridPosition]) ya NO se declara aquí: vive en
+// `game.grid`, compartida con el resto de juegos de rejilla y con el generador de
+// caminos ([com.kortexgames.app.game.grid.GridPathBuilder]). Su API es la misma
+// —incluido `isOrthogonallyAdjacentTo`, donde vive la regla "nada de diagonales"
+// que el motor exige a cada [NeonCircuitIntent.ExtendPath]—, así que para este
+// juego el cambio es solo de paquete.
 
 /**
  * Identidad de un canal de cable = color del par de nodos que une.

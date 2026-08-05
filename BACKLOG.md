@@ -47,6 +47,23 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
 
 ## Juegos / progresión
 
+- [ ] **Línea Neón — pulido pendiente.** El juego está completo y publicado
+  (`game/neonline/`, seed `0030_seed_neon_line.sql`), pero quedan detalles que no
+  bloquean nada:
+  - **Sistema de pistas.** El generador es determinista, así que la solución de
+    referencia se puede regenerar con la misma semilla sin almacenarla en el
+    nivel: bastaría con exponerla desde `NeonLineLevels` para iluminar las N
+    siguientes celdas. Si se añade, tiene que **penalizar el score** como pide la
+    regla de puntuación (hoy solo se penalizan los reinicios).
+  - **Variar la dificultad por encima del techo de densidad.** La banda de bloques
+    está topada al 11–25 % porque más allá casi ningún reparto disperso tiene
+    solución (ver el KDoc de `NeonLineLevels`). Hoy la única palanca que queda tras
+    el escalón 9 es dónde caen los bloques (`interiorRatio`). Si hiciera falta más
+    recorrido, la vía sería mecánica nueva (celdas que hay que pisar en cierto
+    orden, casillas de un solo sentido), no más bloques.
+  - **Mejor tiempo por nivel.** Está activado (`tracksLevelTime = true`) pero la
+    pantalla aún no lo muestra en el carril de niveles.
+
 - [x] **Tetris Neón (antes "Neon Block Grid" — Block Puzzle 8×8, Visión Espacial).**
   HECHO. Juego ENDLESS completo en `game/blockgrid/` (el paquete/ids mantienen el
   nombre técnico `blockgrid`/`NEON_BLOCK_GRID`; solo cambió el nombre visible a

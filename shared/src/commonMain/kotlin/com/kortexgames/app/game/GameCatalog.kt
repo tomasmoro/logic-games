@@ -105,6 +105,22 @@ object GameIds {
      * cuando la pantalla Compose (FASE 3) esté lista para publicarse.
      */
     const val HYPER_CUBE = "3d5c8a17-6b24-4e9f-9a80-1c7e5b2d4f63"
+
+    /**
+     * Línea Neón / recorrer todas las celdas libres con un solo trazo (categoría
+     * "problem_solving" / Resolución de Problemas). UUID v4 aleatorio (ya no quedan
+     * nibbles libres para un mnemotécnico como en [NEON_2048]).
+     *
+     * Comparte categoría con [NEON_CIRCUIT] ("Conectores") y hasta parte de su
+     * generador —ambos se construyen desde un camino hamiltoniano, ver
+     * [com.kortexgames.app.game.grid.GridPathBuilder]—, pero son juegos distintos con
+     * progreso y récord propios: aquí no hay pares que unir, sino un único trazo que
+     * debe cubrirlo todo.
+     *
+     * Reservado desde la FASE 2 (motor + ViewModel); se añade su [GameInfo] al
+     * catálogo cuando la pantalla Compose (FASE 3) esté lista para publicarse.
+     */
+    const val NEON_LINE = "5f2a9c41-8e73-4b06-9d15-3a6e8c204b7f"
 }
 
 /**
@@ -199,6 +215,15 @@ enum class GameMotif {
 
     /** Atracción Geométrica: círculo de 4 sectores con partículas que llegan de fuera. */
     POLARITY_SECTORS,
+
+    /**
+     * Línea Neón: rejilla con bloques inertes y UNA sola línea serpenteando entre
+     * ellos. Motivo propio (y no [CIRCUIT_FLOW]) porque comparte categoría con
+     * Conectores y sus tarjetas quedarían indistinguibles: allí hay varios cables
+     * cortos con nodos en los extremos, aquí un único trazo continuo que lo recorre
+     * todo — que es justo la diferencia entre ambos juegos.
+     */
+    SINGLE_LINE,
 }
 
 /**
@@ -258,6 +283,7 @@ object GameCatalog {
         GameInfo(GameIds.NEON_LEXICON, "Sopa de Letras Neón", GameCategory.LANGUAGE, playable = true, motif = GameMotif.WORD_SEARCH),
         GameInfo(GameIds.STARPORT_ESCAPE, "Neon Starport Escape", GameCategory.LOGIC, playable = true, published = false),
         GameInfo(GameIds.NEON_CIRCUIT, "Conectores", GameCategory.PROBLEM_SOLVING, playable = true, motif = GameMotif.CIRCUIT_FLOW),
+        GameInfo(GameIds.NEON_LINE, "Línea Neón", GameCategory.PROBLEM_SOLVING, playable = true, motif = GameMotif.SINGLE_LINE),
         GameInfo(GameIds.HYPERGATE, "Hypergate", GameCategory.REFLEXES, playable = true, motif = GameMotif.HYPERGATE),
         GameInfo(null, "Parejas Relámpago", GameCategory.MEMORY, playable = false),
         GameInfo(null, "Cadena Lógica", GameCategory.LOGIC, playable = false),

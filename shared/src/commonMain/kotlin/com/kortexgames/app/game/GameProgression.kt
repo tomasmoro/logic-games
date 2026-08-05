@@ -135,6 +135,14 @@ object GameProgressions {
         GameIds.NEON_CIRCUIT to GameProgression(
             ProgressionKind.LEVELED, MetricDirection.HIGHER_IS_BETTER, "Nivel máx", MetricUnit.LEVEL,
         ),
+        // Línea Neón: niveles discretos y siempre resolubles (el generador los
+        // construye desde una solución), y la partida solo termina al completarlos
+        // —nunca se "falla"—, así que el tiempo por nivel es comparable entre
+        // partidas: tracksLevelTime, como Flujo de Energía y el Hyper-Cube.
+        GameIds.NEON_LINE to GameProgression(
+            ProgressionKind.LEVELED, MetricDirection.HIGHER_IS_BETTER, "Nivel máx", MetricUnit.LEVEL,
+            tracksLevelTime = true,
+        ),
         // 2048 es una corrida hasta quedarse sin movimientos: ENDLESS con récord de
         // puntaje. La métrica NO es la ficha más alta aunque sea el hito que el
         // jugador presume: dos partidas que llegan a 1024 se distinguen por el

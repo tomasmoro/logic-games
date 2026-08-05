@@ -8,6 +8,7 @@ import com.kortexgames.app.core.mvi.UiState
 import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.LeveledGamePhase
+import com.kortexgames.app.game.grid.GridPosition
 
 /**
  * # Contrato MVI de "Neon Circuit Flow"

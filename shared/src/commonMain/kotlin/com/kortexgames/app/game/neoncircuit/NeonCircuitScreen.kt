@@ -67,6 +67,7 @@ import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.LeveledGamePhase
+import com.kortexgames.app.game.grid.GridPosition
 import com.kortexgames.app.ui.components.GameIntroScreen
 import com.kortexgames.app.game.GameHelpContent
 import com.kortexgames.app.ui.components.GameOverOverlay
