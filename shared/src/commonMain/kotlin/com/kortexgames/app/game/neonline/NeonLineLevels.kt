@@ -82,7 +82,7 @@ import kotlin.random.Random
  *
  *  | Escalón | Niveles | Tablero | Bloques | Libres | Densidad |
  *  |--------:|:-------:|:-------:|:-------:|:------:|:--------:|
- *  | 0       | 1–2     | 4×4     | 2       | 14     | 13 %     |
+ *  | 0       | 1–2     | 4×4     | 2 (*)   | 14     | 13 %     |
  *  | 1       | 3–4     | 4×4     | 4       | 12     | 25 %     |
  *  | 2       | 5–6     | 5×5     | 4       | 21     | 16 %     |
  *  | 3       | 7–8     | 5×5     | 6       | 19     | 24 %     |
@@ -92,6 +92,11 @@ import kotlin.random.Random
  *  | 7       | 15–16   | 7×7     | 8       | 41     | 16 %     |
  *  | 8       | 17–18   | 8×8     | 7       | 57     | 11 %     |
  *  | 9       | 19+     | 8×8     | 8       | 56     | 13 %     |
+ *
+ * (*) El escalón 0 es el único donde el alivio de densidad entra siempre: en un 4×4
+ * apenas hay repartos de 2 bloques que cumplan todas las reglas y encima no sean el
+ * mismo tablero girado, así que el nivel 1 acaba con **1 bloque** y el 2 con 2. Sale
+ * incluso mejor como entrada: el primer nivel presenta la idea con un solo obstáculo.
  *
  * **Desde el nivel 1 hay bloques.** Un tablero despejado se resuelve serpenteando sin
  * pensar y enseña la mecánica equivocada ("da igual por dónde vaya"); con bloques desde
@@ -116,9 +121,10 @@ import kotlin.random.Random
  * Con los MISMOS parámetros, un reparto que deja los bloques arrimados al borde es
  * mucho más blando que uno que los clava en el centro. Esa diferencia se mide gratis
  * con [interiorRatio], sin resolver nada. Por cada escalón se generan
- * [LEVELS_PER_TIER] repartos candidatos, se ordenan por esa dificultad y el nivel N
- * del escalón recibe el que le toca por posición: el primero es el más suave y el
- * último el más agresivo.
+ * [LEVELS_PER_TIER] repartos candidatos **distintos entre sí incluso girando o
+ * reflejando el tablero** ([isSameBoardAs]), se ordenan por dificultad ([hardnessOf])
+ * y el nivel N del escalón recibe el que le toca por posición: el primero es el más
+ * suave y el último el más agresivo.
  */
 object NeonLineLevels {
 
@@ -168,6 +174,9 @@ object NeonLineLevels {
      * prácticamente siempre.
      */
     private const val MAX_DENSITY_RELAXATIONS = 3
+
+    /** Paseos que prueba la red de seguridad buscando un tablero distinto de los ya elegidos. */
+    private const val FALLBACK_ATTEMPTS = 24
 
     /**
      * Perfil de la búsqueda que **verifica** un reparto: deliberadamente **impaciente**
@@ -282,20 +291,71 @@ object NeonLineLevels {
             var attempt = 0
             while (pool.size < LEVELS_PER_TIER && attempt < SCATTER_ATTEMPTS_PER_DENSITY) {
                 val seed = (tierIndex.toLong() * 1_000_003L + relaxation * 7_919L) * 97L + attempt
-                buildScatteredCandidate(relaxed, seed)?.let(pool::add)
+                buildScatteredCandidate(relaxed, seed)?.let { candidate ->
+                    if (pool.none { it.isSameBoardAs(candidate, relaxed.gridSize) }) {
+                        pool.add(candidate)
+                    }
+                }
                 attempt++
             }
             if (pool.size == LEVELS_PER_TIER) return pool
         }
 
         // Red de seguridad final: el complemento de un paseo nunca falla (ver KDoc).
+        // También aquí se exige tablero distinto, con un tope de intentos para que la
+        // condición no pueda convertir el último recurso en un bucle sin salida.
         var fallback = 0
-        while (pool.size < LEVELS_PER_TIER) {
-            pool.add(buildWalkCandidate(tier, tierIndex.toLong() * 7_919L + fallback))
+        while (pool.size < LEVELS_PER_TIER && fallback < FALLBACK_ATTEMPTS) {
+            val candidate = buildWalkCandidate(tier, tierIndex.toLong() * 7_919L + fallback)
+            if (pool.none { it.isSameBoardAs(candidate, tier.gridSize) }) pool.add(candidate)
             fallback++
+        }
+        // Si ni con eso hay dos tableros distintos (tableros diminutos), se completa con
+        // lo que haya: un nivel repetido es mejor que no poder abrir el nivel.
+        while (pool.size < LEVELS_PER_TIER) {
+            pool.add(buildWalkCandidate(tier, tierIndex.toLong() * 31L + pool.size))
         }
         return pool
     }
+
+    /**
+     * ¿Este candidato y [other] son, a efectos del jugador, **el mismo tablero**?
+     *
+     * No basta con comparar los conjuntos de bloques. Los candidatos de un escalón son
+     * los niveles consecutivos que verá el jugador, y repetir tablero es el fallo más
+     * visible que puede tener un generador — pero un tablero girado o reflejado se
+     * reconoce igual de rápido, y "resolver otra vez el de antes, del revés" defrauda
+     * exactamente igual. Por eso se comparan las **ocho simetrías del cuadrado**
+     * (cuatro giros × con y sin reflexión).
+     *
+     * Que esto haga falta no es teórico: en tableros pequeños con densidad alta quedan
+     * muy pocos repartos que cumplan todas las reglas, y el sesgo al interior hace que
+     * semillas distintas converjan al mismo. Si el choque persiste hasta agotar los
+     * intentos, el peldaño de alivio de densidad lo resuelve: con un bloque menos hay
+     * muchos más repartos entre los que elegir.
+     */
+    private fun Candidate.isSameBoardAs(other: Candidate, gridSize: Int): Boolean {
+        if (obstacles.size != other.obstacles.size) return false
+        val edge = gridSize - 1
+        return SYMMETRIES.any { transform ->
+            other.obstacles.mapTo(HashSet(other.obstacles.size)) { transform(it, edge) } == obstacles
+        }
+    }
+
+    /**
+     * Las ocho simetrías del cuadrado (grupo diédrico D4) como transformaciones de
+     * celda, donde `edge` es el índice de la última fila/columna. Ver [isSameBoardAs].
+     */
+    private val SYMMETRIES: List<(GridPosition, Int) -> GridPosition> = listOf(
+        { p, _ -> p },                                          // identidad
+        { p, e -> GridPosition(p.col, e - p.row) },              // giro 90°
+        { p, e -> GridPosition(e - p.row, e - p.col) },          // giro 180°
+        { p, e -> GridPosition(e - p.col, p.row) },              // giro 270°
+        { p, e -> GridPosition(p.row, e - p.col) },              // reflejo horizontal
+        { p, e -> GridPosition(e - p.row, p.col) },              // reflejo vertical
+        { p, _ -> GridPosition(p.col, p.row) },                  // reflejo en la diagonal
+        { p, e -> GridPosition(e - p.col, e - p.row) },          // reflejo en la antidiagonal
+    )
 
     /**
      * Intenta un reparto disperso para la [seed] dada: coloca los bloques y verifica
@@ -327,7 +387,7 @@ object NeonLineLevels {
 
         return Candidate(
             obstacles = obstacles,
-            hardnessScore = interiorRatio(obstacles, tier.gridSize),
+            hardnessScore = hardnessOf(obstacles, tier.gridSize),
             scattered = true,
         )
     }
@@ -484,6 +544,20 @@ object NeonLineLevels {
         row in 1 until gridSize - 1 && col in 1 until gridSize - 1
 
     /**
+     * Dificultad relativa de un reparto: **nº de bloques** como criterio principal y
+     * [interiorRatio] como desempate (siempre < 1, así que nunca puede adelantar a un
+     * bloque de diferencia).
+     *
+     * El nº de bloques manda porque el alivio de densidad puede dejar en un mismo
+     * escalón candidatos con distinta cantidad (ver [buildPoolUncached]), y sin este
+     * criterio el nivel con MENOS bloques podía quedar el segundo del tramo: el jugador
+     * vería el tablero aflojarse justo al avanzar de nivel. Dentro de la misma densidad
+     * —el caso normal— manda el interior, que es la señal fina.
+     */
+    private fun hardnessOf(obstacles: Set<GridPosition>, gridSize: Int): Double =
+        obstacles.size + interiorRatio(obstacles, gridSize)
+
+    /**
      * Fracción de bloques que caen en el interior del tablero (0.0..1.0): la señal de
      * dificultad que no depende de agrandar el tablero ni de meter más bloques.
      *
@@ -526,7 +600,7 @@ object NeonLineLevels {
         }
         return Candidate(
             obstacles = obstacles,
-            hardnessScore = interiorRatio(obstacles, gridSize),
+            hardnessScore = hardnessOf(obstacles, gridSize),
             scattered = false,
         )
     }

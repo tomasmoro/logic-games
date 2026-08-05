@@ -48,22 +48,56 @@ class NeonLineLevelsTest {
         }
     }
 
+    /** Bloques OBJETIVO de cada escalón, en el orden de la tabla del KDoc del generador. */
+    private val tierTargets = listOf(2, 4, 4, 6, 6, 7, 6, 8, 7, 8)
+
+    /** Objetivo de bloques del nivel [number] (el último escalón se mantiene para siempre). */
+    private fun targetFor(number: Int): Int =
+        tierTargets[((number - 1) / 2).coerceAtMost(tierTargets.lastIndex)]
+
     @Test
-    fun elNumeroDeObstaculosSubePorEscalon() {
-        val expected = mapOf(
-            1 to 2, 2 to 2,
-            3 to 4, 4 to 4,
-            5 to 4, 6 to 4,
-            7 to 6, 8 to 6,
-            9 to 6, 10 to 6,
-            11 to 7, 12 to 7,
-            13 to 6, 14 to 6,
-            15 to 8, 16 to 8,
-            17 to 7, 18 to 7,
-            19 to 8, 20 to 8, 40 to 8,
-        )
-        expected.forEach { (number, obstacles) ->
-            assertEquals(obstacles, NeonLineLevels.forNumber(number).obstacles.size, "nivel $number")
+    fun elNumeroDeObstaculosSigueSuEscalonDentroDelMargenDeAlivio() {
+        // El nº de bloques es un OBJETIVO, no una promesa exacta: si a esa densidad no
+        // salen repartos válidos y distintos, el generador afloja hasta 3 bloques antes
+        // que producir un tablero con pegotes o repetido (ver KDoc de NeonLineLevels).
+        (1..60).forEach { number ->
+            val target = targetFor(number)
+            val actual = NeonLineLevels.forNumber(number).obstacles.size
+            assertTrue(
+                actual in (target - 3).coerceAtLeast(1)..target,
+                "nivel $number: $actual bloques, fuera del margen del objetivo $target",
+            )
+        }
+    }
+
+    @Test
+    fun avanzarDeNivelNuncaAflojaElTableroDentroDeUnEscalon() {
+        // Los dos niveles de un escalón comparten tamaño; si el alivio de densidad deja
+        // candidatos con distinto nº de bloques, el ranking debe poner primero el más
+        // suave. Lo contrario —que el tablero se destense justo al pasar de nivel— se
+        // lee como que el juego va hacia atrás.
+        (1..59 step 2).forEach { first ->
+            val a = NeonLineLevels.forNumber(first)
+            val b = NeonLineLevels.forNumber(first + 1)
+            assertEquals(a.gridSize, b.gridSize, "escalón de $first")
+            assertTrue(
+                a.obstacles.size <= b.obstacles.size,
+                "escalón de $first: el nivel ${first + 1} tiene menos bloques que el $first",
+            )
+        }
+    }
+
+    @Test
+    fun dosNivelesSeguidosNuncaTienenElMismoTablero() {
+        // El fallo más visible que puede tener un generador: pasar de nivel y encontrarse
+        // el tablero recién resuelto. Los dos niveles de un mismo escalón comparten
+        // tamaño y nº de bloques, así que son justo los que corren ese riesgo.
+        (1..60).forEach { number ->
+            val current = NeonLineLevels.forNumber(number)
+            val next = NeonLineLevels.forNumber(number + 1)
+            if (current.gridSize == next.gridSize && current.obstacles == next.obstacles) {
+                fail("los niveles $number y ${number + 1} son el mismo tablero")
+            }
         }
     }
 
