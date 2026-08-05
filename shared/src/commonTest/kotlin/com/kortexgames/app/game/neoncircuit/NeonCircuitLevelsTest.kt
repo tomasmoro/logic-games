@@ -1,6 +1,8 @@
 package com.kortexgames.app.game.neoncircuit
 
 import kotlin.test.Test
+import com.kortexgames.app.game.grid.GridPosition
+import kotlin.math.abs
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -82,17 +84,38 @@ class NeonCircuitLevelsTest {
     }
 
     @Test
-    fun laRutaRealNuncaEsMasCortaQueLaDistanciaDirectaEntreNodos() {
-        // hardnessScore se basa en winding ratio >= 1.0 (la ruta real nunca es más
-        // corta que la línea recta entre los dos extremos de un canal): si algún
-        // candidato rompiera esa cota, el ranking de dificultad dejaría de tener
-        // sentido (ratios < 1 serían imposibles geométricamente, así que su aparición
-        // delataría un bug en el cálculo, no una variación válida de dificultad).
-        (1..15).forEach { number ->
-            val candidate = NeonCircuitLevels.chosenCandidate(number)
-            assertTrue(candidate.hardnessScore >= 1.0, "nivel $number: hardnessScore=${candidate.hardnessScore}")
+    fun ningunParDeNodosNaceCercaDelOtro() {
+        // El fallo que hacía triviales los niveles: un canal con sus dos nodos pegados
+        // se resuelve en una esquina sin estorbar a nadie, así que ese color deja de
+        // participar en el puzzle. La cota crece con el tablero porque "cerca" es
+        // relativo: 3 celdas en un 5×5 separan mucho más que en un 9×9.
+        (1..24).forEach { number ->
+            val level = NeonCircuitLevels.forNumber(number)
+            val floor = level.gridSize / 2
+            level.nodes.groupBy { it.color }.forEach { (color, pair) ->
+                val distance = pair[0].position.manhattanTo(pair[1].position)
+                assertTrue(
+                    distance >= floor,
+                    "nivel $number, canal $color: nodos a $distance celdas (mínimo $floor)",
+                )
+            }
         }
     }
+
+    @Test
+    fun losNivelesDeUnEscalonNoRepitenReparto() {
+        // Dos niveles seguidos comparten tablero y nº de canales: si además saliera el
+        // mismo reparto de nodos, el jugador resolvería dos veces el mismo puzzle.
+        (1..24).forEach { number ->
+            val current = NeonCircuitLevels.forNumber(number).nodes.toSet()
+            val next = NeonCircuitLevels.forNumber(number + 1).nodes.toSet()
+            assertTrue(current != next, "los niveles $number y ${number + 1} son el mismo reparto")
+        }
+    }
+
+    /** Distancia de Manhattan, la métrica de separación que usa el generador. */
+    private fun GridPosition.manhattanTo(other: GridPosition): Int =
+        abs(row - other.row) + abs(col - other.col)
 
     @Test
     fun todoNivelGeneradoEsValidoParaVariosTamanosYNumeros() {

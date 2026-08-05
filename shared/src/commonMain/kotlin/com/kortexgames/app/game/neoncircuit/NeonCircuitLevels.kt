@@ -33,26 +33,41 @@ import kotlin.random.Random
  * estabiliza ahí para siempre — no hay más tablero que agrandar ni más canales
  * que meter sin desbordar los [WireColor] disponibles.
  *
- * ## Dificultad dentro de un escalón (sin agrandar el tablero)
+ * ## Dificultad dentro de un escalón: la SEPARACIÓN de los nodos
  *
- * Fijar el tamaño no fija la dificultad: con el MISMO (tablero, nº de canales)
- * un reparto de nodos puede ser "obvio" (cada cable es casi la línea recta entre
- * sus dos extremos) o "enredado" (el cable real serpentea muy lejos de esa línea
- * recta, así que el extremo no delata por dónde pasa la solución). Esa distancia
- * es gratis de medir —no hace falta resolver el nivel, solo mirar el segmento del
- * camino hamiltoniano que ya se generó— así que sirve de proxy de dificultad sin
- * coste de solver (ver [windingRatio]).
+ * Fijar el tamaño no fija la dificultad. Lo que de verdad decide si un nivel se
+ * resuelve de un vistazo es **cuánto separa a cada par de nodos** ([separation]):
+ *
+ *  - **Nodos cerca** → el cable de ese color se resuelve en una esquina, sin tocar a
+ *    nadie. El color deja de participar en el puzzle y el tablero se descompone en
+ *    zonas obvias, cada una con su dueño.
+ *  - **Nodos lejos** → el cable tiene que cruzar el tablero y estorbar a los demás.
+ *    Esa interdependencia entre colores es justo lo que hace difícil un Flow: obliga a
+ *    resolver todos los cables a la vez, no uno detrás de otro.
+ *
+ * Por eso el generador **busca activamente** la máxima separación, en los dos ejes que
+ * la determinan —qué camino hamiltoniano y por dónde se corta— y no solo entre unas
+ * pocas semillas (ver [buildCandidate] y [bestSplit]). No son ejes intercambiables: un
+ * camino muy enroscado no da pares lejanos por bien que se corte.
+ *
+ * > **Corrección de una métrica anterior.** Antes se rankeaba por "cuánto rodea el
+ * > cable respecto a la línea recta entre sus nodos" (pasos ÷ distancia). Como la
+ * > distancia está en el denominador, esa fórmula daba su puntuación MÁXIMA justo a los
+ * > pares con los nodos pegados, y el segundo nivel de cada escalón —el que debía ser
+ * > el difícil— recibía sistemáticamente el reparto más fácil. Medido antes del cambio:
+ * > la separación mínima era de **1 celda** (nodos vecinos) en la mitad de los niveles,
+ * > con una media de 4,3 sobre un tope de 16 en el tablero de 9×9. Después: mínimo 5–7
+ * > y media ~8.
  *
  * Por cada escalón se generan [LEVELS_PER_GRID_SIZE] repartos candidatos (mismo
- * tablero, distinta semilla), se ordenan por su dificultad media y el nivel N
- * dentro del escalón recibe el candidato que le toca por posición: el primer
- * nivel del escalón es el reparto más "obvio" de los candidatos y el último el
- * más "enredado". Así el nivel 1 y el 2 pueden compartir tablero y aun así el 2
- * ser más difícil, en vez de que la única palanca de dificultad sea agrandar el
- * tablero. La semilla de cada escalón NO se topa al llegar al escalón 5 (a
- * diferencia del tamaño de tablero, que sí): cada nuevo par de niveles post-techo
- * sigue sorteando un reparto fresco, así la dificultad post-techo no se repite
- * siempre igual, solo dentro del mismo rango acotado.
+ * tablero, distinta semilla), se ordenan por separación media y el nivel N dentro del
+ * escalón recibe el que le toca por posición: el primero es el reparto más recogido y
+ * el último el más extendido. Así el nivel 1 y el 2 pueden compartir tablero y aun así
+ * el 2 ser más difícil, en vez de que la única palanca sea agrandar el tablero. La
+ * semilla de cada escalón NO se topa al llegar al escalón 5 (a diferencia del tamaño de
+ * tablero, que sí): cada nuevo par de niveles post-techo sigue sorteando un reparto
+ * fresco, así la dificultad post-techo no se repite siempre igual, solo dentro del
+ * mismo rango acotado.
  *
  * ## Cómo se garantiza que el nivel sea resoluble (el "porqué" del algoritmo)
  *
@@ -66,7 +81,8 @@ import kotlin.random.Random
  *     cubrir el 100% de las celdas, cualquier sub-tramo contiguo de ese camino es,
  *     por construcción, un cable válido sin cruces.
  *  2. Se **corta** ese camino en tantos tramos contiguos como canales necesite
- *     el nivel ([splitIntoSegments]). Cada tramo es la solución de un color.
+ *     el nivel ([splitIntoSegments]). Cada tramo es la solución de un color, y de
+ *     entre muchos cortes posibles se elige el que más separa los nodos ([bestSplit]).
  *  3. Los **nodos** del nivel son solo los dos extremos de cada tramo; el
  *     trazo intermedio es justo lo que el jugador debe redescubrir jugando.
  *
@@ -86,6 +102,17 @@ object NeonCircuitLevels {
 
     /** Nº de niveles que dura cada escalón de dificultad antes de subir. */
     private const val LEVELS_PER_GRID_SIZE = 2
+
+    /**
+     * Cortes distintos del mismo camino que se prueban buscando el que más separa los
+     * nodos ([bestSplit]). Es alto a propósito: cada intento es una operación trivial
+     * (repartir longitudes y medir extremos) comparada con generar el camino
+     * hamiltoniano, que ya está hecho y se reutiliza en todos ellos.
+     */
+    private const val SPLIT_ATTEMPTS = 400
+
+    /** Caminos hamiltonianos distintos que se prueban por reparto (ver [buildCandidate]). */
+    private const val PATH_ATTEMPTS = 6
 
     /**
      * Escalones de dificultad en orden (ver tabla en el KDoc de la clase): cada
@@ -134,37 +161,87 @@ object NeonCircuitLevels {
         return pool.sortedBy { it.hardnessScore }[position.coerceIn(0, pool.lastIndex)]
     }
 
-    /** Un reparto candidato con su puntaje de dificultad relativa (ver [windingRatio]). */
+    /** Un reparto candidato con su puntaje de dificultad relativa (ver [separation]). */
     internal data class Candidate(val nodes: List<Node>, val hardnessScore: Double)
 
-    /** Genera un único reparto (tablero, canales) para la [seed] dada. */
+    /**
+     * Genera un único reparto (tablero, canales) para la [seed] dada.
+     *
+     * Se prueban [PATH_ATTEMPTS] caminos hamiltonianos distintos y, de cada uno, el
+     * mejor corte ([bestSplit]); gana el reparto que más separa los nodos. Buscar en
+     * los dos ejes (qué camino y por dónde cortarlo) importa porque no son
+     * intercambiables: hay caminos que se enroscan sobre sí mismos y por mucho que se
+     * corten bien nunca dan pares lejanos.
+     */
     private fun buildCandidate(gridSize: Int, pairCount: Int, seed: Long): Candidate {
-        val path = GridPathBuilder.hamiltonianPath(gridSize, seed)
-        val segments = splitIntoSegments(path, pairCount, seed)
-        val colors = WireColor.entries.take(pairCount).shuffled(Random(seed * 31 + 7))
+        var best: List<List<GridPosition>>? = null
+        var bestMin = -1
+        var bestMean = -1.0
 
+        repeat(PATH_ATTEMPTS) { attempt ->
+            val pathSeed = seed * 31L + attempt
+            val path = GridPathBuilder.hamiltonianPath(gridSize, pathSeed)
+            val segments = bestSplit(path, pairCount, pathSeed)
+            val separations = segments.map(::separation)
+            val min = separations.min()
+            val mean = separations.average()
+            if (min > bestMin || (min == bestMin && mean > bestMean)) {
+                best = segments
+                bestMin = min
+                bestMean = mean
+            }
+        }
+
+        val segments = best!!
+        val colors = WireColor.entries.take(pairCount).shuffled(Random(seed * 31 + 7))
         val nodes = segments.flatMapIndexed { index, segment ->
             val color = colors[index]
             listOf(Node(color, segment.first()), Node(color, segment.last()))
         }
-        val hardness = segments.map(::windingRatio).average()
-        return Candidate(nodes, hardness)
+        return Candidate(nodes, hardnessScore = bestMean)
     }
 
     /**
-     * Cuánto más larga es la ruta real de un canal que la distancia mínima (Manhattan)
-     * entre sus dos extremos. `1.0` = la ruta más corta posible entre los nodos —el
-     * jugador ve un camino directo y "obvio"—; cuanto mayor, más rodeos da el cable
-     * respecto a la línea recta entre sus nodos y menos delata la posición de los
-     * nodos por dónde pasa la solución. Es la señal de dificultad que no depende de
+     * Elige, entre [SPLIT_ATTEMPTS] cortes al azar del mismo camino, el que deja los
+     * nodos **más separados** (ver el porqué en el KDoc de la clase).
+     *
+     * Se ordena primero por la separación MÍNIMA y solo se desempata por la media: lo
+     * que arruina un nivel no es que la media sea mediocre, es que **un** canal tenga
+     * sus dos nodos pegados. Ese canal se resuelve de un vistazo y deja de participar
+     * en el puzzle, así que basta uno para aflojar el tablero entero.
+     *
+     * Cortar es baratísimo (repartir longitudes y mirar los extremos), así que probar
+     * cientos de cortes cuesta menos que buscar otro camino hamiltoniano: se aprovecha
+     * el mismo camino, mucho más caro de conseguir.
+     */
+    private fun bestSplit(path: List<GridPosition>, count: Int, seed: Long): List<List<GridPosition>> {
+        var best: List<List<GridPosition>>? = null
+        var bestMin = -1
+        var bestMean = -1.0
+
+        repeat(SPLIT_ATTEMPTS) { attempt ->
+            val segments = splitIntoSegments(path, count, seed * 1_000_003L + attempt)
+            val separations = segments.map(::separation)
+            val min = separations.min()
+            val mean = separations.average()
+            if (min > bestMin || (min == bestMin && mean > bestMean)) {
+                best = segments
+                bestMin = min
+                bestMean = mean
+            }
+        }
+        return best ?: splitIntoSegments(path, count, seed)
+    }
+
+    /**
+     * Distancia (Manhattan) entre los dos nodos de un canal: cuántas celdas separan al
+     * par que el jugador tiene que unir. Es la señal de dificultad que no depende de
      * agrandar el tablero (ver el KDoc de la clase).
      */
-    private fun windingRatio(segment: List<GridPosition>): Double {
+    private fun separation(segment: List<GridPosition>): Int {
         val start = segment.first()
         val end = segment.last()
-        val manhattan = (abs(start.row - end.row) + abs(start.col - end.col)).coerceAtLeast(1)
-        val pathSteps = segment.size - 1
-        return pathSteps.toDouble() / manhattan
+        return abs(start.row - end.row) + abs(start.col - end.col)
     }
 
     /** Índice de escalón SIN topar al máximo (a diferencia de [tierForLevel]); ver su uso como semilla. */
