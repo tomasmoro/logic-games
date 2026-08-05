@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.kortexgames.app.domain.repository.ProgressRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import kotlin.time.Clock
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.TimeZone
@@ -50,6 +52,14 @@ data class DailyGoalState(
 }
 
 /**
+ * Ids de juego marcados "jugados hoy" tal cual se persisten: la fecha (ISO) a la que
+ * corresponde el set y los propios ids. [DailyGoalManager] es quien decide si [date]
+ * sigue siendo "hoy" (aquí no se conoce la zona horaria del usuario); un [date] de
+ * un día anterior significa que [gameIds] ya caducó y debe ignorarse.
+ */
+data class PlayedTodayRecord(val date: String?, val gameIds: Set<String>)
+
+/**
  * Persiste SOLO la fecha (ISO `yyyy-MM-dd`) en que se reclamó la recompensa. Al
  * cambiar de día, la comparación falla y el objetivo se reinicia solo. Guardar la
  * fecha (y no un booleano) evita tener que "resetear" nada a medianoche.
@@ -57,15 +67,41 @@ data class DailyGoalState(
 class DailyGoalStore(private val dataStore: DataStore<Preferences>) {
     private val claimedDateKey = stringPreferencesKey("daily_goal_claimed_date")
 
+    // "Jugado hoy" (distinto de "completado"): ver [DailyGoalManager.markPlayed] para el
+    // porqué de por qué esto existe aparte del historial de partidas.
+    private val playedDateKey = stringPreferencesKey("daily_goal_played_date")
+    private val playedGameIdsKey = stringSetPreferencesKey("daily_goal_played_game_ids")
+
     val claimedDate: Flow<String?> = dataStore.data.map { it[claimedDateKey] }
+
+    val playedToday: Flow<PlayedTodayRecord> = dataStore.data.map { prefs ->
+        PlayedTodayRecord(date = prefs[playedDateKey], gameIds = prefs[playedGameIdsKey].orEmpty())
+    }
 
     suspend fun setClaimedDate(isoDate: String) {
         dataStore.edit { it[claimedDateKey] = isoDate }
     }
 
+    /**
+     * Añade [gameId] al set de "jugados" de [isoDate]. Si el set guardado era de un día
+     * distinto (incluye la primera vez, `null`), lo reemplaza en vez de acumular sobre un
+     * día caducado.
+     */
+    suspend fun markPlayed(gameId: String, isoDate: String) {
+        dataStore.edit { prefs ->
+            val storedIds = if (prefs[playedDateKey] == isoDate) prefs[playedGameIdsKey].orEmpty() else emptySet()
+            prefs[playedDateKey] = isoDate
+            prefs[playedGameIdsKey] = storedIds + gameId
+        }
+    }
+
     /** Olvida la reclamación guardada (borrado de cuenta): la próxima partida no debe heredar el "ya reclamado" de una cuenta borrada. */
     suspend fun clear() {
-        dataStore.edit { it.remove(claimedDateKey) }
+        dataStore.edit {
+            it.remove(claimedDateKey)
+            it.remove(playedDateKey)
+            it.remove(playedGameIdsKey)
+        }
     }
 }
 
@@ -79,22 +115,31 @@ class DailyGoalStore(private val dataStore: DataStore<Preferences>) {
 class DailyGoalManager(
     progress: ProgressRepository,
     private val store: DailyGoalStore,
-    scope: CoroutineScope,
+    private val scope: CoroutineScope,
     private val clock: Clock = Clock.System,
     private val target: Int = DailyGoalState.DEFAULT_TARGET,
 ) {
     val state: StateFlow<DailyGoalState> =
-        combine(progress.observeHistory(null), store.claimedDate) { history, claimedDate ->
+        combine(progress.observeHistory(null), store.claimedDate, store.playedToday) { history, claimedDate, playedToday ->
             val tz = TimeZone.currentSystemDefault()
             val today = clock.todayIn(tz)
             val dayStart = today.atStartOfDayIn(tz)
             val nextDayStart = today.plus(1, DateTimeUnit.DAY).atStartOfDayIn(tz)
 
-            // Ids jugados hoy: base para marcar qué juegos de la misión están hechos.
-            val playedTodayIds = history
+            // Ids jugados hoy: base para marcar qué juegos de la misión están hechos. Se
+            // considera "jugado" tanto si HOY se guardó un resultado (partida terminada,
+            // vía [ProgressRepository.saveResult]) como si HOY se marcó explícitamente con
+            // [markPlayed] al arrancar la partida (ver ese método para el porqué): la misión
+            // no debe exigir "terminar el nivel", basta con jugarlo. Sin la segunda fuente,
+            // los juegos ENDLESS (2048, Neon Block Grid...) —que solo generan un resultado
+            // cuando el jugador PIERDE— no marcarían su casilla de la misión hasta esa
+            // derrota, aunque el jugador ya hubiera practicado el juego.
+            val finishedTodayIds = history
                 .filter { it.createdAt >= dayStart && it.createdAt < nextDayStart }
                 .map { it.gameId }
                 .toSet()
+            val startedTodayIds = if (playedToday.date == today.toString()) playedToday.gameIds else emptySet()
+            val playedTodayIds = finishedTodayIds + startedTodayIds
 
             // Misión del día (fija durante el día, ver [dailyMissionGames]) con su estado.
             val mission = dailyMissionGames(today.toEpochDays()).map { game ->
@@ -119,6 +164,21 @@ class DailyGoalManager(
         if (!state.value.canClaim) return false
         store.setClaimedDate(clock.todayIn(TimeZone.currentSystemDefault()).toString())
         return true
+    }
+
+    /**
+     * Marca [gameId] como jugado HOY para la misión diaria, sin esperar a que la partida
+     * termine (ver la nota en [state] sobre por qué el historial solo no basta).
+     *
+     * Se llama desde el `onStart`/"Comenzar" de la antesala de cada juego —un `Composable`,
+     * sin contexto de corrutina propio— así que lanza en el [scope] del manager en vez de
+     * exigir `suspend` en el call site (disparar y olvidar: si falla, el peor caso es que la
+     * misión no marque esa casilla, no algo que deba bloquear ni reportar al jugador).
+     */
+    fun markPlayed(gameId: String) {
+        scope.launch {
+            store.markPlayed(gameId, clock.todayIn(TimeZone.currentSystemDefault()).toString())
+        }
     }
 
     /** Olvida la reclamación del día (borrado de cuenta): ver [DailyGoalStore.clear]. */

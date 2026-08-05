@@ -55,6 +55,7 @@ import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.core.theme.LogicGradients
 import com.kortexgames.app.di.AppGraph
+import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameHelpContent
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
@@ -198,7 +199,12 @@ fun HyperCubeScreen(graph: AppGraph, onExit: () -> Unit) {
                 maxLevel = MAX_LEVEL,
             ),
             configContent = { FreeModeCard(onPlay = { vm.onIntent(HyperCubeIntent.PlayFreeMode) }) },
-            onStart = { vm.onIntent(HyperCubeIntent.PlayLevel(selectedLevel)) },
+            onStart = {
+                // Cuenta para la misión diaria en cuanto se juega, no hace falta terminar
+                // la partida (ver DailyGoalManager.markPlayed).
+                graph.dailyGoalManager.markPlayed(GameIds.HYPER_CUBE)
+                vm.onIntent(HyperCubeIntent.PlayLevel(selectedLevel))
+            },
             // Partida a medias guardada al salir: la antesala la ofrece como CTA principal, con un
             // resumen para que el jugador sepa QUÉ retoma antes de pulsar.
             resume = state.saved?.let { saved ->

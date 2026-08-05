@@ -57,6 +57,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.di.AppGraph
+import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.LeveledGamePhase
 import com.kortexgames.app.ui.components.GameIntroScreen
@@ -141,7 +142,12 @@ fun StarportScreen(graph: AppGraph, onExit: () -> Unit) {
                 selected = selectedLevel,
                 onSelect = { selectedLevel = it },
             ),
-            onStart = { vm.onIntent(StarportIntent.PlayLevel(selectedLevel)) },
+            onStart = {
+                // Cuenta para la misión diaria en cuanto se juega, no hace falta terminar
+                // la partida (ver DailyGoalManager.markPlayed).
+                graph.dailyGoalManager.markPlayed(GameIds.STARPORT_ESCAPE)
+                vm.onIntent(StarportIntent.PlayLevel(selectedLevel))
+            },
             onExit = onExit,
             background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },
         )

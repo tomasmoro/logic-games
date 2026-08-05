@@ -32,6 +32,12 @@ data class AuthUiState(
     val error: String? = null,
     val showGuestRiskDialog: Boolean = false,
     val acceptedLegal: Boolean = false,
+    // Se marca al pulsar "Entrar"/"Crear cuenta" con el formulario incompleto o
+    // inválido. Antes de ese primer intento no se regaña a un campo intacto (el
+    // usuario aún no ha terminado de escribir); a partir de ahí, los errores de
+    // campo se recalculan en vivo con cada intent para que desaparezcan solos al
+    // corregir.
+    val submitAttempted: Boolean = false,
 ) : UiState {
 
     /**
@@ -60,16 +66,36 @@ data class AuthUiState(
         get() = username.trim().length in MIN_USERNAME_LENGTH..MAX_USERNAME_LENGTH
 
     /**
-     * Error de nombre a mostrar bajo el campo, o `null` si está bien o aún no se
-     * ha escrito nada (no se regaña a un campo intacto).
+     * Error de nombre a mostrar bajo el campo. Vacío no se regaña hasta que se
+     * intentó enviar (ahí sí, porque el campo es obligatorio); una vez con texto,
+     * la longitud se valida en vivo.
      */
     val usernameError: String?
         get() = when {
-            !requiresUsername || username.isEmpty() -> null
+            !requiresUsername -> null
+            username.isEmpty() -> if (submitAttempted) "Escribe un nombre de jugador." else null
             username.trim().length < MIN_USERNAME_LENGTH ->
                 "Al menos $MIN_USERNAME_LENGTH caracteres."
             username.trim().length > MAX_USERNAME_LENGTH ->
                 "Máximo $MAX_USERNAME_LENGTH caracteres."
+            else -> null
+        }
+
+    /** Error de email a mostrar bajo el campo, solo tras un intento de envío. */
+    val emailError: String?
+        get() = when {
+            !submitAttempted -> null
+            email.isEmpty() -> "Escribe tu email."
+            !(email.contains("@") && email.contains(".")) -> "Ese email no es válido."
+            else -> null
+        }
+
+    /** Error de contraseña a mostrar bajo el campo, solo tras un intento de envío. */
+    val passwordError: String?
+        get() = when {
+            !submitAttempted -> null
+            password.isEmpty() -> "Escribe tu contraseña."
+            password.length < 6 -> "Al menos 6 caracteres."
             else -> null
         }
 
@@ -169,6 +195,10 @@ class AuthViewModel(
                     copy(
                         mode = if (mode == AuthMode.SignIn) AuthMode.SignUp else AuthMode.SignIn,
                         error = null,
+                        // Los campos que exige cada modo son distintos (p. ej. el
+                        // nombre solo en alta): arrastrar errores del modo anterior
+                        // confundiría más de lo que ayuda.
+                        submitAttempted = false,
                     )
                 }
             }
@@ -195,7 +225,15 @@ class AuthViewModel(
 
     private fun submitEmail() {
         val state = currentState
-        if (!state.canSubmit) return
+        if (!state.canSubmit) {
+            // El botón sigue respondiendo al toque aunque el formulario esté
+            // incompleto: marcar el intento hace que email/contraseña/nombre
+            // muestren su error bajo el campo en vez de que el botón se quede
+            // mudo (antes simplemente no hacía nada).
+            audio.hapticFeedback(HapticFeedback.LIGHT)
+            setState { copy(submitAttempted = true) }
+            return
+        }
         audio.playSound(SoundEffect.TAP)
         audio.hapticFeedback(HapticFeedback.LIGHT)
         setState { copy(isSubmitting = true, error = null) }
@@ -221,7 +259,15 @@ class AuthViewModel(
         viewModelScope.launch {
             authRepository.signInWithGoogle()
                 .onSuccess { finishSuccessfully() }
-                .onFailure { fail(googleErrorMessage(it)) }
+                .onFailure {
+                    // `googleErrorMessage` oculta a propósito el detalle del SDK al usuario
+                    // (mensaje genérico); este log es la única forma de ver la causa real
+                    // (SHA-1/client id mal registrado, "invalid audience", sin red, etc.) vía
+                    // `adb logcat` o Android Vitals de Play Console. Prefijo "KORTEX" para
+                    // poder filtrarlo, igual que en `ProgressRepositoryImpl`.
+                    println("KORTEX google_sign_in FALLÓ: ${it::class.simpleName}: ${it.message}")
+                    fail(googleErrorMessage(it))
+                }
         }
     }
 

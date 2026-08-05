@@ -59,6 +59,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.di.AppGraph
+import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.ui.components.GameExitGuard
@@ -211,7 +212,12 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
             motif = GameMotif.TETROMINO,
             description = "Arrastra las piezas al tablero y completa filas o columnas para romperlas. La partida termina cuando ninguna pieza cabe.",
             accent = CategoryPalette.SpatialVision,
-            onStart = { vm.onIntent(BlockGridIntent.StartGame) },
+            onStart = {
+                // Cuenta para la misión diaria en cuanto se juega, no hace falta terminar
+                // la partida (ver DailyGoalManager.markPlayed).
+                graph.dailyGoalManager.markPlayed(GameIds.NEON_BLOCK_GRID)
+                vm.onIntent(BlockGridIntent.StartGame)
+            },
             resume = state.savedScore?.let { score ->
                 ResumeState(
                     onResume = { vm.onIntent(BlockGridIntent.ResumeSaved) },

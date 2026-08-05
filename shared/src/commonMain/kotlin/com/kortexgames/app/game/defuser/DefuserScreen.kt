@@ -40,6 +40,7 @@ import com.kortexgames.app.core.audio.SoundEffect
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.di.AppGraph
+import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameCategory
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
@@ -220,7 +221,12 @@ fun DefuserScreen(graph: AppGraph, onExit: () -> Unit) {
             accent = accent,
             icon = GameCategory.ATTENTION.icon,
             startLabel = if (state.hasSavedGame) "Continuar" else "Comenzar",
-            onStart = { vm.onIntent(DefuserIntent.Start) },
+            onStart = {
+                // Cuenta para la misión diaria en cuanto se juega, no hace falta terminar
+                // la partida (ver DailyGoalManager.markPlayed).
+                graph.dailyGoalManager.markPlayed(GameIds.NEON_DEFUSER)
+                vm.onIntent(DefuserIntent.Start)
+            },
             onExit = onExit,
             background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },
             // El selector de dificultad va como `configContent` (dentro del bloque de

@@ -64,6 +64,7 @@ import com.kortexgames.app.core.ads.RewardResult
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.di.AppGraph
+import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.LeveledGamePhase
@@ -158,7 +159,12 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
             ),
             motif = GameMotif.CROSSWORD,
             startLabel = "Empezar",
-            onStart = { vm.onIntent(CrucigramaNeonIntent.PlayLevel(selectedLevel)) },
+            onStart = {
+                // Cuenta para la misión diaria en cuanto se juega, no hace falta terminar
+                // la partida (ver DailyGoalManager.markPlayed).
+                graph.dailyGoalManager.markPlayed(GameIds.CRUCIGRAMA_NEON)
+                vm.onIntent(CrucigramaNeonIntent.PlayLevel(selectedLevel))
+            },
             // Partida a medias guardada al salir: la antesala la ofrece como CTA
             // principal, con su nivel para que el jugador sepa qué retoma.
             resume = state.savedLevel?.let { level ->

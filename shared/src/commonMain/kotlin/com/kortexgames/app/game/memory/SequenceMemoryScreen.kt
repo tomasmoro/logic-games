@@ -35,6 +35,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.di.AppGraph
+import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.ui.components.ArcadeBrickBackground
@@ -88,7 +89,12 @@ fun SequenceMemoryScreen(graph: AppGraph, onExit: () -> Unit) {
             description = "Observa la secuencia de notas y repítela en orden. Cada acierto la hace más larga.",
             accent = CategoryPalette.Memory,
             motif = GameMotif.SEQUENCE_GRID,
-            onStart = { vm.onIntent(SequenceMemoryIntent.Start) },
+            onStart = {
+                // Cuenta para la misión diaria en cuanto se juega, no hace falta terminar
+                // la partida (ver DailyGoalManager.markPlayed).
+                graph.dailyGoalManager.markPlayed(GameIds.SEQUENCE_MEMORY)
+                vm.onIntent(SequenceMemoryIntent.Start)
+            },
             onExit = onExit,
             background = {
                 ArcadeBrickBackground(modifier = Modifier.fillMaxSize(), accent = CategoryPalette.Memory)

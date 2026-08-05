@@ -43,6 +43,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.di.AppGraph
+import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.ui.components.GameIntroScreen
@@ -79,7 +80,12 @@ fun PolarityCollisionScreen(graph: AppGraph, onExit: () -> Unit) {
             motif = GameMotif.POLARITY_SECTORS,
             description = "Rota el círculo para capturar las piezas de tu color y evita las contrarias antes de que se acabe el tiempo.",
             accent = CategoryPalette.SpatialVision,
-            onStart = { vm.onIntent(PolarityCollisionIntent.Start) },
+            onStart = {
+                // Cuenta para la misión diaria en cuanto se juega, no hace falta terminar
+                // la partida (ver DailyGoalManager.markPlayed).
+                graph.dailyGoalManager.markPlayed(GameIds.POLARITY_COLLISION)
+                vm.onIntent(PolarityCollisionIntent.Start)
+            },
             onExit = onExit,
             background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },
         )

@@ -53,6 +53,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.di.AppGraph
+import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.ui.components.CitySkylineBackground
@@ -117,7 +118,12 @@ fun BubbleMathScreen(graph: AppGraph, onExit: () -> Unit) {
             description = "Revienta las burbujas con el resultado correcto antes de que toquen el suelo; encadena aciertos para subir el combo.",
             accent = CategoryPalette.MentalMath,
             motif = GameMotif.MATH_BUBBLES,
-            onStart = { vm.onIntent(BubbleMathIntent.Start) },
+            onStart = {
+                // Cuenta para la misión diaria en cuanto se juega, no hace falta terminar
+                // la partida (ver DailyGoalManager.markPlayed).
+                graph.dailyGoalManager.markPlayed(GameIds.BUBBLE_MATH)
+                vm.onIntent(BubbleMathIntent.Start)
+            },
             onExit = onExit,
             background = {
                 CitySkylineBackground(

@@ -66,6 +66,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.di.AppGraph
+import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.LeveledGamePhase
@@ -178,7 +179,12 @@ fun WordConnectScreen(graph: AppGraph, onExit: () -> Unit) {
                 onSelect = { selectedLevel = it },
             ),
             startLabel = "Empezar",
-            onStart = { vm.onIntent(WordConnectIntent.PlayLevel(selectedLevel)) },
+            onStart = {
+                // Cuenta para la misión diaria en cuanto se juega, no hace falta terminar
+                // la partida (ver DailyGoalManager.markPlayed).
+                graph.dailyGoalManager.markPlayed(GameIds.WORD_CONNECT)
+                vm.onIntent(WordConnectIntent.PlayLevel(selectedLevel))
+            },
             onExit = onExit,
         )
         return

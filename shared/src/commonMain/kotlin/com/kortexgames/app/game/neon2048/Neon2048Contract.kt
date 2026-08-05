@@ -210,15 +210,19 @@ sealed interface Neon2048Effect : UiEffect {
      * Reproduce un SFX. Se envuelve [SoundEffect] para que la UI solo tenga que
      * reenviarlo al [com.kortexgames.app.core.audio.AudioAndHapticManager].
      *
-     * Atajos semánticos del juego (movimiento y fusión solo vibran, sin SFX,
-     * para no repetir sonido en casi cada jugada):
+     * Atajos semánticos del juego:
      *  - [Win]      → primera ficha 2048 ([SoundEffect.LEVEL_UP]).
      *  - [GameOver] → sin movimientos válidos ([SoundEffect.ERROR]).
+     *  - [Merge]    → cada fusión, un "pop" MUY sutil ([SoundEffect.MERGE_POP])
+     *    para que el tablero no se sienta silencioso; el volumen bajo (fijado en
+     *    el propio [SoundEffect]) es lo que evita que se vuelva repetitivo pese a
+     *    sonar en casi cada jugada. Movimiento sin fusión sigue sin SFX, solo vibra.
      */
     data class PlaySound(val sound: SoundEffect) : Neon2048Effect {
         companion object {
             val Win = PlaySound(SoundEffect.LEVEL_UP)
             val GameOver = PlaySound(SoundEffect.ERROR)
+            val Merge = PlaySound(SoundEffect.MERGE_POP)
         }
     }
 

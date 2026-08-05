@@ -351,10 +351,12 @@ class Neon2048ViewModel(
      * Tabla única jugada → feedback sensorial. Centralizarla (en vez de repartir
      * `sendEffect` por el reducer) hace trivial reajustar la "textura" del juego.
      *
-     * Movimiento y fusión solo vibran (sin sonido): la ficha se mueve/fusiona
-     * en casi cada jugada, y un sonido en cada una resultaba repetitivo. La
-     * vibración fuerte se reserva a los hitos ≥ 128: si todo vibrara fuerte,
-     * nada se sentiría importante.
+     * Movimiento sin fusión solo vibra (sin sonido): pasa en casi cada jugada y
+     * un SFX a volumen normal en cada una resultaba repetitivo. La fusión SÍ
+     * suma un "pop" (ver [Neon2048Effect.PlaySound.Merge]), pero deliberadamente
+     * muy bajo por el mismo motivo — así el tablero deja de sentirse silencioso
+     * sin llegar a ser ruidoso. La vibración fuerte se reserva a los hitos ≥ 128:
+     * si todo vibrara fuerte, nada se sentiría importante.
      */
     private fun emitMoveFeedback(move: MoveOutcome, justWon: Boolean) {
         if (justWon) {
@@ -364,6 +366,7 @@ class Neon2048ViewModel(
             return
         }
         if (move.mergeCount > 0) {
+            sendEffect(Neon2048Effect.PlaySound.Merge)
             val heavy = move.highestMerge >= Neon2048Config.HEAVY_HAPTIC_THRESHOLD
             sendEffect(if (heavy) Neon2048Effect.Vibrate.Heavy else Neon2048Effect.Vibrate.Tick)
             if (move.highestMerge >= Neon2048Config.FIREWORKS_MERGE_THRESHOLD) {

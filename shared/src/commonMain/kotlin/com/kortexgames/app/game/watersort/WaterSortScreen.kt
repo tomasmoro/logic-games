@@ -69,6 +69,7 @@ import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.core.theme.LogicGamesTheme
 import com.kortexgames.app.di.AppGraph
+import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.LeveledGamePhase
@@ -187,7 +188,12 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
                 onSelect = { selectedLevel = it },
             ),
             motif = GameMotif.POTIONS,
-            onStart = { vm.onIntent(WaterSortIntent.PlayLevel(selectedLevel)) },
+            onStart = {
+                // Cuenta para la misión diaria en cuanto se juega, no hace falta terminar
+                // la partida (ver DailyGoalManager.markPlayed).
+                graph.dailyGoalManager.markPlayed(GameIds.WATER_SORT)
+                vm.onIntent(WaterSortIntent.PlayLevel(selectedLevel))
+            },
             onExit = onExit,
             background = {
                 ArcadeBrickBackground(modifier = Modifier.fillMaxSize(), accent = CategoryPalette.Logic)

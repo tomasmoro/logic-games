@@ -45,6 +45,7 @@ import com.kortexgames.app.core.audio.SoundEffect
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.di.AppGraph
+import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameCategory
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
@@ -258,7 +259,12 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
             // Start SIEMPRE arranca partida nueva (ver KDoc del intent); es el
             // CTA principal cuando no hay guardado, y baja a "Empezar de nuevo"
             // (acción secundaria de GameIntroScreen) cuando sí lo hay.
-            onStart = { vm.onIntent(NeonSudokuIntent.Start) },
+            onStart = {
+                // Cuenta para la misión diaria en cuanto se juega, no hace falta terminar
+                // la partida (ver DailyGoalManager.markPlayed).
+                graph.dailyGoalManager.markPlayed(GameIds.NEON_SUDOKU_MATRIX)
+                vm.onIntent(NeonSudokuIntent.Start)
+            },
             // Partida guardada al salir: la antesala la ofrece como CTA
             // principal (ResumeSaved), con su resumen para que el jugador sepa
             // qué retoma. Mismo mecanismo que `savedScore` en Neon Grid 2048.

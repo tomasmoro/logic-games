@@ -76,6 +76,11 @@ class IosAudioAndHapticManager(
                 runCatching {
                     val bytes = Res.readBytes("files/${effect.fileName}")
                     AVAudioPlayer(data = bytes.toNSData(), error = null).also {
+                        // Volumen fijado UNA vez aquí (no en cada `playSound`): cada
+                        // [SoundEffect] tiene su propio AVAudioPlayer cacheado, así que
+                        // mutar el volumen en cada reproducción "contagiaría" ese nivel
+                        // al resto de usos del mismo efecto — ver KDoc de [SoundEffect.volume].
+                        it.volume = effect.volume
                         it.prepareToPlay()
                         players[effect] = it
                     }

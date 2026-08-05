@@ -277,6 +277,7 @@ private fun AuthForm(
             keyboardType = KeyboardType.Email,
             imeAction = ImeAction.Next,
             enabled = !state.isSubmitting,
+            errorText = state.emailError,
         )
 
         PasswordField(
@@ -284,6 +285,7 @@ private fun AuthForm(
             onValueChange = { onIntent(AuthIntent.PasswordChanged(it)) },
             enabled = !state.isSubmitting,
             onDone = { onIntent(AuthIntent.SubmitEmail) },
+            errorText = state.passwordError,
         )
 
         // Banner de error: aparece/desaparece con fade (no salta el layout brusco).
@@ -424,6 +426,7 @@ private fun PasswordField(
     onValueChange: (String) -> Unit,
     enabled: Boolean,
     onDone: () -> Unit,
+    errorText: String? = null,
 ) {
     var visible by remember { mutableStateOf(false) }
     AuthTextField(
@@ -436,6 +439,7 @@ private fun PasswordField(
         enabled = enabled,
         visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
         onDone = onDone,
+        errorText = errorText,
         trailing = {
             IconButton(onClick = { visible = !visible }) {
                 Icon(
@@ -468,6 +472,11 @@ private fun ErrorBanner(message: String) {
 /**
  * CTA principal con degradado verde neón. Es el ÚNICO elemento en bucle de la
  * pantalla ([pulse] + [softGlow]); al enviar muestra un spinner y se desactiva.
+ *
+ * Sigue respondiendo al toque aunque el formulario sea inválido ([enabled] en
+ * `false`, salvo mientras [loading]): así el intent llega al ViewModel, que
+ * marca `submitAttempted` y hace aparecer el error bajo cada campo en vez de
+ * dejar el botón mudo, que el usuario podría confundir con "está roto".
  */
 @Composable
 private fun PrimaryButton(
@@ -488,7 +497,7 @@ private fun PrimaryButton(
                 if (active) Brush.horizontalGradient(LogicGradients.play)
                 else Brush.horizontalGradient(listOf(LogicColors.SurfaceVariantDark, LogicColors.SurfaceVariantDark)),
             )
-            .bounceClick(enabled = active, onClick = onClick),
+            .bounceClick(enabled = !loading, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         if (loading) {

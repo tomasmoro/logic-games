@@ -91,7 +91,9 @@ class AndroidAudioAndHapticManager(
     override fun playSound(effect: SoundEffect) {
         if (!settings.current.isSfxEnabled) return
         val id = soundIds[effect] ?: return
-        soundPool.play(id, 1f, 1f, 1, 0, 1f)
+        // El volumen es por EFECTO (p. ej. MERGE_POP suena mucho más bajo que TAP
+        // aunque comparta archivo), no un ajuste global: ver KDoc de [SoundEffect.volume].
+        soundPool.play(id, effect.volume, effect.volume, 1, 0, 1f)
     }
 
     override fun hapticFeedback(type: HapticFeedback) {

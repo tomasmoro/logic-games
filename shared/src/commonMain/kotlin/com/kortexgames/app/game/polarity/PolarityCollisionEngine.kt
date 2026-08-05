@@ -120,7 +120,16 @@ class PolarityCollisionEngine(
         spawnAccumulatorSec = 0f
         nextParticleId = 1L
         nextImpactId = 1L
-        _state.value = PolarityCollisionState()
+        // Conserva el viewport ya conocido: si lo perdiéramos (volviendo a 0,0), `onFrame`
+        // se quedaría devolviendo temprano hasta el próximo reporte de tamaño, y como la
+        // pantalla solo reenvía el viewport cuando su tamaño CAMBIA (`LaunchedEffect(viewportSize)`
+        // en [PolarityCollisionScreen]), reiniciar sin volver a rotar el dispositivo dejaba el
+        // juego congelado tras pulsar "Jugar de nuevo" (ninguna partícula se movía ni spawneaba).
+        val current = _state.value
+        _state.value = PolarityCollisionState(
+            viewportWidthPx = current.viewportWidthPx,
+            viewportHeightPx = current.viewportHeightPx,
+        )
     }
 
     override fun onPause() {

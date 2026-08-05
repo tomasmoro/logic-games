@@ -41,6 +41,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.di.AppGraph
+import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.ui.components.GameIntroScreen
@@ -116,7 +117,12 @@ fun NeonPulseScreen(graph: AppGraph, onExit: () -> Unit) {
             motif = GameMotif.NEON_PULSE,
             description = NEON_PULSE_HELP,
             accent = CategoryPalette.Reflexes,
-            onStart = { vm.onIntent(NeonPulseIntent.Start) },
+            onStart = {
+                // Cuenta para la misión diaria en cuanto se juega, no hace falta terminar
+                // la partida (ver DailyGoalManager.markPlayed).
+                graph.dailyGoalManager.markPlayed(GameIds.NEON_PULSE)
+                vm.onIntent(NeonPulseIntent.Start)
+            },
             onExit = onExit,
             background = {
                 SpaceBackdrop(modifier = Modifier.fillMaxSize())

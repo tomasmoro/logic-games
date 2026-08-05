@@ -49,9 +49,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.kortexgames.app.core.audio.SoundEffect
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.di.AppGraph
+import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.ui.components.AnimatedGameButton
@@ -177,7 +179,12 @@ fun Neon2048Screen(graph: AppGraph, onExit: () -> Unit) {
             motif = GameMotif.NUMBER_TILES,
             description = NEON_2048_HELP,
             accent = CategoryPalette.MentalMath,
-            onStart = { vm.onIntent(Neon2048Intent.StartGame) },
+            onStart = {
+                // Cuenta para la misión diaria en cuanto se juega, no hace falta terminar
+                // la partida (ver DailyGoalManager.markPlayed).
+                graph.dailyGoalManager.markPlayed(GameIds.NEON_2048)
+                vm.onIntent(Neon2048Intent.StartGame)
+            },
             // Corrida a medias guardada al salir: la antesala la ofrece como CTA
             // principal, con su puntuación para que el jugador sepa qué retoma.
             resume = state.savedScore?.let { score ->
@@ -228,15 +235,19 @@ fun Neon2048Screen(graph: AppGraph, onExit: () -> Unit) {
         if (celebrating) {
             FireworksOverlay(
                 modifier = Modifier.fillMaxSize(),
-                onBurst = { graph.audio.playSound(com.kortexgames.app.core.audio.SoundEffect.SUCCESS) },
+                onBurst = { graph.audio.playSound(SoundEffect.SUCCESS) },
             )
         }
 
-        // Salva corta al fusionar una ficha >64: más discreta que la de victoria
-        // (menos estallidos, sin sonido — el juego solo vibra en fusión/movimiento)
-        // y teñida del color de la ficha resultante para que cada hito se sienta
-        // suyo. `key(id)` reinicia el patrón de FireworksOverlay si dos fusiones
-        // grandes llegan una detrás de otra en vez de continuar la anterior.
+        // Salva corta al fusionar una ficha ≥128: más discreta que la de victoria
+        // (menos estallidos) y teñida del color de la ficha resultante para que
+        // cada hito se sienta suyo. Mismo SFX por estallido que la de victoria
+        // ([SoundEffect.SUCCESS] vía `onBurst`, igual que en Defuser): antes se
+        // dejaba deliberadamente sin sonido para no repetir el de movimiento/fusión
+        // en cada jugada, pero un hito de 3 estallidos NO es "cada jugada" y sin
+        // sonido se leía como un fallo visual mudo frente al resto de celebraciones
+        // de la app. `key(id)` reinicia el patrón de FireworksOverlay si dos
+        // fusiones grandes llegan una detrás de otra en vez de continuar la anterior.
         mergeCelebration?.let { celebration ->
             key(celebration.id) {
                 FireworksOverlay(
@@ -244,6 +255,7 @@ fun Neon2048Screen(graph: AppGraph, onExit: () -> Unit) {
                     colors = listOf(celebration.accent, LogicColors.Amber),
                     burstCount = MERGE_CELEBRATION_BURSTS,
                     seed = celebration.id,
+                    onBurst = { graph.audio.playSound(SoundEffect.SUCCESS) },
                 )
             }
         }

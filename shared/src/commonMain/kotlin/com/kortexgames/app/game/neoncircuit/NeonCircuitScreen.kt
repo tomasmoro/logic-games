@@ -63,6 +63,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.di.AppGraph
+import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.LeveledGamePhase
@@ -187,7 +188,12 @@ fun NeonCircuitScreen(graph: AppGraph, onExit: () -> Unit) {
                 selected = selectedLevel,
                 onSelect = { selectedLevel = it },
             ),
-            onStart = { vm.onIntent(NeonCircuitIntent.PlayLevel(selectedLevel)) },
+            onStart = {
+                // Cuenta para la misión diaria en cuanto se juega, no hace falta terminar
+                // la partida (ver DailyGoalManager.markPlayed).
+                graph.dailyGoalManager.markPlayed(GameIds.NEON_CIRCUIT)
+                vm.onIntent(NeonCircuitIntent.PlayLevel(selectedLevel))
+            },
             onExit = onExit,
             background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },
         )
