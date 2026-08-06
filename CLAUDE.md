@@ -93,12 +93,22 @@ borrado de cuenta (`AccountViewModel` + Edge Function `delete-account`), AdMob
 con consentimiento UMP, logros (`game/achievements`), objetivo diario y rachas
 (`game/daily`), progresión y récords por nivel.
 
-**Bloqueantes conocidos de la Fase 8** (publicación): el plan Premium está
-modelado en el dominio pero **no se puede comprar** (no hay SDK de billing), y la
-app se dirige a público mixto con menores de 13 sin la pantalla neutral de edad
-ni el `tagForChildDirectedTreatment` que exigen COPPA y la Política de Familias
-de Google Play. Las páginas legales (privacidad y condiciones, ES/EN) ya existen
-en `site/` y se despliegan solas a GitHub Pages (`.github/workflows/deploy-site.yml`).
+**Bloqueantes de la Fase 8 (publicación) — resueltos para el envío a tiendas.**
+Los dos puntos que frenaban la subida ya no aplican:
+
+- **Público objetivo:** se cambió a **mayores de 13 años** (ya no es mixto con
+  menores de 13), así que no hace falta la pantalla neutral de edad ni el
+  `tagForChildDirectedTreatment` de COPPA / Política de Familias de Google Play.
+- **Plan Premium:** sigue **modelado solo en el dominio** (`PlanType`,
+  `plan_type`/`premium_until` en Supabase, gating de `AdManager`) — no hay SDK de
+  billing (StoreKit/Play Billing). Pero no hay **ninguna superficie de UI** que lo
+  exponga (sin botón de compra, sin mención de "Premium" en pantalla), así que no
+  hay nada que un revisor pueda encontrar roto: no bloquea el envío de esta
+  versión. La compra real de Premium queda como trabajo futuro de monetización,
+  no como bloqueante de publicación.
+
+Las páginas legales (privacidad y condiciones, ES/EN) ya existen en `site/` y se
+despliegan solas a GitHub Pages (`.github/workflows/deploy-site.yml`).
 
 ---
 

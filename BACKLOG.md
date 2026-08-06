@@ -243,11 +243,28 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
       presentadores). Nota dev: para forzar el formulario fuera de la UE, añadir un
       `ConsentDebugSettings` con geografía EEA + hashed id del dispositivo (por-dispositivo,
       no fijado en código). Verificado con `:androidApp:assembleDebug`.
-- [ ] **AdMob iOS (Parte B) + precarga.** Falta: el puente Swift + CocoaPods/SPM para
-      `GADInterstitialAd`/`GADRewardedAd` (reemplazar el `actual` iOS que hoy usa los
-      simulados) **y su propio flujo UMP** en iOS; y **precargar** `InterstitialAd`/
-      `RewardedAd` en vez de cargar en cada `show()` para quitar latencia. Los ad units
-      de iOS serán otros (AdMob los da por plataforma) y hoy no los cubre `AdMobSecrets`.
+- [x] **AdMob iOS (Parte B), sin CocoaPods.** HECHO. En vez de cinterop manual o
+      CocoaPods (que el proyecto evita, ver login con Google), el SDK vive **solo en
+      Swift**: `IosAdBridge` (interfaz Kotlin, `shared/iosMain`) la implementa
+      `AdMobBridge.swift` (`iosApp`) con `GADInterstitialAd`/`GADRewardedAd` reales,
+      publicándose en `IosAdBridgeHolder` desde `iOSApp.swift` al arrancar.
+      `BridgedInterstitialAdPresenter`/`BridgedRewardedAdPresenter` adaptan las
+      callbacks de Swift al contrato `suspend` del `AdManager`; si Swift no ha
+      registrado el puente todavía (paquete SPM sin enlazar), el `actual` de iOS cae a
+      los simulados sin romper nada. Incluye consentimiento UMP + prompt de ATT
+      (`AdMobBridge.requestConsentAndStart()`, llamado desde `iOSApp.swift.init()`) y
+      **precarga básica** (recarga el siguiente anuncio tras cada cierre).
+      **Pendiente manual, no scripteable:** añadir el paquete SPM en Xcode (File → Add
+      Package Dependencies → `https://github.com/googleads/swift-package-manager-google-mobile-ads.git`)
+      y marcar **los DOS** productos en el target `iosApp`: `GoogleMobileAds` **y**
+      `GoogleUserMessagingPlatform` (dependencia transitiva del mismo paquete, pero
+      Xcode no la enlaza sola — hay que tildarla aparte). API "Swift-first" del SDK
+      v13 (sin prefijo `GAD`/`UMP`, `import UserMessagingPlatform` aparte).
+      **Pendiente para publicar:** hoy usa los ad unit ID de **PRUEBA** de Google fijos
+      en `AdMobBridge.swift` (no hay `AdMobConfig`/`AdMobSecrets` equivalente para iOS);
+      replicar el patrón real-solo-en-Release de Android. También falta
+      `SKAdNetworkItems` en `Info.plist` (lista oficial de Google, no incluida aquí por
+      tamaño) y afinar la precarga (reintento/backoff) antes de publicar.
 
 ## Técnico / limpieza
 - [ ] **La recompensa diaria no se reclama desde ningún sitio.**
