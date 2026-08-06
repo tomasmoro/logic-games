@@ -50,6 +50,7 @@ import kotlin.math.sin
  *  - [GameMotif.MATH_BUBBLES] → burbujas con operaciones y un objetivo.
  *  - [GameMotif.ENERGY_PIPES] → tablero de tuberías con nodos-objetivo conectados.
  *  - [GameMotif.POLARITY_SECTORS] → círculo de 4 sectores con partículas entrantes.
+ *  - [GameMotif.QUANTUM_SPHERES] → esferas de luz de tamaños crecientes dentro del reactor.
  *  - Memoria → red neuronal ([NeuralCornerTexture]).
  *  - Cálculo Mental → símbolos matemáticos de distintos tamaños.
  *  - Pensamiento Lógico → piezas de rompecabezas.
@@ -149,6 +150,7 @@ private fun MotifTexture(
         GameMotif.MATH_BUBBLES -> MathBubblesTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
         GameMotif.ENERGY_PIPES -> EnergyPipesTexture(accent = accent, modifier = modifier, intensity = intensity)
         GameMotif.POLARITY_SECTORS -> PolaritySectorsTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
+        GameMotif.QUANTUM_SPHERES -> QuantumSpheresTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
     }
 }
 
@@ -1276,6 +1278,93 @@ private fun PolaritySectorsTexture(accent: Color, modifier: Modifier, intensity:
             val tail = Offset(p.x + d.x * r * 0.5f, p.y + d.y * r * 0.5f)
             drawLine(accent.copy(alpha = 0.4f * intensity), p, tail, r * 0.14f, cap = StrokeCap.Round)
             drawCircle(accent.copy(alpha = 0.9f * intensity), radius = r * 0.12f, center = p)
+        }
+    }
+}
+
+/**
+ * Una esfera del motivo de Quantum Merge: centro en fracciones del recuadro del motivo, radio en
+ * fracciones de su lado menor y opacidad. Los tamaños siguen la escala del juego (cada esfera es
+ * ~1,25× la anterior) para que la miniatura comunique de un vistazo su mecánica: **lo pequeño se
+ * fusiona en lo grande**.
+ */
+private data class QuantumBall(val xf: Float, val yf: Float, val rF: Float, val alpha: Float)
+
+private val QUANTUM_BALLS = listOf(
+    QuantumBall(0.36f, 0.72f, 0.24f, 0.95f),   // la grande, asentada abajo a la izquierda
+    QuantumBall(0.70f, 0.76f, 0.17f, 0.85f),   // mediana, apoyada a su derecha
+    QuantumBall(0.60f, 0.46f, 0.12f, 0.72f),   // pequeña, encajada en el hueco de las dos
+    QuantumBall(0.30f, 0.30f, 0.09f, 0.55f),   // la que aún está cayendo
+)
+
+/**
+ * **Quantum Merge**: tres esferas de luz apiladas dentro del reactor —de mayor a menor, como queda
+ * un contenedor bien jugado— y una cuarta cayendo desde la boca.
+ *
+ * Se dibujan los **dos muros y el suelo** (sin techo) porque la caja abierta por arriba es la
+ * lectura instantánea del juego: por ahí entran las esferas y por ahí se desborda. Cada esfera
+ * repite la receta de la pantalla (halo + cuerpo degradado + borde grueso) para que la tarjeta del
+ * catálogo y la partida compartan exactamente el mismo lenguaje visual.
+ */
+@Composable
+private fun QuantumSpheresTexture(accent: Color, modifier: Modifier, intensity: Float, centered: Boolean = false) {
+    Canvas(modifier = modifier) {
+        val minDim = size.minDimension
+        // El motivo ocupa un recuadro cuadrado; en las tarjetas se desplaza a la derecha para
+        // dejar sitio al texto, y en la antesala/Home se centra.
+        val boxSide = minDim * 0.78f
+        val left = size.width * (if (centered) 0.5f else 0.66f) - boxSide * 0.5f
+        val top = size.height * 0.5f - boxSide * 0.5f
+
+        fun point(ball: QuantumBall) = Offset(left + boxSide * ball.xf, top + boxSide * ball.yf)
+
+        // Reactor: dos paredes y suelo, sin techo (ver KDoc).
+        val wall = boxSide * 0.045f
+        val bottom = top + boxSide
+        listOf(
+            Offset(left, top + boxSide * 0.12f) to Offset(left, bottom),
+            Offset(left + boxSide, top + boxSide * 0.12f) to Offset(left + boxSide, bottom),
+            Offset(left, bottom) to Offset(left + boxSide, bottom),
+        ).forEach { (start, end) ->
+            drawLine(
+                color = accent.copy(alpha = 0.35f * intensity),
+                start = start,
+                end = end,
+                strokeWidth = wall,
+                cap = StrokeCap.Round,
+            )
+        }
+
+        QUANTUM_BALLS.forEach { ball ->
+            val center = point(ball)
+            val radius = boxSide * ball.rF
+            val alpha = ball.alpha * intensity
+            // Halo.
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(accent.copy(alpha = alpha * 0.3f), Color.Transparent),
+                    center = center,
+                    radius = radius * 1.7f,
+                ),
+                radius = radius * 1.7f,
+                center = center,
+            )
+            // Cuerpo con degradado que se aclara hacia el centro + borde grueso.
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(accent.copy(alpha = alpha * 0.55f), accent.copy(alpha = alpha * 0.16f)),
+                    center = center,
+                    radius = radius,
+                ),
+                radius = radius,
+                center = center,
+            )
+            drawCircle(
+                color = accent.copy(alpha = alpha),
+                radius = radius * 0.92f,
+                center = center,
+                style = Stroke(width = radius * 0.17f),
+            )
         }
     }
 }

@@ -3,6 +3,7 @@ package com.kortexgames.app.game
 import com.kortexgames.app.game.defuser.MineDifficulty
 import com.kortexgames.app.game.hypercube.MAX_LEVEL
 import com.kortexgames.app.game.neonsudoku.SudokuDifficulty
+import com.kortexgames.app.game.quantummerge.QuantumDifficulty
 
 /**
  * Qué juegos separan su **ranking mundial por dificultad** y cómo se llama cada
@@ -42,6 +43,11 @@ object GameRankingScopes {
         // prueba ni de lejos. Con tabla única —y rankeando por tiempo— el top mundial sería
         // sencillamente quien haya jugado el nivel 1, resuelto en tres segundos.
         GameIds.HYPER_CUBE to HYPER_CUBE_LEVEL_NAMES,
+        // Quantum Merge separa por nivel porque su dificultad **reduce el puntaje alcanzable**:
+        // esferas más grandes y menos techo llenan el contenedor antes, así que la partida termina
+        // con menos fusiones. Con tabla única, el top mundial sería siempre de quien juega en Fácil
+        // —justo lo contrario de lo que un ranking debería premiar.
+        GameIds.QUANTUM_MERGE to QuantumDifficulty.entries.map { it.displayName },
     )
 
     /**

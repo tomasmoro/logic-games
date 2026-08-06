@@ -149,6 +149,13 @@ object GameProgressions {
             ProgressionKind.LEVELED, MetricDirection.HIGHER_IS_BETTER, "Nivel máx", MetricUnit.LEVEL,
             tracksLevelTime = true,
         ),
+        // Quantum Merge es una corrida hasta que el contenedor desborda: ENDLESS con récord
+        // de puntaje. La métrica NO es el tier máximo alcanzado —aunque sea el hito que el
+        // jugador presume— por el mismo motivo que en 2048: dos partidas que llegan a la misma
+        // esfera se distinguen por cuántas fusiones costó, y eso ya lo mide el puntaje.
+        GameIds.QUANTUM_MERGE to GameProgression(
+            ProgressionKind.ENDLESS, MetricDirection.HIGHER_IS_BETTER, "Mejor", MetricUnit.POINTS,
+        ),
     )
 
     /** Progresión de un juego, o null si el id es null o no está registrado. */

@@ -1,6 +1,7 @@
 package com.kortexgames.app.game
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.BubbleChart
 import androidx.compose.material.icons.rounded.RocketLaunch
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.ui.components.GameHelp
@@ -490,6 +491,40 @@ object GameHelpContent {
             "El contador marca tus movimientos frente a los de la mezcla: resolverlo en esos " +
                 "giros es la solución perfecta.",
             "¿Ya sabes resolver un cubo? El modo libre de la antesala lo mezcla entero.",
+        ),
+    )
+
+    /** Quantum Merge (Visión Espacial). */
+    val quantumMerge = GameHelp(
+        title = "Quantum Merge",
+        summary = "Junta esferas iguales para fusionarlas en una mayor sin desbordar el reactor.",
+        accent = CategoryPalette.SpatialVision,
+        art = iconHelpArt(Icons.Rounded.BubbleChart),
+        steps = listOf(
+            HelpStep(
+                icon = KortexIcons.Play,
+                title = "Apunta y suelta",
+                text = "Arrastra el dedo por la parte superior para mover la esfera y levántalo " +
+                    "para dejarla caer.",
+            ),
+            HelpStep(
+                icon = Icons.Rounded.BubbleChart,
+                title = "Dos iguales, una mayor",
+                text = "Cuando dos esferas del mismo tipo se tocan, se fusionan en la siguiente " +
+                    "de la escala.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Warning,
+                title = "No desbordes",
+                text = "Si una esfera se queda quieta por encima de la línea de peligro, la " +
+                    "partida termina.",
+            ),
+        ),
+        tips = listOf(
+            "Guarda las esferas grandes abajo y a los lados: en el centro bloquean las fusiones " +
+                "pequeñas.",
+            "Mira siempre la esfera del previsor antes de soltar la actual; media jugada de " +
+                "ventaja lo cambia todo.",
         ),
     )
 }

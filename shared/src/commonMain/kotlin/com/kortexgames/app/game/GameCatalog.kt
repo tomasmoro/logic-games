@@ -105,6 +105,17 @@ object GameIds {
      * cuando la pantalla Compose (FASE 3) esté lista para publicarse.
      */
     const val HYPER_CUBE = "3d5c8a17-6b24-4e9f-9a80-1c7e5b2d4f63"
+
+    /**
+     * Quantum Merge / esferas de energía que caen y se fusionan (categoría "spatial" / Visión
+     * Espacial). UUID v4 aleatorio, como los dos anteriores.
+     *
+     * El prefijo se eligió a conciencia para que **no se parezca a ningún otro id del catálogo**:
+     * dos UUID que solo difieren en un par de dígitos transpuestos son un accidente esperando a
+     * ocurrir (basta copiar el constante equivocado para que las partidas de un juego se guarden
+     * en la tabla de otro, y la FK no lo detectaría porque ambos existen).
+     */
+    const val QUANTUM_MERGE = "c17b40de-92a5-4f38-8b61-0d7e5a3c9142"
 }
 
 /**
@@ -199,6 +210,9 @@ enum class GameMotif {
 
     /** Atracción Geométrica: círculo de 4 sectores con partículas que llegan de fuera. */
     POLARITY_SECTORS,
+
+    /** Quantum Merge: esferas de luz de tamaños crecientes apiladas dentro del reactor. */
+    QUANTUM_SPHERES,
 }
 
 /**
@@ -259,6 +273,7 @@ object GameCatalog {
         GameInfo(GameIds.STARPORT_ESCAPE, "Neon Starport Escape", GameCategory.LOGIC, playable = true, published = false),
         GameInfo(GameIds.NEON_CIRCUIT, "Conectores", GameCategory.PROBLEM_SOLVING, playable = true, motif = GameMotif.CIRCUIT_FLOW),
         GameInfo(GameIds.HYPERGATE, "Hypergate", GameCategory.REFLEXES, playable = true, motif = GameMotif.HYPERGATE),
+        GameInfo(GameIds.QUANTUM_MERGE, "Quantum Merge", GameCategory.SPATIAL, playable = true, motif = GameMotif.QUANTUM_SPHERES),
         GameInfo(null, "Parejas Relámpago", GameCategory.MEMORY, playable = false),
         GameInfo(null, "Cadena Lógica", GameCategory.LOGIC, playable = false),
         GameInfo(null, "Encuentra el Intruso", GameCategory.ATTENTION, playable = false),

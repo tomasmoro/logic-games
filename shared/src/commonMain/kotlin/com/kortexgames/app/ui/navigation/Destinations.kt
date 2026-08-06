@@ -54,6 +54,7 @@ object Routes {
     const val NEON_SUDOKU = "game/neon-sudoku"
     const val NEON_DEFUSER = "game/neon-defuser"
     const val HYPER_CUBE = "game/hyper-cube"
+    const val QUANTUM_MERGE = "game/quantum-merge"
 
     /**
      * Ruta de juego para un [GameIds] concreto, o null si el juego aún no es
@@ -79,6 +80,7 @@ object Routes {
         GameIds.NEON_SUDOKU_MATRIX -> NEON_SUDOKU
         GameIds.NEON_DEFUSER -> NEON_DEFUSER
         GameIds.HYPER_CUBE -> HYPER_CUBE
+        GameIds.QUANTUM_MERGE -> QUANTUM_MERGE
         else -> null
     }
 
