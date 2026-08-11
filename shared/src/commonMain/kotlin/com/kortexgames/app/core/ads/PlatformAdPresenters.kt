@@ -11,8 +11,9 @@ import com.kortexgames.app.core.audio.PlatformContext
  *  - **Android** (`actual`): inicializa Google Mobile Ads y registra los presentadores
  *    REALES de intersticial y recompensado. Qué unidad usa cada build (prueba en `debug`,
  *    real en `release`) lo decide `AdMobConfig`, no quien llama.
- *  - **iOS** (`actual`): aún sin SDK integrado (Parte B: CocoaPods/SPM + puente Swift);
- *    registra los presentadores **simulados** para que los flujos funcionen en dev.
+ *  - **iOS** (`actual`): registra presentadores REALES si `iOSApp.swift` ya publicó
+ *    un `IosAdBridge` (implementado con el SDK de Google Mobile Ads); si no, cae a
+ *    los simulados. El SDK en sí vive en Swift, no en `shared` (ver `IosAdBridge`).
  *
  * @param adManager el gestor donde se registran los presentadores.
  * @param context contexto de plataforma (en Android envuelve el `Context` de la app).

@@ -4,5 +4,19 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<!--
+	  App ID de PRUEBA de Google Mobile Ads (público, seguro en el repo). Antes de
+	  publicar, sustituir por el App ID real de la cuenta de AdMob de iOS y replicar
+	  el patrón de AdMobConfig/AdMobSecrets de Android (real solo en Release) — ver
+	  BACKLOG "AdMob iOS (Parte B)". Sin esta clave, GADMobileAds.start() crashea.
+	-->
+	<key>GADApplicationIdentifier</key>
+	<string>ca-app-pub-3940256099942544~1458002511</string>
+	<!--
+	  Prompt de App Tracking Transparency: lo exige Apple para poder pedir permiso de
+	  seguimiento (IDFA) antes de que AdMob sirva anuncios personalizados.
+	-->
+	<key>NSUserTrackingUsageDescription</key>
+	<string>Usamos este identificador para mostrarte anuncios más relevantes y medir su rendimiento.</string>
 </dict>
 </plist>

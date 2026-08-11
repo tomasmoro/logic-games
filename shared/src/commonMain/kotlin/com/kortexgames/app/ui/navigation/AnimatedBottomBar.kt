@@ -12,10 +12,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -38,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.core.theme.LogicGradients
+import com.kortexgames.app.ui.components.bottomBarSystemInsets
 import com.kortexgames.app.ui.components.clickableNoRipple
 
 /**
@@ -70,8 +69,10 @@ fun AnimatedBottomBar(
                 // de fondo tape la barra de navegación de 3 botones, que con
                 // enableEdgeToEdge() es transparente); el contenido en cambio se
                 // levanta por encima de esa barra para no quedar tapado por los
-                // botones del sistema.
-                .windowInsetsPadding(WindowInsets.navigationBars)
+                // botones del sistema. bottomBarSystemInsets() vale 0 en iOS a
+                // propósito (ver su KDoc): ahí no hay barra que evitar, solo el
+                // `bottom = 12.dp` de abajo.
+                .windowInsetsPadding(bottomBarSystemInsets())
                 .padding(top = 8.dp, bottom = 12.dp),
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically,
