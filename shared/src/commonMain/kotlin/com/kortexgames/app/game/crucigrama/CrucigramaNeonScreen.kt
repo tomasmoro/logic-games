@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -63,12 +64,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kortexgames.app.core.ads.RewardResult
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
+import com.kortexgames.app.core.theme.LogicGradients
 import com.kortexgames.app.di.AppGraph
 import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.LeveledGamePhase
 import com.kortexgames.app.ui.components.AdLoadingOverlay
+import com.kortexgames.app.ui.components.AnimatedGameButton
 import com.kortexgames.app.ui.components.GameExitGuard
 import com.kortexgames.app.ui.components.GameIntroScreen
 import com.kortexgames.app.game.GameHelpContent
@@ -272,6 +275,18 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
                 onExit = onExit,
                 onNextLevel = { vm.onIntent(CrucigramaNeonIntent.NextLevel) },
                 onChooseLevel = { vm.onIntent(CrucigramaNeonIntent.ChooseLevel) },
+            )
+        }
+
+        // Rejilla resuelta pero quedan extras por encontrar: en vez de cerrar la
+        // partida sola (antes se llamaba a finish() en cuanto se resolvía la última
+        // pista, ver CrucigramaNeonEngine.onCorrect), se ofrece seguir jugando. Solo
+        // mientras la partida sigue viva (RUNNING) y el jugador no lo descartó ya.
+        if (game.gridComplete && state.status == GameStatus.RUNNING && !state.extrasPromptDismissed) {
+            ExtrasPromptDialog(
+                remaining = game.extraWords.size - game.extraFound.size,
+                onKeepSearching = { vm.onIntent(CrucigramaNeonIntent.KeepSearchingExtras) },
+                onFinish = { vm.onIntent(CrucigramaNeonIntent.FinishLevel) },
             )
         }
 
@@ -704,6 +719,76 @@ private fun LetterKey(letter: Char, size: Dp, accent: Color, onClick: () -> Unit
             color = LogicColors.OnDark,
             fontWeight = FontWeight.Black,
         )
+    }
+}
+
+/**
+ * Cartel que aparece al resolver toda la rejilla si aún quedan palabras extra sin
+ * descubrir (ver [CrucigramaNeonState.gridComplete]). Antes el nivel se cerraba solo
+ * en cuanto se completaba la última pista, así que las extras pendientes quedaban
+ * fuera de alcance para siempre; ahora se le da al jugador la opción de seguir
+ * escribiendo antes de cerrar la partida. Mismo lenguaje visual que
+ * [com.kortexgames.app.ui.components.GameExitGuard] (tarjeta redondeada, icono neón,
+ * CTA con degradado + acción secundaria en texto).
+ */
+@Composable
+private fun ExtrasPromptDialog(
+    remaining: Int,
+    onKeepSearching: () -> Unit,
+    onFinish: () -> Unit,
+) {
+    val accent = LogicColors.Amber
+    Dialog(onDismissRequest = onKeepSearching) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(28.dp))
+                .background(LogicColors.SurfaceDark)
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            NeonIcon(icon = KortexIcons.Star, tint = accent, size = 40.dp, glow = true)
+            Text(
+                "¡Crucigrama completo!",
+                style = MaterialTheme.typography.headlineMedium,
+                color = LogicColors.OnDark,
+            )
+            Text(
+                if (remaining == 1) {
+                    "Resolviste todas las palabras. Queda 1 palabra extra por " +
+                        "descubrir. ¿Seguís buscándola antes de cerrar el nivel?"
+                } else {
+                    "Resolviste todas las palabras. Quedan $remaining palabras extra " +
+                        "por descubrir. ¿Seguís buscándolas antes de cerrar el nivel?"
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = LogicColors.OnDarkMuted,
+            )
+
+            AnimatedGameButton(
+                onClick = onKeepSearching,
+                gradient = LogicGradients.reward,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    "SEGUIR BUSCANDO",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = LogicColors.BackgroundDark,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+            }
+            Text(
+                "TERMINAR NIVEL",
+                style = MaterialTheme.typography.labelLarge,
+                color = LogicColors.OnDarkMuted,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .bounceClick(onClick = onFinish)
+                    .padding(vertical = 10.dp),
+            )
+        }
     }
 }
 

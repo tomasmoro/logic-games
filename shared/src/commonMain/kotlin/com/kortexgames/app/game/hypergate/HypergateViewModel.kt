@@ -86,12 +86,18 @@ class HypergateViewModel(
         sendEffect(effect)
     }
 
+    /**
+     * `saveResult` emite en 1 o 2 pasos: local primero (el cartel no espera a
+     * Supabase) y, con sesión, el percentil real después (ver KDoc de
+     * `ProgressRepository.saveResult`).
+     */
     private fun onFinished(result: GameResult) {
         viewModelScope.launch {
-            val outcome = progress.saveResult(result)
             audio.playSound(SoundEffect.LEVEL_UP)
             audio.hapticFeedback(HapticFeedback.SUCCESS)
-            setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+            progress.saveResult(result).collect { outcome ->
+                setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+            }
         }
     }
 }

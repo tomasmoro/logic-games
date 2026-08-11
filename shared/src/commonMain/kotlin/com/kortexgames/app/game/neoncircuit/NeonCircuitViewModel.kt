@@ -115,12 +115,20 @@ class NeonCircuitViewModel(
         engine.startAtLevel(level)
     }
 
+    /**
+     * El sonido/háptica de victoria se disparan de inmediato (no dependen de red).
+     * `saveResult` emite el `gameOver` en 1 o 2 pasos: primero el resultado LOCAL
+     * para que el cartel aparezca sin esperar a Supabase, y luego —si hay sesión—
+     * el percentil/ranking cuando la red responda (ver KDoc de
+     * `ProgressRepository.saveResult`).
+     */
     private fun onFinished(result: GameResult) {
         viewModelScope.launch {
-            val outcome = progress.saveResult(result)
             sendEffect(NeonCircuitEffect.PlaySound(SoundEffect.LEVEL_UP))
             sendEffect(NeonCircuitEffect.Vibrate(HapticFeedback.SUCCESS))
-            setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+            progress.saveResult(result).collect { outcome ->
+                setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+            }
         }
     }
 }

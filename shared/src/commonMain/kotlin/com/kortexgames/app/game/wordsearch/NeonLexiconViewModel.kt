@@ -178,19 +178,25 @@ class NeonLexiconViewModel(
         }
     }
 
-    /** Guarda el resultado (local-first) y expone el game-over con percentil. */
+    /**
+     * Guarda el resultado (local-first) y expone el game-over con percentil.
+     * `saveResult` emite en 1 o 2 pasos: local primero (el cartel no espera a
+     * Supabase) y, con sesión, el percentil real después (ver KDoc de
+     * `ProgressRepository.saveResult`).
+     */
     private fun onFinished(result: GameResult) {
         viewModelScope.launch {
             // Nivel completado: no debe quedar un guardado "fantasma" de esta partida.
             savedGameState.clear(GameIds.NEON_LEXICON)
-            val outcome = progress.saveResult(result)
             sendEffect(NeonLexiconEffect.PlaySound(SoundEffect.LEVEL_UP))
             sendEffect(NeonLexiconEffect.Vibrate(HapticFeedback.SUCCESS))
-            setState {
-                copy(
-                    selection = null,
-                    gameOver = outcome.toGameOverInfo(result),
-                )
+            progress.saveResult(result).collect { outcome ->
+                setState {
+                    copy(
+                        selection = null,
+                        gameOver = outcome.toGameOverInfo(result),
+                    )
+                }
             }
         }
     }

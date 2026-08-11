@@ -67,6 +67,16 @@ private const val REVEAL_DELAY_MS = 500L
  * animación "de juego" (resorte con rebote + fundido), de modo que las pantallas
  * solo tienen que renderizar el overlay cuando la partida termina; el timing y el
  * "juice" viven aquí, centralizados para los tres juegos.
+ *
+ * @param unlockedDifficultyLabel rótulo del escalón de dificultad que la partida recién
+ *   terminada acaba de abrir ("Medio"), o `null` si no abrió ninguno. Lo calcula el
+ *   ViewModel del juego con
+ *   [com.kortexgames.app.game.DifficultyUnlocks.justUnlockedLabel] en el momento de
+ *   terminar la partida — solo los juegos con dificultades escalonadas (Neon Defuser,
+ *   Neon Sudoku Matrix, Neon Grid 2048) lo rellenan.
+ * @param onPlayUnlockedDifficulty arranca una partida nueva en el escalón que se acaba de
+ *   abrir. Requerido junto a [unlockedDifficultyLabel] para que aparezca el CTA; si uno de
+ *   los dos falta, el diálogo cae al layout normal (sin celebrar el desbloqueo).
  */
 @Composable
 fun GameOverOverlay(
@@ -77,6 +87,8 @@ fun GameOverOverlay(
     headline: String? = null,
     onNextLevel: (() -> Unit)? = null,
     onChooseLevel: (() -> Unit)? = null,
+    unlockedDifficultyLabel: String? = null,
+    onPlayUnlockedDifficulty: (() -> Unit)? = null,
     audio: AudioAndHapticManager? = null,
 ) {
     // `visible` arranca en false: durante REVEAL_DELAY_MS no se dibuja nada y la
@@ -230,7 +242,11 @@ fun GameOverOverlay(
             //   2. percentil suelto de la FASE 2 — red de seguridad para cuando la
             //      partida sí se subió pero la RPC de ranking falló, para no degradar
             //      al cartel de "inicia sesión" a alguien que SÍ tiene sesión;
-            //   3. aviso de guardado local (invitado / sin red).
+            //   3. "comparando..." mientras la subida a Supabase sigue en vuelo
+            //      (isSyncPending) — el cartel ya se mostró sin esperar a la red (ver
+            //      ProgressRepository.saveResult), así que este hueco se rellena solo
+            //      un instante después;
+            //   4. aviso de guardado local (invitado / sin red / subida fallida).
             val percentile = info.percentile
             when {
                 ranking != null -> WorldRankingPanel(
@@ -245,12 +261,43 @@ fun GameOverOverlay(
                     },
                 )
                 percentile != null -> PercentileBanner(percentile)
+                info.isSyncPending -> WorldRankingLoading()
                 else -> WorldRankingUnavailable()
             }
 
             Spacer(Modifier.height(2.dp))
 
-            if (onNextLevel != null) {
+            if (unlockedDifficultyLabel != null && onPlayUnlockedDifficulty != null) {
+                // Escalón recién abierto: es el hito más "accionable" del cartel —hay un
+                // reto nuevo esperando— así que se lleva el CTA principal (pulse) y el badge
+                // que lo anuncia. `onNextLevel` no puede coincidir con esto: es exclusivo de
+                // los juegos LEVELED, y los juegos con dificultad escalonada son ENDLESS.
+                DifficultyUnlockedBadge(label = unlockedDifficultyLabel, visible = visible)
+                AnimatedGameButton(
+                    text = "JUGAR EN ${unlockedDifficultyLabel.uppercase()}",
+                    onClick = onPlayUnlockedDifficulty,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pulse(),
+                    gradient = LogicGradients.play,
+                )
+                AnimatedGameButton(
+                    text = "JUGAR DE NUEVO",
+                    onClick = onPlayAgain,
+                    modifier = Modifier.fillMaxWidth(),
+                    gradient = LogicGradients.energy,
+                )
+                Text(
+                    "Salir",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = LogicColors.OnDarkMuted,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .bounceClick(onClick = onExit)
+                        .padding(vertical = 8.dp),
+                    textAlign = TextAlign.Center,
+                )
+            } else if (onNextLevel != null) {
                 // Juego LEVELED: el CTA principal es avanzar; luego repetir el nivel
                 // y volver al selector. El único bucle (pulse) va al CTA que guía (§9.4).
                 AnimatedGameButton(
@@ -355,6 +402,50 @@ private fun NewRecordBadge(visible: Boolean) {
         NeonIcon(icon = KortexIcons.Star, tint = LogicColors.BackgroundDark, size = 20.dp, glow = false)
         Text(
             "¡NUEVO RÉCORD!",
+            style = MaterialTheme.typography.labelLarge,
+            color = LogicColors.BackgroundDark,
+            fontWeight = FontWeight.Black,
+        )
+    }
+}
+
+/**
+ * Píldora "¡X DESBLOQUEADO!" con el rótulo del escalón de dificultad que la partida recién
+ * terminada acaba de abrir (ver [GameOverOverlay.unlockedDifficultyLabel]).
+ *
+ * Usa el verde de acción ([LogicGradients.success]) y no el ámbar de [NewRecordBadge] a
+ * propósito: son dos logros distintos —superar la propia marca vs. abrir contenido
+ * nuevo— y, si coinciden en la misma partida (p. ej. ganar en Fácil bate el récord Y abre
+ * Medio), compartir tinte los volvería indistinguibles de un vistazo. Mismo motivo por el
+ * que viven en puntos distintos de la tarjeta: el récord corona arriba, este acompaña
+ * justo al CTA que invita a aprovecharlo ("JUGAR EN MEDIO").
+ */
+@Composable
+private fun DifficultyUnlockedBadge(label: String, visible: Boolean) {
+    // Pop-in con rebote, igual criterio que [NewRecordBadge].
+    val scale by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow,
+        ),
+        label = "unlockBadgeScale",
+    )
+    val shape = RoundedCornerShape(percent = 50)
+    Row(
+        modifier = Modifier
+            .scale(scale)
+            .softGlow(LogicColors.NeonGreen, shape = shape)
+            .clip(shape)
+            .background(Brush.horizontalGradient(LogicGradients.success))
+            .border(BorderStroke(1.5.dp, LogicColors.NeonGreen), shape)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        NeonIcon(icon = KortexIcons.LockOpen, tint = LogicColors.BackgroundDark, size = 20.dp, glow = false)
+        Text(
+            "¡${label.uppercase()} DESBLOQUEADO!",
             style = MaterialTheme.typography.labelLarge,
             color = LogicColors.BackgroundDark,
             fontWeight = FontWeight.Black,

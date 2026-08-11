@@ -388,15 +388,25 @@ class HyperCubeViewModel(
             difficultyLevel = if (freeMode) FREE_MODE_DIFFICULTY else currentState.currentLevel,
         )
         viewModelScope.launch {
-            val outcome = progress.saveResult(corrected)
-            val info = outcome.toGameOverInfo(corrected)
-            setState {
-                copy(
-                    // En modo libre no se enseña comparativa: cada partida baraja el cubo a fondo y
-                    // sin nivel, así que no hay un universo con el que medirse —ni por puntos ni por
-                    // tiempo—. Enseñar un puesto ahí sería inventarse una competición que no existe.
-                    gameOver = if (freeMode) info.copy(ranking = null, percentile = null) else info,
-                )
+            // `saveResult` emite el resultado LOCAL primero (el cartel no espera a
+            // Supabase) y, si hay sesión, el percentil/ranking real después (ver KDoc
+            // de `ProgressRepository.saveResult`).
+            progress.saveResult(corrected).collect { outcome ->
+                val info = outcome.toGameOverInfo(corrected)
+                setState {
+                    copy(
+                        // En modo libre no se enseña comparativa: cada partida baraja el cubo a fondo y
+                        // sin nivel, así que no hay un universo con el que medirse —ni por puntos ni por
+                        // tiempo—. Enseñar un puesto ahí sería inventarse una competición que no existe.
+                        // `isSyncPending = false` de propina: sin comparativa que mostrar, tampoco tiene
+                        // sentido el hueco de "comparando con el mundo…" mientras se resuelve la subida.
+                        gameOver = if (freeMode) {
+                            info.copy(ranking = null, percentile = null, isSyncPending = false)
+                        } else {
+                            info
+                        },
+                    )
+                }
             }
         }
     }

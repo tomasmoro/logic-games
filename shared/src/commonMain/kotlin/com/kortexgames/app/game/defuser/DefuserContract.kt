@@ -42,6 +42,11 @@ import kotlinx.serialization.Serializable
  *   el primer toque (no al entrar en la pantalla), como en el Buscaminas clásico.
  * @property difficulty dificultad elegida en la antesala. Sobrevive a "jugar de
  *   nuevo" como preferencia del jugador, igual que la dificultad de Neon Sudoku.
+ * @property unlockedDifficulties cuántas dificultades tiene abiertas el jugador (1-based:
+ *   `1` = solo Fácil). Se **deriva del historial de partidas** —no hay columna nueva en la
+ *   BD— y por eso viaja con la cuenta: ver
+ *   [com.kortexgames.app.game.DifficultyUnlocks]. Las que quedan por encima se pintan con
+ *   candado en el selector de la antesala.
  * @property hasSavedGame `true` si al abrir la antesala existe una partida guardada
  *   que "Comenzar" reanudará; solo cambia la etiqueta del botón, la reanudación la
  *   resuelve el ViewModel.
@@ -65,6 +70,13 @@ import kotlinx.serialization.Serializable
  *   cancelar vuelve a `false`.
  * @property gameOver resumen del resultado (puntaje + percentil) cuando la partida
  *   termina; `null` mientras se juega. Mismo patrón que el resto de juegos.
+ * @property justUnlockedDifficulty la dificultad que ESTA partida acaba de desbloquear
+ *   (ganar en [difficulty] cumplía el requisito de [com.kortexgames.app.game.DifficultyUnlocks]
+ *   y no había ningún escalón por encima ya abierto), o `null` si no desbloqueó ninguna. Se
+ *   fija junto a [gameOver] en `finish()` y el diálogo de fin de partida lo usa para ofrecer
+ *   "Jugar en …" como CTA. Vive aparte de [gameOver] (no en [GameOverInfo]) porque es
+ *   exclusivo de los juegos con dificultad escalonada, no algo que todo juego del catálogo
+ *   necesite cargar.
  */
 data class DefuserUiState(
     val board: MineBoard = MineBoard.blank(MineDifficulty.FACIL),
@@ -73,12 +85,14 @@ data class DefuserUiState(
     val minesArmed: Boolean = false,
     val elapsedMs: Long = 0L,
     val difficulty: MineDifficulty = MineDifficulty.FACIL,
+    val unlockedDifficulties: Int = 1,
     val hasSavedGame: Boolean = false,
     val awaitingRevive: Boolean = false,
     val scanUsesRemaining: Int = DefuserConfig.SCAN_MAX_USES,
     val awaitingScanAd: Boolean = false,
     val scanning: Boolean = false,
     val gameOver: GameOverInfo? = null,
+    val justUnlockedDifficulty: MineDifficulty? = null,
 ) : UiState {
 
     /**
@@ -130,6 +144,17 @@ sealed interface DefuserIntent : UiIntent {
      * criterio que `SelectDifficulty` en Neon Sudoku.
      */
     data class SelectDifficulty(val difficulty: MineDifficulty) : DefuserIntent
+
+    /**
+     * Arranca una partida nueva directamente en [difficulty], saltándose la antesala. Lo
+     * dispara el CTA "JUGAR EN …" del diálogo de fin de partida cuando esa partida acaba
+     * de desbloquear la dificultad siguiente ([DefuserUiState.justUnlockedDifficulty]): a
+     * diferencia de [SelectDifficulty] (solo cambia la preferencia en IDLE) esto SÍ arranca
+     * a jugar, y a diferencia de [RestartGame] (repite la dificultad actual) usa la que se
+     * le indique. El ViewModel revalida igualmente que esté desbloqueada antes de arrancar
+     * — el intent es público y no debe fiarse de que la UI ya lo comprobó.
+     */
+    data class PlayDifficulty(val difficulty: MineDifficulty) : DefuserIntent
 
     /**
      * **Tap corto:** revela la celda en [position].

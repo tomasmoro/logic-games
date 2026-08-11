@@ -18,10 +18,23 @@ import kotlinx.coroutines.flow.Flow
 interface ProgressRepository {
 
     /**
-     * Guarda una partida y devuelve su [SaveOutcome]: el percentil global (si hay
-     * sesión + red; null en invitado/offline) y si batió el récord previo del jugador.
+     * Guarda una partida (local-first) y emite su evolución como [SaveOutcome].
+     *
+     * Emite en **1 o 2 pasos** a propósito: la subida a Supabase (RPC de guardado +
+     * RPC de ranking) puede tardar un par de vueltas de red, y si el ViewModel
+     * esperara la única respuesta antes de mostrar el cartel de fin de partida, el
+     * jugador vería el tablero "congelado" varios segundos tras resolver el nivel.
+     *
+     *  1. **Local inmediata**: récord ya calculado (SQLDelight, sin red), con
+     *     `percentile`/`ranking` en `null`. El ViewModel puede pintar el cartel de
+     *     resultado con esta emisión SIN esperar más.
+     *  2. **(Solo con sesión) Remota**: llega en cuanto Supabase responde, con el
+     *     percentil/ranking reales (o `null` si la subida falla; la partida ya está
+     *     a salvo en local y se reintentará en [syncPending]).
+     *
+     * En invitado/offline el flow completa tras la única emisión local.
      */
-    suspend fun saveResult(result: GameResult): SaveOutcome
+    fun saveResult(result: GameResult): Flow<SaveOutcome>
 
     /** Historial observable desde local. gameId null = todos los juegos. */
     fun observeHistory(gameId: String? = null): Flow<List<GameProgress>>

@@ -116,13 +116,19 @@ class ScrewGameViewModel(
         engine.startAtLevel(level)
     }
 
+    /**
+     * `saveResult` emite en 1 o 2 pasos: local primero (el cartel no espera a
+     * Supabase) y, con sesión, el percentil real después (ver KDoc de
+     * `ProgressRepository.saveResult`).
+     */
     private fun onFinished(result: GameResult) {
         viewModelScope.launch {
-            val outcome = progress.saveResult(result)
             sendEffect(ScrewGameEffect.PlaySound(SoundEffect.LEVEL_UP))
             sendEffect(ScrewGameEffect.Vibrate(HapticFeedback.SUCCESS))
             sendEffect(ScrewGameEffect.ShowLevelComplete)
-            setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+            progress.saveResult(result).collect { outcome ->
+                setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+            }
         }
     }
 }

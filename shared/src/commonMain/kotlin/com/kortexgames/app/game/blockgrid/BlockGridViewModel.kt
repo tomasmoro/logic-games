@@ -215,19 +215,25 @@ class BlockGridViewModel(
     private fun decodeSaved(json: String): BlockGridGameState? =
         runCatching { Json.decodeFromString<BlockGridGameState>(json) }.getOrNull()
 
-    /** Guarda el resultado (local-first) y expone el game-over con percentil. */
+    /**
+     * Guarda el resultado (local-first) y expone el game-over con percentil.
+     * `saveResult` emite en 1 o 2 pasos: local primero (el cartel no espera a
+     * Supabase) y, con sesión, el percentil real después (ver KDoc de
+     * `ProgressRepository.saveResult`).
+     */
     private fun onFinished(result: GameResult) {
         viewModelScope.launch {
             // Corrida terminada: no debe quedar un guardado "fantasma" de esta partida.
             savedGameState.clear(GameIds.NEON_BLOCK_GRID)
-            val outcome = progress.saveResult(result)
             sendEffect(BlockGridEffect.PlaySound(SoundEffect.LEVEL_UP))
             sendEffect(BlockGridEffect.Vibrate(HapticFeedback.SUCCESS))
-            setState {
-                copy(
-                    drag = null,
-                    gameOver = outcome.toGameOverInfo(result),
-                )
+            progress.saveResult(result).collect { outcome ->
+                setState {
+                    copy(
+                        drag = null,
+                        gameOver = outcome.toGameOverInfo(result),
+                    )
+                }
             }
         }
     }

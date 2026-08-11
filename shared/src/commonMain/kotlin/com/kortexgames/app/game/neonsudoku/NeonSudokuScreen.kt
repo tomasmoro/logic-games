@@ -45,11 +45,14 @@ import com.kortexgames.app.core.audio.SoundEffect
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.di.AppGraph
+import com.kortexgames.app.game.DifficultyUnlocks
 import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameCategory
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.ui.components.AdLoadingOverlay
+import com.kortexgames.app.ui.components.DifficultyGateSelector
+import com.kortexgames.app.ui.components.DifficultyOption
 import com.kortexgames.app.ui.components.FireworksOverlay
 import com.kortexgames.app.ui.components.GameExitGuard
 import com.kortexgames.app.ui.components.GameIntroScreen
@@ -275,9 +278,19 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
                 )
             },
             configContent = {
-                DifficultySelector(
-                    selected = state.difficulty,
-                    onSelect = { vm.onIntent(NeonSudokuIntent.SelectDifficulty(it)) },
+                DifficultyGateSelector(
+                    title = "DIFICULTAD",
+                    options = SUDOKU_DIFFICULTY_OPTIONS,
+                    selectedIndex = state.difficulty.ordinal,
+                    unlockedTiers = state.unlockedDifficulties,
+                    onSelect = { index ->
+                        vm.onIntent(NeonSudokuIntent.SelectDifficulty(SudokuDifficulty.entries[index]))
+                    },
+                    accent = CategoryPalette.Logic,
+                    hint = DifficultyUnlocks.nextUnlockHint(
+                        GameIds.NEON_SUDOKU_MATRIX,
+                        state.unlockedDifficulties,
+                    ),
                     modifier = Modifier.fillMaxWidth(),
                 )
             },
@@ -359,6 +372,10 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
                 headline = if (won) "¡Matriz completada!" else "Sin intentos",
                 onPlayAgain = { vm.onIntent(NeonSudokuIntent.PlayAgain) },
                 onExit = onExit,
+                unlockedDifficultyLabel = state.justUnlockedDifficulty?.displayName,
+                onPlayUnlockedDifficulty = state.justUnlockedDifficulty?.let { difficulty ->
+                    { vm.onIntent(NeonSudokuIntent.PlayDifficulty(difficulty)) }
+                },
             )
         }
 
@@ -415,89 +432,15 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
 // ---------------------------------------------------------------------------
 
 /**
- * Tarjeta flotante con un chip por cada [SudokuDifficulty], para elegir la
- * dificultad antes de empezar. Replica **exactamente** el patrón del selector de
- * tamaño de tablero de Neon Grid 2048 (tarjeta con fondo propio superpuesta sobre
- * la antesala) para que ambos juegos ofrezcan la elección de la misma forma.
+ * Escalones del selector de dificultad, en el orden de [SudokuDifficulty]. Salen de recorrer
+ * la propia enum —no son una copia—, así que añadir un nivel es un cambio ahí y no aquí.
  *
- * Es **escalable por construcción**: la fila sale de recorrer
- * [SudokuDifficulty.entries], así que añadir un nivel es un cambio en la enum, no
- * aquí.
- *
- * @param selected dificultad actualmente elegida (resaltada).
- * @param onSelect se invoca con la dificultad tocada.
+ * Sin líneas de detalle: el rótulo ("Experto") ya dice todo lo que hay que saber de un
+ * Sudoku, cuyo tablero es siempre 9×9 (a diferencia de Neon Defuser, donde cada dificultad
+ * cambia la geometría del panel y el chip sí necesita anunciarla).
  */
-@Composable
-private fun DifficultySelector(
-    selected: SudokuDifficulty,
-    onSelect: (SudokuDifficulty) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier
-            .background(LogicColors.SurfaceDark.copy(alpha = 0.92f), RoundedCornerShape(20.dp))
-            .border(BorderStroke(1.dp, LogicColors.SurfaceVariantDark), RoundedCornerShape(20.dp))
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            "DIFICULTAD",
-            style = MaterialTheme.typography.labelLarge,
-            color = LogicColors.OnDarkMuted,
-            fontWeight = FontWeight.Bold,
-        )
-        Row(
-            modifier = Modifier.padding(top = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            SudokuDifficulty.entries.forEach { difficulty ->
-                key(difficulty) {
-                    DifficultyChip(
-                        difficulty = difficulty,
-                        selected = difficulty == selected,
-                        onClick = { onSelect(difficulty) },
-                    )
-                }
-            }
-        }
-    }
-}
-
-/** Un chip del [DifficultySelector]; resaltado en acento cuando está elegido. */
-@Composable
-private fun DifficultyChip(difficulty: SudokuDifficulty, selected: Boolean, onClick: () -> Unit) {
-    val accent = CategoryPalette.Logic
-    val shape = RoundedCornerShape(12.dp)
-    Box(
-        modifier = Modifier
-            // `bounceClick` (scale) va ANTES de clip/background/border —igual que
-            // `AnimatedGameButton`—: si el scale queda detrás de esos modificadores
-            // de dibujo en la cadena, su capa (graphicsLayer) los deja fuera y el
-            // borde/fondo puede quedarse pintado con el valor viejo al cambiar
-            // `selected` (visto en el emulador: el texto sí cambiaba de color pero
-            // el borde no), aunque el propio texto sí se redibuje bien al no
-            // depender de esa capa.
-            .bounceClick(onClick = onClick)
-            .clip(shape)
-            .background(if (selected) accent.copy(alpha = 0.22f) else LogicColors.SurfaceVariantDark)
-            .border(
-                BorderStroke(
-                    width = if (selected) 1.5.dp else 1.dp,
-                    color = if (selected) accent else LogicColors.OnDarkMuted.copy(alpha = 0.2f),
-                ),
-                shape,
-            )
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            difficulty.displayName,
-            style = MaterialTheme.typography.labelLarge,
-            color = if (selected) accent else LogicColors.OnDarkMuted,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-        )
-    }
-}
+private val SUDOKU_DIFFICULTY_OPTIONS: List<DifficultyOption> =
+    SudokuDifficulty.entries.map { DifficultyOption(label = it.displayName) }
 
 // ---------------------------------------------------------------------------
 // HUD

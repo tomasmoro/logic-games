@@ -110,14 +110,20 @@ class StarportViewModel(
         engine.startAtLevel(level)
     }
 
+    /**
+     * `saveResult` emite en 1 o 2 pasos: local primero (el cartel no espera a
+     * Supabase) y, con sesión, el percentil real después (ver KDoc de
+     * `ProgressRepository.saveResult`).
+     */
     private fun onFinished(result: GameResult) {
         viewModelScope.launch {
-            val outcome = progress.saveResult(result)
             // La celebración sonora llega DESPUÉS de la animación de escape
             // (que disparó VipEscaped): acompaña al overlay de resultados.
             sendEffect(StarportEffect.PlaySound(SoundEffect.LEVEL_UP))
             sendEffect(StarportEffect.Vibrate(HapticFeedback.SUCCESS))
-            setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+            progress.saveResult(result).collect { outcome ->
+                setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+            }
         }
     }
 }

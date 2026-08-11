@@ -10,6 +10,7 @@ import com.kortexgames.app.domain.repository.PlayerProgressRepository
 import com.kortexgames.app.domain.repository.ProgressRepository
 import kotlin.time.Clock
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.todayIn
@@ -17,13 +18,14 @@ import kotlinx.datetime.todayIn
 /**
  * Implementación **local-first** del historial de partidas.
  *
- *  Guardar (saveResult):
- *    1. Escribe SIEMPRE en local primero (marcada como no sincronizada).
- *       → funciona offline y en modo invitado.
+ *  Guardar (saveResult): devuelve un `Flow` de 1 o 2 pasos (ver KDoc de la
+ *  interfaz — es lo que evita que el cartel de fin de partida espere a la red):
+ *    1. Escribe SIEMPRE en local primero (marcada como no sincronizada) y EMITE
+ *       ya con el récord resuelto. → funciona offline y en modo invitado.
  *    2. Si hay sesión autenticada, intenta subir a Supabase y, si lo logra,
- *       marca la fila como sincronizada y devuelve el percentil.
- *    3. Si es invitado o falla la red, devuelve null (sin percentil) pero la
- *       partida ya está a salvo en local para sincronizarse después.
+ *       marca la fila como sincronizada y EMITE de nuevo con el percentil.
+ *    3. Si es invitado o falla la red, esa 2ª emisión trae `percentile = null`,
+ *       pero la partida ya está a salvo en local para sincronizarse después.
  *
  *  Sincronizar (syncPending): al iniciar sesión hace las DOS direcciones —
  *    primero sube lo pendiente (push local→nube) y luego descarga el historial
@@ -43,7 +45,7 @@ class ProgressRepositoryImpl(
     private val clock: Clock = Clock.System,
 ) : ProgressRepository {
 
-    override suspend fun saveResult(result: GameResult): SaveOutcome {
+    override fun saveResult(result: GameResult): Flow<SaveOutcome> = flow {
         // 1) Local primero — nunca se pierde la partida.
         val localId = local.insert(result, clock.now().toEpochMilliseconds())
 
@@ -57,8 +59,16 @@ class ProgressRepositoryImpl(
         // DIAGNÓSTICO: distingue "la app me ve como invitado" de "la RPC falló".
         println("KORTEX saveResult authState=${auth::class.simpleName}")
         if (auth !is AuthState.Authenticated) {
-            return SaveOutcome(percentile = null, ranking = null, isNewRecord = isNewRecord)
+            emit(SaveOutcome(percentile = null, ranking = null, isNewRecord = isNewRecord))
+            return@flow
         }
+
+        // Emisión LOCAL: el récord ya se conoce (SQLDelight, sin red) y no debe
+        // esperar a Supabase para llegar a la UI — es lo que le permite al cartel
+        // de fin de partida aparecer al instante en vez de tras dos vueltas RPC.
+        // `isSyncPending = true` distingue esto de "invitado/sin percentil" (ver
+        // KDoc de [SaveOutcome.isSyncPending]).
+        emit(SaveOutcome(percentile = null, ranking = null, isNewRecord = isNewRecord, isSyncPending = true))
 
         // withRanking = true: es la partida que el jugador acaba de terminar, la única
         // para la que la comparativa mundial se va a mostrar en pantalla.
@@ -72,10 +82,15 @@ class ProgressRepositoryImpl(
             // "inicia sesión" aunque el usuario SÍ esté autenticado.
             println("KORTEX submit_game_result FALLÓ: ${it::class.simpleName}: ${it.message}")
         }.getOrNull() // fallo de red → queda pendiente, se subirá en syncPending()
-        return SaveOutcome(
-            percentile = submitted?.percentile,
-            ranking = submitted?.ranking,
-            isNewRecord = isNewRecord,
+
+        // Emisión REMOTA (2ª): llega cuando llega, ya con el cartel visible desde
+        // la emisión anterior.
+        emit(
+            SaveOutcome(
+                percentile = submitted?.percentile,
+                ranking = submitted?.ranking,
+                isNewRecord = isNewRecord,
+            ),
         )
     }
 

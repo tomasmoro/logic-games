@@ -16,12 +16,17 @@ import com.kortexgames.app.domain.model.SaveOutcome
  *           [percentile] queda como red de seguridad si esta RPC falló.
  * @property isNewRecord true si la partida batió el récord previo del jugador; la UI
  *           lo celebra (badge "¡Nuevo récord!" + fuegos artificiales + sonido arcade).
+ * @property isSyncPending true mientras se espera la respuesta de Supabase (usuario
+ *           autenticado, subida en vuelo): la tarjeta lo usa para mostrar "comparando
+ *           con el mundo…" en vez de confundirlo con el aviso de invitado/sin red.
+ *           Ver [ProgressRepository.saveResult][com.kortexgames.app.domain.repository.ProgressRepository.saveResult].
  */
 data class GameOverInfo(
     val result: GameResult,
     val percentile: PercentileResult?,
     val ranking: GameRanking?,
     val isNewRecord: Boolean = false,
+    val isSyncPending: Boolean = false,
 )
 
 /**
@@ -35,4 +40,5 @@ fun SaveOutcome.toGameOverInfo(result: GameResult): GameOverInfo = GameOverInfo(
     percentile = percentile,
     ranking = ranking,
     isNewRecord = isNewRecord,
+    isSyncPending = isSyncPending,
 )

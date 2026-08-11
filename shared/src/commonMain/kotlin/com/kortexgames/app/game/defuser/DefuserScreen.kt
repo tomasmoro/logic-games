@@ -40,10 +40,13 @@ import com.kortexgames.app.core.audio.SoundEffect
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.di.AppGraph
+import com.kortexgames.app.game.DifficultyUnlocks
 import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameCategory
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
+import com.kortexgames.app.ui.components.DifficultyGateSelector
+import com.kortexgames.app.ui.components.DifficultyOption
 import com.kortexgames.app.ui.components.FireworksOverlay
 import com.kortexgames.app.ui.components.GameExitGuard
 import com.kortexgames.app.ui.components.GameIntroScreen
@@ -237,9 +240,23 @@ fun DefuserScreen(graph: AppGraph, onExit: () -> Unit) {
             // Solo se ofrece cuando no hay partida guardada que continuar.
             configContent = if (!state.hasSavedGame) {
                 {
-                    DifficultySelector(
-                        selected = state.difficulty,
-                        onSelect = { vm.onIntent(DefuserIntent.SelectDifficulty(it)) },
+                    DifficultyGateSelector(
+                        title = "DIFICULTAD",
+                        options = DEFUSER_DIFFICULTY_OPTIONS,
+                        selectedIndex = state.difficulty.ordinal,
+                        unlockedTiers = state.unlockedDifficulties,
+                        onSelect = { index ->
+                            vm.onIntent(DefuserIntent.SelectDifficulty(MineDifficulty.entries[index]))
+                        },
+                        accent = CategoryPalette.Attention,
+                        hint = DifficultyUnlocks.nextUnlockHint(
+                            GameIds.NEON_DEFUSER,
+                            state.unlockedDifficulties,
+                        ),
+                        // Los chips llevan dos líneas de detalle de longitud dispar
+                        // ("10×14 / 37 minas" es el más largo): a ancho propio, ese no
+                        // cabría y envolvería, descuadrando la tarjeta entera.
+                        equalWidth = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -353,6 +370,10 @@ fun DefuserScreen(graph: AppGraph, onExit: () -> Unit) {
                 headline = if (won) "¡Panel desactivado!" else "Panel detonado",
                 onPlayAgain = { vm.onIntent(DefuserIntent.RestartGame) },
                 onExit = onExit,
+                unlockedDifficultyLabel = state.justUnlockedDifficulty?.displayName,
+                onPlayUnlockedDifficulty = state.justUnlockedDifficulty?.let { difficulty ->
+                    { vm.onIntent(DefuserIntent.PlayDifficulty(difficulty)) }
+                },
             )
         }
 
@@ -593,111 +614,19 @@ private fun formatElapsed(elapsedMs: Long): String {
 // ---------------------------------------------------------------------------
 
 /**
- * Tarjeta flotante con un chip por cada [MineDifficulty]. Replica el patrón del
- * selector de Neon Sudoku (y del tamaño de tablero de Neon Grid 2048) para que
- * todos los juegos con dificultad la ofrezcan igual. Es escalable por construcción:
- * la fila recorre [MineDifficulty.entries], así que añadir un nivel es un cambio en
- * la enum, no aquí.
- */
-@Composable
-private fun DifficultySelector(
-    selected: MineDifficulty,
-    onSelect: (MineDifficulty) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(LogicColors.SurfaceDark.copy(alpha = 0.92f), RoundedCornerShape(20.dp))
-            .border(BorderStroke(1.dp, LogicColors.SurfaceVariantDark), RoundedCornerShape(20.dp))
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            "DIFICULTAD",
-            style = MaterialTheme.typography.labelLarge,
-            color = LogicColors.OnDarkMuted,
-            fontWeight = FontWeight.Bold,
-        )
-        // fillMaxWidth + weight(1f) por chip: todos ocupan el mismo ancho exacto
-        // en vez de ajustarse a su propio contenido. Antes, "Difícil" (el texto más
-        // largo: "10×14 · 37 minas") no cabía en el ancho que le tocaba por
-        // contenido propio y envolvía en 3 líneas, descuadrando la tarjeta entera.
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            MineDifficulty.entries.forEach { difficulty ->
-                DifficultyChip(
-                    difficulty = difficulty,
-                    selected = difficulty == selected,
-                    onClick = { onSelect(difficulty) },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-    }
-}
-
-/** Un chip del [DifficultySelector]; resaltado en acento cuando está elegido.
- *  Muestra además la geometría del panel para que el jugador sepa a qué se mete.
+ * Escalones del selector de dificultad, en el orden de [MineDifficulty]. Se derivan de la
+ * propia enum —no son una copia— así que añadir un nivel es un cambio ahí y no aquí.
  *
- *  La estadística va en **dos líneas cortas fijas** ("8×10" y "13 minas") en vez
- *  de un único string con "·": una línea larga se parte donde el layout decida
- *  (a veces a mitad de un número), mientras que dos líneas cortas nunca necesitan
- *  envolver, así todos los chips —de igual [modifier] con `weight(1f)`— quedan
- *  siempre con la misma altura. */
-@Composable
-private fun DifficultyChip(
-    difficulty: MineDifficulty,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val accent = CategoryPalette.Attention
-    val shape = RoundedCornerShape(12.dp)
-    Column(
-        modifier = modifier
-            // `bounceClick` (scale) va ANTES de clip/background/border —igual que
-            // `AnimatedGameButton`—: si el scale queda detrás de esos modificadores
-            // de dibujo en la cadena, su capa (graphicsLayer) los deja fuera y el
-            // borde/fondo puede quedarse pintado con el valor viejo al cambiar
-            // `selected` (visto en el emulador: el texto sí cambiaba de color pero
-            // el borde no), aunque el propio texto sí se redibuje bien al no
-            // depender de esa capa.
-            .bounceClick(onClick = onClick)
-            .clip(shape)
-            .background(if (selected) accent.copy(alpha = 0.22f) else LogicColors.SurfaceVariantDark)
-            .border(
-                BorderStroke(
-                    width = if (selected) 1.5.dp else 1.dp,
-                    color = if (selected) accent else LogicColors.OnDarkMuted.copy(alpha = 0.2f),
-                ),
-                shape,
-            )
-            .padding(horizontal = 6.dp, vertical = 10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            difficulty.displayName,
-            style = MaterialTheme.typography.labelLarge,
-            color = if (selected) accent else LogicColors.OnDarkMuted,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-            maxLines = 1,
-        )
-        Text(
-            "${difficulty.columns}×${difficulty.rows}",
-            style = MaterialTheme.typography.labelMedium,
-            color = LogicColors.OnDarkMuted,
-            maxLines = 1,
-        )
-        Text(
-            "${difficulty.mineCount} minas",
-            style = MaterialTheme.typography.labelMedium,
-            color = LogicColors.OnDarkMuted,
-            maxLines = 1,
-        )
-    }
+ * Cada chip muestra la geometría del panel para que el jugador sepa a qué se mete. Va en
+ * **dos líneas cortas fijas** ("8×10" y "13 minas") en vez de un único string con "·":
+ * una línea larga se parte donde el layout decida (a veces a mitad de un número), mientras
+ * que dos líneas cortas nunca necesitan envolver y todos los chips quedan a la misma altura.
+ */
+private val DEFUSER_DIFFICULTY_OPTIONS: List<DifficultyOption> = MineDifficulty.entries.map {
+    DifficultyOption(
+        label = it.displayName,
+        details = listOf("${it.columns}×${it.rows}", "${it.mineCount} minas"),
+    )
 }
 
 // ---------------------------------------------------------------------------

@@ -53,10 +53,13 @@ import com.kortexgames.app.core.audio.SoundEffect
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.di.AppGraph
+import com.kortexgames.app.game.DifficultyUnlocks
 import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.ui.components.AnimatedGameButton
+import com.kortexgames.app.ui.components.DifficultyGateSelector
+import com.kortexgames.app.ui.components.DifficultyOption
 import com.kortexgames.app.ui.components.FireworksOverlay
 import com.kortexgames.app.ui.components.GameExitGuard
 import com.kortexgames.app.ui.components.GameIntroScreen
@@ -194,9 +197,18 @@ fun Neon2048Screen(graph: AppGraph, onExit: () -> Unit) {
                 )
             },
             configContent = {
-                BoardSizeSelector(
-                    selected = state.boardSize,
-                    onSelect = { vm.onIntent(Neon2048Intent.SelectBoardSize(it)) },
+                DifficultyGateSelector(
+                    title = "TAMAÑO DEL TABLERO",
+                    options = BOARD_SIZE_OPTIONS_UI,
+                    selectedIndex = Neon2048Config.BOARD_SIZE_OPTIONS.indexOf(state.boardSize),
+                    unlockedTiers = state.unlockedBoardSizes,
+                    onSelect = { index ->
+                        vm.onIntent(
+                            Neon2048Intent.SelectBoardSize(Neon2048Config.BOARD_SIZE_OPTIONS[index]),
+                        )
+                    },
+                    accent = CategoryPalette.MentalMath,
+                    hint = DifficultyUnlocks.nextUnlockHint(GameIds.NEON_2048, state.unlockedBoardSizes),
                     modifier = Modifier.fillMaxWidth(),
                 )
             },
@@ -300,6 +312,10 @@ fun Neon2048Screen(graph: AppGraph, onExit: () -> Unit) {
                 audio = graph.audio,
                 onPlayAgain = { vm.onIntent(Neon2048Intent.RestartGame) },
                 onExit = onExit,
+                unlockedDifficultyLabel = state.justUnlockedBoardSize?.let { size -> "$size×$size" },
+                onPlayUnlockedDifficulty = state.justUnlockedBoardSize?.let { size ->
+                    { vm.onIntent(Neon2048Intent.PlayBoardSize(size)) }
+                },
             )
         }
 
@@ -332,81 +348,17 @@ fun Neon2048Screen(graph: AppGraph, onExit: () -> Unit) {
 // ---------------------------------------------------------------------------
 
 /**
- * Tarjeta flotante con un chip por cada tamaño de [Neon2048Config.BOARD_SIZE_OPTIONS]
- * ("4×4".."8×8"). Es **escalable por construcción**: la fila sale de recorrer esa
- * lista, así que añadir o quitar un tamaño jugable es un cambio de una línea en
- * [Neon2048Config], no en esta función.
+ * Escalones del selector de tablero ("4×4".."8×8"), en el orden de
+ * [Neon2048Config.BOARD_SIZE_OPTIONS]. Salen de recorrer esa lista —no son una copia—, así
+ * que añadir o quitar un tamaño jugable sigue siendo un cambio de una línea en
+ * [Neon2048Config] y no aquí.
  *
- * Se dibuja como tarjeta con fondo propio (y no "al aire" sobre el fondo de la
- * antesala) para que se lea como un bloque de configuración propio dentro del
- * `configContent` de [GameIntroScreen], no como parte del cuerpo de la pantalla.
- *
- * @param selected tamaño actualmente elegido (resaltado).
- * @param onSelect se invoca con el tamaño tocado.
+ * El tamaño hace de dificultad del juego: los que el jugador aún no se ha ganado se pintan
+ * con candado (ver [DifficultyGateSelector] y [DifficultyUnlocks]).
  */
-@Composable
-private fun BoardSizeSelector(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .background(LogicColors.SurfaceDark.copy(alpha = 0.92f), RoundedCornerShape(20.dp))
-            .border(BorderStroke(1.dp, LogicColors.SurfaceVariantDark), RoundedCornerShape(20.dp))
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            "TAMAÑO DEL TABLERO",
-            style = MaterialTheme.typography.labelLarge,
-            color = LogicColors.OnDarkMuted,
-            fontWeight = FontWeight.Bold,
-        )
-        Row(
-            modifier = Modifier.padding(top = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Neon2048Config.BOARD_SIZE_OPTIONS.forEach { size ->
-                key(size) {
-                    BoardSizeChip(size = size, selected = size == selected, onClick = { onSelect(size) })
-                }
-            }
-        }
-    }
-}
+private val BOARD_SIZE_OPTIONS_UI: List<DifficultyOption> =
+    Neon2048Config.BOARD_SIZE_OPTIONS.map { DifficultyOption(label = "$it×$it") }
 
-/** Un chip `NxN` del [BoardSizeSelector]; resaltado en acento cuando está elegido. */
-@Composable
-private fun BoardSizeChip(size: Int, selected: Boolean, onClick: () -> Unit) {
-    val accent = CategoryPalette.MentalMath
-    val shape = RoundedCornerShape(12.dp)
-    Box(
-        modifier = Modifier
-            // `bounceClick` (scale) va ANTES de clip/background/border —igual que
-            // `AnimatedGameButton`—: si el scale queda detrás de esos modificadores
-            // de dibujo en la cadena, su capa (graphicsLayer) los deja fuera y el
-            // borde/fondo puede quedarse pintado con el valor viejo al cambiar
-            // `selected` (visto en el emulador: el texto sí cambiaba de color pero
-            // el borde no), aunque el propio texto sí se redibuje bien al no
-            // depender de esa capa.
-            .bounceClick(onClick = onClick)
-            .clip(shape)
-            .background(if (selected) accent.copy(alpha = 0.22f) else LogicColors.SurfaceVariantDark)
-            .border(
-                BorderStroke(
-                    width = if (selected) 1.5.dp else 1.dp,
-                    color = if (selected) accent else LogicColors.OnDarkMuted.copy(alpha = 0.2f),
-                ),
-                shape,
-            )
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            "$size×$size",
-            style = MaterialTheme.typography.labelLarge,
-            color = if (selected) accent else LogicColors.OnDarkMuted,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-        )
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Tablero

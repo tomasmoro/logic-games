@@ -121,14 +121,30 @@ class HyperCubeModelTest {
 
     @Test
     fun laProfundidadDeMezclaCreceConElNivelYSeDetieneEnElUltimo() {
-        assertEquals(2, scrambleDepthFor(1))
-        assertEquals(4, scrambleDepthFor(3))
-        assertEquals(MAX_LEVEL + 1, scrambleDepthFor(MAX_LEVEL))
+        // Anchos de tramo crecientes (ver RAMP_WIDTHS en HyperCubeEngine.kt): 2 niveles a 1 giro,
+        // 2 niveles a 2 giros, 4 a 3, 5 a 4, 6 a 5, 7 a 6, 8 a 7 y 9 a 8 giros (el techo).
+        assertEquals(1, scrambleDepthFor(1))
+        assertEquals(1, scrambleDepthFor(2))
+        assertEquals(2, scrambleDepthFor(3)) // el nivel 3, antes "imposible" con 4 giros, ahora es el más suave.
+        assertEquals(2, scrambleDepthFor(4))
+        assertEquals(3, scrambleDepthFor(5)) // el nivel límite entre tramos toma la profundidad NUEVA.
+        assertEquals(3, scrambleDepthFor(8))
+        assertEquals(4, scrambleDepthFor(9))
+        assertEquals(4, scrambleDepthFor(13))
+        assertEquals(5, scrambleDepthFor(14))
+        assertEquals(5, scrambleDepthFor(19))
+        assertEquals(6, scrambleDepthFor(20))
+        assertEquals(6, scrambleDepthFor(26))
+        assertEquals(7, scrambleDepthFor(27))
+        assertEquals(7, scrambleDepthFor(34))
+        assertEquals(8, scrambleDepthFor(35))
+        assertEquals(8, scrambleDepthFor(MAX_LEVEL))
+        assertEquals(43, MAX_LEVEL)
         // Por encima del último nivel no sigue creciendo: la rampa termina ahí (ver su KDoc).
         assertEquals(scrambleDepthFor(MAX_LEVEL), scrambleDepthFor(MAX_LEVEL + 5))
         // Y un nivel inválido no revienta ni produce mezclas absurdas.
-        assertEquals(2, scrambleDepthFor(0))
-        assertEquals(2, scrambleDepthFor(-3))
+        assertEquals(1, scrambleDepthFor(0))
+        assertEquals(1, scrambleDepthFor(-3))
     }
 
     // --- Formato de guardado --------------------------------------------------

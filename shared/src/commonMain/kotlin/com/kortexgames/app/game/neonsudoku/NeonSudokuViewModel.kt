@@ -7,6 +7,8 @@ import com.kortexgames.app.core.mvi.MviViewModel
 import com.kortexgames.app.domain.model.GameResult
 import com.kortexgames.app.domain.repository.ProgressRepository
 import com.kortexgames.app.domain.repository.SavedGameStateRepository
+import com.kortexgames.app.game.DifficultyAttempt
+import com.kortexgames.app.game.DifficultyUnlocks
 import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.toGameOverInfo
@@ -145,6 +147,18 @@ class NeonSudokuViewModel(
                 setState { copy(savedSummary = summary) }
             }
             .launchIn(viewModelScope)
+
+        // Dificultades desbloqueadas: se derivan del historial (ganar una partida abre el
+        // escalón siguiente, ver [DifficultyUnlocks]). Se OBSERVA en vez de leerse una vez
+        // para que el desbloqueo aparezca solo al volver a la antesala tras ganar —la
+        // partida recién guardada entra por este mismo flow— y también cuando el historial
+        // de la nube baja al iniciar sesión.
+        progress.observeHistory(GameIds.NEON_SUDOKU_MATRIX)
+            .onEach { history ->
+                val unlocked = DifficultyUnlocks.unlockedTiers(GameIds.NEON_SUDOKU_MATRIX, history)
+                setState { copy(unlockedDifficulties = unlocked) }
+            }
+            .launchIn(viewModelScope)
     }
 
     override fun onIntent(intent: NeonSudokuIntent) {
@@ -153,6 +167,7 @@ class NeonSudokuViewModel(
             NeonSudokuIntent.ResumeSaved -> resumeSaved()
             NeonSudokuIntent.PlayAgain -> startGame(currentState.difficulty)
             is NeonSudokuIntent.SelectDifficulty -> onSelectDifficulty(intent.difficulty)
+            is NeonSudokuIntent.PlayDifficulty -> onPlayDifficulty(intent.difficulty)
             NeonSudokuIntent.Revive -> onRevive()
             NeonSudokuIntent.DeclineRevive -> finish(won = false)
             NeonSudokuIntent.Pause -> pause()
@@ -173,11 +188,27 @@ class NeonSudokuViewModel(
     // ---------------------------------------------------------------------------
 
     /** Cambia la dificultad elegida en la antesala; no-op fuera de IDLE (cambiarla
-     *  a mitad de partida no tiene sentido). Mismo criterio que `SelectBoardSize`
-     *  en Neon Grid 2048. */
+     *  a mitad de partida no tiene sentido) y no-op si aún está bloqueada. Mismo
+     *  criterio que `SelectBoardSize` en Neon Grid 2048.
+     *
+     *  El candado se revalida aquí y no solo en la UI porque el desbloqueo es una regla
+     *  del juego, no una decoración: la pantalla ya no deja pulsar un chip cerrado, pero
+     *  el intent es público y esta es su única fuente de verdad. */
     private fun onSelectDifficulty(difficulty: SudokuDifficulty) {
         if (currentState.status != GameStatus.IDLE) return
+        if (difficulty.ordinal + 1 > currentState.unlockedDifficulties) return
         setState { copy(difficulty = difficulty) }
+    }
+
+    /**
+     * Arranca directamente en [difficulty] ([NeonSudokuIntent.PlayDifficulty]), saltándose
+     * la antesala. A diferencia de [onSelectDifficulty] no exige [GameStatus.IDLE] —se
+     * dispara desde el diálogo de fin de partida, en [GameStatus.FINISHED]— pero sí
+     * revalida el candado: el intent es público y esta es su única fuente de verdad.
+     */
+    private fun onPlayDifficulty(difficulty: SudokuDifficulty) {
+        if (difficulty.ordinal + 1 > currentState.unlockedDifficulties) return
+        startGame(difficulty)
     }
 
     /**
@@ -680,11 +711,13 @@ class NeonSudokuViewModel(
         setState { copy(status = GameStatus.FINISHED, awaitingRevive = false) }
 
         val elapsed = currentState.elapsedMs
+        val difficultyLevel = currentState.difficulty.ordinal + 1
+        // Una derrota no puntúa: el tablero quedó incompleto. Solo la victoria
+        // aplica el baremo de precisión/velocidad de [calculateScore].
+        val score = if (won) calculateScore(elapsed, currentState.errorCount) else 0
         val result = GameResult(
             gameId = GameIds.NEON_SUDOKU_MATRIX,
-            // Una derrota no puntúa: el tablero quedó incompleto. Solo la victoria
-            // aplica el baremo de precisión/velocidad de [calculateScore].
-            score = if (won) calculateScore(elapsed, currentState.errorCount) else 0,
+            score = score,
             completionTimeMs = elapsed,
             accuracyPercentage = if (totalInputs == 0) {
                 100.0
@@ -692,19 +725,35 @@ class NeonSudokuViewModel(
                 (totalInputs - conflictInputs).toDouble() / totalInputs * 100.0
             },
             // difficultyLevel 1..5 a partir del nivel elegido (enum ordinal + 1).
-            difficultyLevel = currentState.difficulty.ordinal + 1,
+            difficultyLevel = difficultyLevel,
             reachedMetric = currentState.errorCount,
         )
+        // ¿Esta partida abre la dificultad siguiente? Se evalúa AQUÍ, contra el resultado
+        // recién calculado y `unlockedDifficulties` tal como estaba ANTES de guardar —no
+        // hace falta esperar a que `progress.saveResult` termine y el historial reactivo
+        // se actualice (ver KDoc de `DifficultyUnlocks.justUnlockedLabel`).
+        val unlockedLabel = DifficultyUnlocks.justUnlockedLabel(
+            GameIds.NEON_SUDOKU_MATRIX,
+            unlockedBefore = currentState.unlockedDifficulties,
+            attempt = DifficultyAttempt(difficultyLevel, score),
+        )
+        val unlockedDifficulty = unlockedLabel?.let { SudokuDifficulty.entries.getOrNull(difficultyLevel) }
         viewModelScope.launch {
             // Partida terminada: cualquier guardado pendiente es "fantasma" desde
             // aquí (ya se registró el resultado final), igual que en Neon Grid 2048.
             savedGameState.clear(GameIds.NEON_SUDOKU_MATRIX)
-            val outcome = progress.saveResult(result)
             if (won) {
                 audio.playSound(SoundEffect.LEVEL_UP)
                 sendEffect(NeonSudokuEffect.SweepVictory)
             }
-            setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+            // `saveResult` emite el resultado LOCAL primero (el cartel no espera a
+            // Supabase) y, si hay sesión, el percentil/ranking real después (ver KDoc
+            // de `ProgressRepository.saveResult`).
+            progress.saveResult(result).collect { outcome ->
+                setState {
+                    copy(gameOver = outcome.toGameOverInfo(result), justUnlockedDifficulty = unlockedDifficulty)
+                }
+            }
         }
     }
 

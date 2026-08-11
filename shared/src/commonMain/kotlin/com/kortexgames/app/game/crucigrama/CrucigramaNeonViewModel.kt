@@ -32,6 +32,10 @@ import kotlinx.serialization.json.Json
  * @property savedLevel nivel de la partida guardada al salir, o null si no hay
  *   ninguna pendiente. Lo pinta la antesala como "Continuar" (ver
  *   [com.kortexgames.app.ui.components.ResumeState]).
+ * @property extrasPromptDismissed el jugador ya vio el cartel de "seguir buscando
+ *   extras" (tras completar la rejilla, ver [CrucigramaNeonState.gridComplete]) y
+ *   eligió seguir jugando. Evita que el cartel reaparezca en cada recomposición
+ *   mientras sigue buscando; se resetea al empezar/reanudar un nivel.
  */
 data class CrucigramaNeonUiState(
     val phase: LeveledGamePhase = LeveledGamePhase.LEVEL_SELECT,
@@ -42,6 +46,7 @@ data class CrucigramaNeonUiState(
     val revealedHint: String? = null,
     val gameOver: GameOverInfo? = null,
     val savedLevel: Int? = null,
+    val extrasPromptDismissed: Boolean = false,
 ) : UiState
 
 /** Intents del Crucigrama Neón. */
@@ -56,6 +61,18 @@ sealed interface CrucigramaNeonIntent : UiIntent {
     data object NextLevel : CrucigramaNeonIntent
     data object ChooseLevel : CrucigramaNeonIntent
     data class PlayLevel(val level: Int) : CrucigramaNeonIntent
+
+    /**
+     * Respuesta al cartel de "rejilla completa, ¿seguir buscando extras?": el
+     * jugador elige seguir jugando (descarta el cartel, la partida sigue viva).
+     */
+    data object KeepSearchingExtras : CrucigramaNeonIntent
+
+    /**
+     * Respuesta al mismo cartel: el jugador prefiere cerrar el nivel ya, sin
+     * buscar las extras que falten. Cierra la partida como cualquier fin normal.
+     */
+    data object FinishLevel : CrucigramaNeonIntent
 
     /** Desde la antesala: retomar la partida guardada al salir (ver [CrucigramaNeonUiState.savedLevel]). */
     data object ResumeSaved : CrucigramaNeonIntent
@@ -127,6 +144,8 @@ class CrucigramaNeonViewModel(
             CrucigramaNeonIntent.HintAdWatched -> {
                 setState { copy(revealedHint = engine.nextHint()) }
             }
+            CrucigramaNeonIntent.KeepSearchingExtras -> setState { copy(extrasPromptDismissed = true) }
+            CrucigramaNeonIntent.FinishLevel -> engine.finish()
         }
     }
 
@@ -144,6 +163,7 @@ class CrucigramaNeonViewModel(
                 currentLevel = level,
                 gameOver = null,
                 revealedHint = null,
+                extrasPromptDismissed = false,
             )
         }
         viewModelScope.launch { savedGameState.clear(GameIds.CRUCIGRAMA_NEON) }
@@ -165,6 +185,7 @@ class CrucigramaNeonViewModel(
                     currentLevel = saved.level,
                     gameOver = null,
                     revealedHint = null,
+                    extrasPromptDismissed = false,
                 )
             }
             engine.resumeFrom(saved)
@@ -196,15 +217,21 @@ class CrucigramaNeonViewModel(
     private fun decodeSaved(json: String): CrucigramaNeonState? =
         runCatching { Json.decodeFromString<CrucigramaNeonState>(json) }.getOrNull()
 
+    /**
+     * `saveResult` emite en 1 o 2 pasos: local primero (el cartel no espera a
+     * Supabase) y, con sesión, el percentil real después (ver KDoc de
+     * `ProgressRepository.saveResult`).
+     */
     private fun onFinished(result: GameResult) {
         viewModelScope.launch {
             // Nivel completado: un guardado de esta partida (si quedó alguno) es
             // "fantasma" a partir de aquí, ya se registró el resultado final.
             savedGameState.clear(GameIds.CRUCIGRAMA_NEON)
-            val outcome = progress.saveResult(result)
             audio.playSound(SoundEffect.LEVEL_UP)
             audio.hapticFeedback(HapticFeedback.SUCCESS)
-            setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+            progress.saveResult(result).collect { outcome ->
+                setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+            }
         }
     }
 }

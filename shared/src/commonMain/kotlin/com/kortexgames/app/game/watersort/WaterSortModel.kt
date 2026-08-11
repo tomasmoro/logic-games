@@ -243,17 +243,21 @@ object WaterSortGenerator {
         if (depth >= maxDepth) return null
         if (!visited.add(normalize(tubes))) return null
 
-        var best: Int? = null
         for (from in tubes.indices) {
             for (to in tubes.indices) {
                 if (from == to) continue
                 if (!WaterSortRules.canPour(tubes, from, to, capacity)) continue
                 val next = WaterSortRules.pour(tubes, from, to, capacity).tubes
+                // Corta en la PRIMERA solución hallada (ver KDoc de [solve]): seguir
+                // explorando los hermanos para quedarnos con el mínimo convierte esto
+                // en un recorrido exhaustivo de todo el espacio de estados alcanzable
+                // (hasta maxDepth), que es justo lo que hacía lenta la generación de
+                // niveles en tramos altos (más colores/capacidad → árbol mucho mayor).
                 val found = dfs(next, capacity, visited, depth + 1, maxDepth)
-                if (found != null && (best == null || found < best)) best = found
+                if (found != null) return found
             }
         }
-        return best
+        return null
     }
 
     /** Clave canónica de un tablero: tubos serializados y ordenados. */

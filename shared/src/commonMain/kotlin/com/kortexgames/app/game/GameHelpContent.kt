@@ -462,12 +462,18 @@ object GameHelpContent {
             HelpStep(
                 icon = KortexIcons.Warning,
                 title = "Evita los rojos",
-                text = "¡No toques los nodos rojos!",
+                text = "¡No toques los nodos rojos! Déjalos apagarse solos.",
             ),
             HelpStep(
-                icon = KortexIcons.Timer,
-                title = "30 segundos",
-                text = "La ronda dura 30 s y cada vez aparecen más rápido.",
+                icon = KortexIcons.Trophy,
+                title = "Hordas sin final",
+                text = "Cada horda trae más nodos, más rápidos y con menos tiempo; " +
+                    "desde la 6ª además se mueven. Solo te frenan tus vidas.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Heart,
+                title = "Corazones de rescate",
+                text = "Cada 5 hordas aparece un corazón verde si te falta alguna vida: tócalo para recuperarla.",
             ),
         ),
     )

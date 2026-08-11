@@ -7,6 +7,8 @@ import com.kortexgames.app.core.mvi.MviViewModel
 import com.kortexgames.app.domain.model.GameResult
 import com.kortexgames.app.domain.repository.ProgressRepository
 import com.kortexgames.app.domain.repository.SavedGameStateRepository
+import com.kortexgames.app.game.DifficultyAttempt
+import com.kortexgames.app.game.DifficultyUnlocks
 import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.toGameOverInfo
@@ -92,6 +94,18 @@ class DefuserViewModel(
         savedGameState.observe(GameIds.NEON_DEFUSER)
             .onEach { saved -> setState { copy(hasSavedGame = saved != null) } }
             .launchIn(viewModelScope)
+
+        // Dificultades desbloqueadas: se derivan del historial (una victoria abre el
+        // escalón siguiente, ver [DifficultyUnlocks]). Se OBSERVA en vez de leerse una
+        // vez para que el desbloqueo aparezca solo al volver a la antesala tras ganar
+        // —la partida recién guardada entra por este mismo flow— y también cuando el
+        // historial de la nube baja al iniciar sesión.
+        progress.observeHistory(GameIds.NEON_DEFUSER)
+            .onEach { history ->
+                val unlocked = DifficultyUnlocks.unlockedTiers(GameIds.NEON_DEFUSER, history)
+                setState { copy(unlockedDifficulties = unlocked) }
+            }
+            .launchIn(viewModelScope)
     }
 
     override fun onIntent(intent: DefuserIntent) {
@@ -99,6 +113,7 @@ class DefuserViewModel(
             DefuserIntent.Start -> startOrResume()
             DefuserIntent.RestartGame -> startGame(currentState.difficulty)
             is DefuserIntent.SelectDifficulty -> onSelectDifficulty(intent.difficulty)
+            is DefuserIntent.PlayDifficulty -> onPlayDifficulty(intent.difficulty)
             is DefuserIntent.RevealCell -> onReveal(intent.position)
             is DefuserIntent.ToggleFlag -> onToggleFlag(intent.position)
             DefuserIntent.Revive -> onRevive()
@@ -117,11 +132,27 @@ class DefuserViewModel(
     // ---------------------------------------------------------------------------
 
     /** Cambia la dificultad elegida en la antesala; no-op fuera de IDLE (cambiarla
-     *  a mitad de partida no tiene sentido). Al cambiarla se refresca el panel vacío
-     *  para que la antesala previsualice el tamaño correcto. */
+     *  a mitad de partida no tiene sentido) y no-op si aún está bloqueada. Al cambiarla
+     *  se refresca el panel vacío para que la antesala previsualice el tamaño correcto.
+     *
+     *  El candado se revalida aquí y no solo en la UI porque el estado desbloqueado es
+     *  una regla del juego, no una decoración: la pantalla ya no deja pulsar un chip
+     *  cerrado, pero el intent es público y esta es su única fuente de verdad. */
     private fun onSelectDifficulty(difficulty: MineDifficulty) {
         if (currentState.status != GameStatus.IDLE) return
+        if (difficulty.ordinal + 1 > currentState.unlockedDifficulties) return
         setState { copy(difficulty = difficulty, board = MineBoard.blank(difficulty)) }
+    }
+
+    /**
+     * Arranca directamente en [difficulty] ([DefuserIntent.PlayDifficulty]), saltándose la
+     * antesala. A diferencia de [onSelectDifficulty] no exige [GameStatus.IDLE] —se dispara
+     * desde el diálogo de fin de partida, en [GameStatus.FINISHED]— pero sí revalida el
+     * candado: el intent es público y esta es su única fuente de verdad.
+     */
+    private fun onPlayDifficulty(difficulty: MineDifficulty) {
+        if (difficulty.ordinal + 1 > currentState.unlockedDifficulties) return
+        startGame(difficulty)
     }
 
     /**
@@ -686,27 +717,45 @@ class DefuserViewModel(
         setState { copy(status = GameStatus.FINISHED) }
 
         val elapsed = currentState.elapsedMs
+        val difficultyLevel = currentState.difficulty.ordinal + 1
+        val score = if (won) calculateScore(elapsed) else 0
         val result = GameResult(
             gameId = GameIds.NEON_DEFUSER,
-            score = if (won) calculateScore(elapsed) else 0,
+            score = score,
             // (el detalle de qué resta y por qué está en `calculateScore`)
             completionTimeMs = elapsed,
             // Buscaminas se juega a "un error y fuera": la precisión útil es binaria
             // (despejaste o explotaste), así que 100% al ganar y 0% al perder.
             accuracyPercentage = if (won) 100.0 else 0.0,
             // difficultyLevel 1..N a partir del nivel elegido (enum ordinal + 1).
-            difficultyLevel = currentState.difficulty.ordinal + 1,
+            difficultyLevel = difficultyLevel,
         )
+        // ¿Esta partida abre la dificultad siguiente? Se evalúa AQUÍ, contra el resultado
+        // recién calculado y `unlockedDifficulties` tal como estaba ANTES de guardar —no
+        // hace falta esperar a que `progress.saveResult` termine y el historial reactivo
+        // se actualice (ver KDoc de `DifficultyUnlocks.justUnlockedLabel`).
+        val unlockedLabel = DifficultyUnlocks.justUnlockedLabel(
+            GameIds.NEON_DEFUSER,
+            unlockedBefore = currentState.unlockedDifficulties,
+            attempt = DifficultyAttempt(difficultyLevel, score),
+        )
+        val unlockedDifficulty = unlockedLabel?.let { MineDifficulty.entries.getOrNull(difficultyLevel) }
         viewModelScope.launch {
             // Partida terminada: cualquier guardado pendiente es "fantasma" desde
             // aquí (ya se registró el resultado final), igual que en Neon Sudoku.
             savedGameState.clear(GameIds.NEON_DEFUSER)
-            val outcome = progress.saveResult(result)
             if (won) {
                 audio.playSound(SoundEffect.LEVEL_UP)
                 sendEffect(DefuserEffect.VictoryFireworks)
             }
-            setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+            // `saveResult` emite el resultado LOCAL primero (el cartel no espera a
+            // Supabase) y, si hay sesión, el percentil/ranking real después (ver KDoc
+            // de `ProgressRepository.saveResult`).
+            progress.saveResult(result).collect { outcome ->
+                setState {
+                    copy(gameOver = outcome.toGameOverInfo(result), justUnlockedDifficulty = unlockedDifficulty)
+                }
+            }
         }
     }
 

@@ -5,6 +5,7 @@ import com.kortexgames.app.core.audio.HapticFeedback
 import com.kortexgames.app.core.audio.SoundEffect
 import com.kortexgames.app.game.BaseGameEngine
 import com.kortexgames.app.game.GameIds
+import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.ResumableGameEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,6 +48,13 @@ data class CrucigramaNeonState(
     val lastExtra: String? = null,
     /** Contador que sube cada vez que se descubre una extra (dispara chispas + panel). */
     val extraTick: Long = 0L,
+    /**
+     * True en cuanto se resuelve toda la rejilla si aún quedan extras sin descubrir:
+     * la partida NO se cierra sola (ver [CrucigramaNeonEngine.onCorrect]), para que la
+     * UI pueda ofrecer seguir buscándolas antes de terminar el nivel. Una vez en true
+     * se mantiene así el resto de la partida (no hace falta "apagarlo").
+     */
+    val gridComplete: Boolean = false,
 )
 
 /**
@@ -105,7 +113,10 @@ class CrucigramaNeonEngine(
     /** Añade una letra al buffer y valida automáticamente candidatas. */
     fun tapLetter(letter: Char) {
         val current = _state.value
-        if (letter !in current.letters || current.slots.all { it.solved }) return
+        // Antes se bloqueaba en cuanto la rejilla quedaba resuelta; ahora, si el
+        // jugador decidió seguir buscando extras ([CrucigramaNeonState.gridComplete]),
+        // el buffer sigue vivo hasta que la partida realmente termina ([finish]).
+        if (letter !in current.letters || status.value == GameStatus.FINISHED) return
 
         // Tope de escritura = palabra más larga del nivel COMPLETO (no solo las
         // pendientes). Antes se usaba el máximo de las pendientes y, al resolver las
@@ -186,6 +197,12 @@ class CrucigramaNeonEngine(
             cell.copy(entry = entry, fixed = index in fixedIndices)
         }
 
+        val allSlotsSolved = solvedSlots.all { it.solved }
+        // Nivel completado con extras aún sin encontrar: no cerramos la partida
+        // todavía, dejamos el buffer vivo para que la UI ofrezca seguir buscándolas
+        // (ver [CrucigramaNeonScreen], cartel de "seguir buscando extras").
+        val pendingExtras = allSlotsSolved && current.extraFound.size < current.extraWords.size
+
         _state.update {
             it.copy(
                 slots = solvedSlots,
@@ -197,10 +214,11 @@ class CrucigramaNeonEngine(
                 correctWords = it.correctWords + 1,
                 lastOutcome = CrucigramaNeonOutcome.CORRECT,
                 feedbackTick = solvedTick,
+                gridComplete = it.gridComplete || pendingExtras,
             )
         }
 
-        if (solvedSlots.all { it.solved }) finish()
+        if (allSlotsSolved && !pendingExtras) finish()
     }
 
     /**
@@ -217,10 +235,11 @@ class CrucigramaNeonEngine(
         audio.playSound(SoundEffect.SUCCESS)
         audio.hapticFeedback(HapticFeedback.SUCCESS)
 
+        val newExtraFound = current.extraFound + word
         _state.update {
             it.copy(
                 inputBuffer = "",
-                extraFound = it.extraFound + word,
+                extraFound = newExtraFound,
                 lastExtra = word,
                 extraTick = it.extraTick + 1,
                 score = it.score + gained,
@@ -230,6 +249,11 @@ class CrucigramaNeonEngine(
                 feedbackTick = tick,
             )
         }
+
+        // El jugador ya había resuelto la rejilla y eligió seguir buscando: si esta
+        // era la última extra pendiente, cerramos la partida sola (ya no queda nada
+        // más por hacer, no tiene sentido esperar a que pulse "Terminar nivel").
+        if (current.gridComplete && newExtraFound.size >= current.extraWords.size) finish()
     }
 
     private fun unsolvedSlots(state: CrucigramaNeonState): List<CrucigramaNeonSlotState> =

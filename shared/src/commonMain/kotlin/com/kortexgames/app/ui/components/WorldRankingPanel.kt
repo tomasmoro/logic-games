@@ -17,8 +17,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -498,6 +500,38 @@ private fun GlobalRecordBadge(modifier: Modifier = Modifier) {
             style = MaterialTheme.typography.labelLarge,
             color = LogicColors.BackgroundDark,
             fontWeight = FontWeight.Black,
+        )
+    }
+}
+
+/**
+ * Hueco de la comparativa mientras la subida a Supabase sigue en vuelo
+ * (`SaveOutcome.isSyncPending`). Existe para que el jugador autenticado NO vea el
+ * aviso de [WorldRankingUnavailable] ("inicia sesión...") mientras se espera la
+ * respuesta: el cartel de fin de partida ya se mostró sin esperar a la red (ver
+ * `ProgressRepository.saveResult`), así que este hueco es breve y se rellena solo
+ * en cuanto llega el percentil/ranking real.
+ */
+@Composable
+fun WorldRankingLoading(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(LogicColors.SurfaceVariantDark)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CircularProgressIndicator(
+            color = LogicColors.Electric,
+            strokeWidth = 2.dp,
+            modifier = Modifier.size(16.dp),
+        )
+        Text(
+            "Comparando con el mundo…",
+            style = MaterialTheme.typography.bodyMedium,
+            color = LogicColors.OnDarkMuted,
         )
     }
 }

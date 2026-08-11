@@ -43,6 +43,11 @@ import kotlinx.serialization.Serializable
  * @property difficulty dificultad elegida en la antesala (banco de plantillas y
  *   `difficultyLevel` del resultado). Sobrevive a "jugar de nuevo" como
  *   preferencia del jugador, igual que el tamaño de tablero en Neon Grid 2048.
+ * @property unlockedDifficulties cuántas dificultades tiene abiertas el jugador
+ *   (1-based: `1` = solo Fácil). Se **deriva del historial de partidas** —ganar en una
+ *   abre la siguiente, sin columna nueva en la BD— y por eso viaja con la cuenta al
+ *   iniciar sesión: ver [com.kortexgames.app.game.DifficultyUnlocks]. Las que quedan
+ *   por encima se pintan con candado en el selector de la antesala.
  * @property awaitingRevive `true` mientras se ofrece la segunda oportunidad: el
  *   jugador agotó los errores y la UI muestra el overlay de "ver anuncio para
  *   continuar". El juego sigue en [GameStatus.RUNNING] (no FINISHED) pero con el
@@ -70,6 +75,11 @@ import kotlinx.serialization.Serializable
  * @property gameOver resumen del resultado (puntaje + percentil) cuando la
  *   partida termina; `null` mientras se juega. Mismo patrón que el resto de
  *   juegos del catálogo.
+ * @property justUnlockedDifficulty la dificultad que ESTA partida acaba de desbloquear
+ *   (ganar en [difficulty] cumplía el requisito de [com.kortexgames.app.game.DifficultyUnlocks]
+ *   y no había ningún escalón por encima ya abierto), o `null` si no desbloqueó ninguna. Se
+ *   fija junto a [gameOver] en `finish()` y el diálogo de fin de partida lo usa para ofrecer
+ *   "Jugar en …" como CTA. Mismo patrón que Neon Defuser.
  */
 data class NeonSudokuUiState(
     val board: Board = Board.empty(),
@@ -78,11 +88,13 @@ data class NeonSudokuUiState(
     val errorCount: Int = 0,
     val elapsedMs: Long = 0L,
     val difficulty: SudokuDifficulty = SudokuDifficulty.FACIL,
+    val unlockedDifficulties: Int = 1,
     val awaitingRevive: Boolean = false,
     val awaitingHint: Boolean = false,
     val status: GameStatus = GameStatus.IDLE,
     val savedSummary: String? = null,
     val gameOver: GameOverInfo? = null,
+    val justUnlockedDifficulty: SudokuDifficulty? = null,
 ) : UiState {
 
     /**
@@ -144,6 +156,17 @@ sealed interface NeonSudokuIntent : UiIntent {
      * mismo criterio que `SelectBoardSize` en Neon Grid 2048.
      */
     data class SelectDifficulty(val difficulty: SudokuDifficulty) : NeonSudokuIntent
+
+    /**
+     * Arranca una partida nueva directamente en [difficulty], saltándose la antesala. Lo
+     * dispara el CTA "JUGAR EN …" del diálogo de fin de partida cuando esa partida acaba de
+     * desbloquear la dificultad siguiente ([NeonSudokuUiState.justUnlockedDifficulty]): a
+     * diferencia de [SelectDifficulty] (solo cambia la preferencia en IDLE) esto SÍ arranca
+     * a jugar, y a diferencia de [PlayAgain] (repite la dificultad actual) usa la que se le
+     * indique. El ViewModel revalida igualmente que esté desbloqueada antes de arrancar — el
+     * intent es público y no debe fiarse de que la UI ya lo comprobó.
+     */
+    data class PlayDifficulty(val difficulty: SudokuDifficulty) : NeonSudokuIntent
 
     /** El jugador agotó los errores y aceptó ver un anuncio para continuar: se le
      *  devuelve margen ([NeonSudokuConfig.REVIVE_ERROR_GRANT]) y la partida sigue.

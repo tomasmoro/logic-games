@@ -8,6 +8,8 @@ import com.kortexgames.app.domain.model.GameResult
 import com.kortexgames.app.domain.repository.PlayerProgressRepository
 import com.kortexgames.app.domain.repository.ProgressRepository
 import com.kortexgames.app.domain.repository.SavedGameStateRepository
+import com.kortexgames.app.game.DifficultyAttempt
+import com.kortexgames.app.game.DifficultyUnlocks
 import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.toGameOverInfo
@@ -50,8 +52,6 @@ import kotlin.time.TimeSource
  * @param audio manager de sonido/háptica. El feedback fino viaja como
  *   [Neon2048Effect]; aquí se usa directamente solo para el remate de fin de
  *   partida, que ocurre ya dentro de una corrutina de guardado.
- * @param difficulty dificultad 1..5 que se reporta en el [GameResult]. No altera
- *   las reglas: en 2048 el tablero es siempre 4×4 (cambiarlo sería otro juego).
  * @param random inyectable para tests deterministas del spawn.
  */
 class Neon2048ViewModel(
@@ -59,7 +59,6 @@ class Neon2048ViewModel(
     playerProgress: PlayerProgressRepository,
     private val savedGameState: SavedGameStateRepository,
     private val audio: AudioAndHapticManager,
-    private val difficulty: Int = 1,
     private val random: Random = Random.Default,
 ) : MviViewModel<Neon2048Intent, Neon2048UiState, Neon2048Effect>(Neon2048UiState()) {
 
@@ -106,6 +105,17 @@ class Neon2048ViewModel(
         savedGameState.observe(GameIds.NEON_2048)
             .onEach { json -> setState { copy(savedScore = json?.let(::decodeSaved)?.score) } }
             .launchIn(viewModelScope)
+        // Tableros desbloqueados: se derivan del historial (cada tamaño se abre al llegar
+        // al puntaje mínimo del anterior, ver [DifficultyUnlocks]). Se OBSERVA para que el
+        // desbloqueo aparezca solo al volver a la antesala tras una buena corrida —la
+        // partida recién guardada entra por este mismo flow— y también cuando el historial
+        // de la nube baja al iniciar sesión.
+        progress.observeHistory(GameIds.NEON_2048)
+            .onEach { history ->
+                val unlocked = DifficultyUnlocks.unlockedTiers(GameIds.NEON_2048, history)
+                setState { copy(unlockedBoardSizes = unlocked) }
+            }
+            .launchIn(viewModelScope)
         // No se arranca aquí: se queda en IDLE mostrando la antesala/intro y la
         // partida empieza con StartGame / ResumeSaved (patrón del resto de juegos).
     }
@@ -127,6 +137,7 @@ class Neon2048ViewModel(
             Neon2048Intent.Pause -> pause()
             Neon2048Intent.Resume -> resume()
             is Neon2048Intent.SelectBoardSize -> selectBoardSize(intent.size)
+            is Neon2048Intent.PlayBoardSize -> playBoardSize(intent.size)
         }
     }
 
@@ -155,12 +166,44 @@ class Neon2048ViewModel(
         finish()
     }
 
-    /** Cambia el tamaño elegido en la antesala; no-op fuera de IDLE (ver KDoc del intent). */
+    /**
+     * Cambia el tamaño elegido en la antesala; no-op fuera de IDLE (ver KDoc del intent),
+     * si el tamaño no existe, o si todavía está **bloqueado**.
+     *
+     * El candado se revalida aquí y no solo en la UI porque el desbloqueo es una regla del
+     * juego, no una decoración: la pantalla ya no deja pulsar un chip cerrado, pero el
+     * intent es público y esta es su única fuente de verdad.
+     */
     private fun selectBoardSize(size: Int) {
         if (currentState.status != GameStatus.IDLE) return
-        if (size !in Neon2048Config.BOARD_SIZE_OPTIONS) return
+        val tier = boardSizeTier(size) ?: return
+        if (tier > currentState.unlockedBoardSizes) return
         setState { copy(boardSize = size) }
     }
+
+    /**
+     * Arranca directamente una corrida en tablero [size] ([Neon2048Intent.PlayBoardSize]),
+     * saltándose la antesala. A diferencia de [selectBoardSize] no exige [GameStatus.IDLE]
+     * —se dispara desde el diálogo de fin de partida, en [GameStatus.FINISHED]— pero sí
+     * revalida el candado: el intent es público y esta es su única fuente de verdad.
+     */
+    private fun playBoardSize(size: Int) {
+        val tier = boardSizeTier(size) ?: return
+        if (tier > currentState.unlockedBoardSizes) return
+        setState { copy(boardSize = size) }
+        startGame()
+    }
+
+    /**
+     * Escalón (1-based) que ocupa [size] dentro de [Neon2048Config.BOARD_SIZE_OPTIONS], o
+     * `null` si no es un tamaño válido.
+     *
+     * Es el número que viaja como `difficultyLevel` del [GameResult] y, por tanto, el que
+     * permite saber después —leyendo el historial— en qué tablero se jugó cada partida sin
+     * añadir ninguna columna a la BD (ver [DifficultyUnlocks]).
+     */
+    private fun boardSizeTier(size: Int): Int? =
+        Neon2048Config.BOARD_SIZE_OPTIONS.indexOf(size).takeIf { it >= 0 }?.plus(1)
 
     // ---------------------------------------------------------------------------
     // Ciclo de vida
@@ -436,16 +479,39 @@ class Neon2048ViewModel(
             // No hay aciertos y fallos como tal, pero esta ratio sí mide lo que el
             // juego entrena: cuántos movimientos sirvieron para algo.
             accuracyPercentage = if (moves == 0) 0.0 else productiveMoves.toDouble() / moves * 100.0,
-            difficultyLevel = difficulty,
+            // El tablero jugado viaja como `difficultyLevel` (4×4 = 1, 5×5 = 2…): es lo que
+            // permite después saber, leyendo el historial, en qué tamaño se consiguió cada
+            // marca y desbloquear el siguiente sin tocar el esquema de la BD (ver
+            // [DifficultyUnlocks]). No afecta al ranking mundial de 2048, que sigue siendo
+            // una tabla única (el juego no está en `GameRankingScopes`).
+            difficultyLevel = boardSizeTier(currentState.boardSize) ?: 1,
             reachedMetric = currentState.score,  // ENDLESS por puntaje (ver GameProgressions)
         )
+        // ¿Esta corrida abre el tablero siguiente? Se evalúa AQUÍ, contra el resultado
+        // recién calculado y `unlockedBoardSizes` tal como estaba ANTES de guardar —no hace
+        // falta esperar a que `progress.saveResult` termine y el historial reactivo se
+        // actualice (ver KDoc de `DifficultyUnlocks.justUnlockedLabel`).
+        val unlockedLabel = DifficultyUnlocks.justUnlockedLabel(
+            GameIds.NEON_2048,
+            unlockedBefore = currentState.unlockedBoardSizes,
+            attempt = DifficultyAttempt(result.difficultyLevel, result.score),
+        )
+        val unlockedBoardSize = unlockedLabel?.let {
+            Neon2048Config.BOARD_SIZE_OPTIONS.getOrNull(result.difficultyLevel)
+        }
         viewModelScope.launch {
             // Corrida terminada: un guardado de esta partida (si quedó alguno) es
             // "fantasma" a partir de aquí, ya se registró el resultado final.
             savedGameState.clear(GameIds.NEON_2048)
-            val outcome = progress.saveResult(result)
             audio.playSound(SoundEffect.LEVEL_UP)
-            setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+            // `saveResult` emite el resultado LOCAL primero (el cartel no espera a
+            // Supabase) y, si hay sesión, el percentil/ranking real después (ver KDoc
+            // de `ProgressRepository.saveResult`).
+            progress.saveResult(result).collect { outcome ->
+                setState {
+                    copy(gameOver = outcome.toGameOverInfo(result), justUnlockedBoardSize = unlockedBoardSize)
+                }
+            }
         }
     }
 }

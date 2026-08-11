@@ -68,12 +68,17 @@ class SequenceMemoryViewModel(
         }
     }
 
-    /** Guarda el resultado y expone el percentil en el estado. */
+    /**
+     * Guarda el resultado y expone el percentil en el estado. `saveResult` emite en
+     * 1 o 2 pasos: local primero (el cartel no espera a Supabase) y, con sesión, el
+     * percentil real después (ver KDoc de `ProgressRepository.saveResult`).
+     */
     private fun onFinished(result: com.kortexgames.app.domain.model.GameResult) {
         viewModelScope.launch {
-            val outcome = progress.saveResult(result)
             audio.playSound(SoundEffect.LEVEL_UP)
-            setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+            progress.saveResult(result).collect { outcome ->
+                setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+            }
         }
     }
 }

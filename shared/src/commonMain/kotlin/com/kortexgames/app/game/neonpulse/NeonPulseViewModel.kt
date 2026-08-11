@@ -13,12 +13,15 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.random.Random
 import kotlin.time.TimeSource
 
 /**
- * # Neon Pulse — Motor de tiempo (ViewModel, FASE 2)
+ * # Neon Pulse — Motor de tiempo (ViewModel)
  *
  * ViewModel MVI del entrenador visomotor. A diferencia del resto de juegos (que
  * delegan en un `BaseGameEngine`), aquí el **bucle de juego vive en el propio
@@ -27,11 +30,28 @@ import kotlin.time.TimeSource
  * es la única fuente que emite [NeonPulseIntent.Tick], igual que el jugador es la
  * única fuente de los taps.
  *
+ * ## Partida infinita por hordas
+ * No hay reloj de partida: se juega **hasta quedarse sin vidas**. El contenido se
+ * sirve en hordas ([WaveSpec]) que el motor encadena solas:
+ *
+ * 1. **Cartel** de horda ([NeonPulseUiState.waveBannerMs]) — respiro sin nodos.
+ * 2. **Oleada**: se sueltan [WaveSpec.nodeCount] nodos con la cadencia y la vida
+ *    de esa horda; desde [NeonPulseConfig.MOVE_UNLOCK_WAVE] además se desplazan y
+ *    rebotan contra los bordes.
+ * 3. **Cierre**: cuando ya no queda nada por generar ni nada vivo en el lienzo, se
+ *    concede el bonus de horda y se empieza la siguiente, un punto más difícil.
+ *
+ * Toda la rampa (cuántos nodos, cada cuánto, cuánto duran, trampas, velocidad y
+ * corazones de rescate) se resuelve en [WaveSpec.forWave]; el motor solo la aplica.
+ *
+ * Al agotar las vidas, la primera vez se ofrece **revivir viendo un anuncio**
+ * ([NeonPulseUiState.awaitingRevive], ver [loseAllLives]) antes de dar la partida
+ * por terminada; solo se ofrece una vez por partida.
+ *
  * Responsabilidades:
  *  - Conducir el **game loop** ([loopJob]) que emite ticks con el delta real.
- *  - **Reducir** cada [NeonPulseIntent.Tick]: envejecer nodos, retirar expirados
- *    (perdiendo vida si eran normales), agendar spawns según la cadencia y
- *    consumir el reloj de partida.
+ *  - **Reducir** cada [NeonPulseIntent.Tick]: envejecer y mover nodos, retirar
+ *    expirados (perdiendo vida si eran normales), agendar spawns y encadenar hordas.
  *  - Validar la **colisión** de los taps ([NeonPulseIntent.TapNode] / [TapMiss]).
  *  - Persistir el [GameResult] con estrategia local-first al terminar.
  *
@@ -61,18 +81,40 @@ class NeonPulseViewModel(
      */
     private var lastMark: TimeSource.Monotonic.ValueTimeMark? = null
 
+    /** Parámetros de la horda en curso (rampa ya resuelta). */
+    private var spec: WaveSpec = WaveSpec.forWave(1)
+
+    /** Nodos que quedan por soltar en la horda actual. */
+    private var pendingSpawns = 0
+
+    /** Nodos ya soltados en la horda actual; sitúa el momento del corazón. */
+    private var spawnedInWave = 0
+
+    /** ¿Queda por soltar el corazón de rescate de esta horda? */
+    private var heartPending = false
+
     /** Acumulador para agendar spawns: suma el delta y "dispara" un nodo cada vez
-     *  que supera el intervalo de cadencia vigente ([SpawnCadence]). */
+     *  que supera [WaveSpec.spawnIntervalMs]. */
     private var spawnAccumulatorMs = 0L
 
     /** Contador monotónico para asignar [Node.id] únicos y estables. */
     private var nextNodeId = 0L
 
+    /** Duración real de la partida; sustituye al antiguo reloj de cuenta atrás como
+     *  `completionTimeMs` del resultado (una partida infinita se mide por lo que
+     *  aguantas, no por un tiempo fijado de antemano). */
+    private var elapsedMs = 0L
+
     // Estadísticas para puntuación, combo y precisión final.
     private var hits = 0            // nodos normales acertados
     private var misses = 0          // trampas tocadas + normales expirados + toques al vacío
     private var combo = 0           // aciertos consecutivos (se rompe con cualquier error)
-    private var maxCombo = 0        // mejor racha (métrica de récord)
+    private var maxCombo = 0        // mejor racha (métrica secundaria)
+
+    /** ¿Ya se ofreció (aceptada o no) la segunda oportunidad de esta partida? Solo
+     *  se ofrece una vez: sin este flag, revivir una y otra vez anularía el sentido
+     *  de las vidas. Ver [loseAllLives]. */
+    private var reviveOffered = false
 
     override fun onIntent(intent: NeonPulseIntent) {
         when (intent) {
@@ -80,6 +122,8 @@ class NeonPulseViewModel(
             NeonPulseIntent.PlayAgain -> startGame()
             NeonPulseIntent.Pause -> pause()
             NeonPulseIntent.Resume -> resume()
+            NeonPulseIntent.Revive -> grantRevive()
+            NeonPulseIntent.DeclineRevive -> declineRevive()
             is NeonPulseIntent.TapNode -> onTapNode(intent.id)
             NeonPulseIntent.TapMiss -> onTapMiss()
             is NeonPulseIntent.Tick -> onTick(intent.deltaMillis)
@@ -90,19 +134,43 @@ class NeonPulseViewModel(
     // Ciclo de vida
     // ---------------------------------------------------------------------------
 
-    /** Reinicia todo el estado y arranca una partida limpia. */
+    /** Reinicia todo el estado y arranca una partida limpia en la horda 1. */
     private fun startGame() {
-        spawnAccumulatorMs = 0L
         nextNodeId = 0L
+        elapsedMs = 0L
         hits = 0; misses = 0; combo = 0; maxCombo = 0
+        reviveOffered = false
         setState {
             NeonPulseUiState(
                 lives = NeonPulseConfig.INITIAL_LIVES,
-                remainingMs = NeonPulseConfig.GAME_DURATION_MS,
                 status = GameStatus.RUNNING,
             )
         }
+        beginWave(1)
         startLoop()
+    }
+
+    /**
+     * Prepara la horda [wave]: resuelve su rampa, reinicia los contadores de oleada
+     * y muestra el cartel. Durante el cartel el motor no genera nada, así que el
+     * jugador entra en cada horda con el lienzo limpio y sabiendo a qué se enfrenta.
+     */
+    private fun beginWave(wave: Int) {
+        spec = WaveSpec.forWave(wave)
+        pendingSpawns = spec.nodeCount
+        spawnedInWave = 0
+        heartPending = spec.offersHeart
+        // El acumulador arranca "lleno" para que el primer nodo salga en cuanto el
+        // cartel se retira, sin un silencio extra al principio de cada horda.
+        spawnAccumulatorMs = spec.spawnIntervalMs
+        setState {
+            copy(
+                wave = wave,
+                waveNodesTotal = spec.nodeCount,
+                waveNodesResolved = 0,
+                waveBannerMs = NeonPulseConfig.WAVE_BANNER_MS,
+            )
+        }
     }
 
     /** Congela el juego: cancela el loop y marca PAUSED. Los anillos dejan de
@@ -157,29 +225,42 @@ class NeonPulseViewModel(
     }
 
     // ---------------------------------------------------------------------------
-    // Reducción del Tick (envejecer nodos, expirar, spawnear, cronómetro)
+    // Reducción del Tick (mover, envejecer, expirar, spawnear, encadenar hordas)
     // ---------------------------------------------------------------------------
 
     private fun onTick(deltaMillis: Long) {
         val s = currentState
         if (s.status != GameStatus.RUNNING) return
+        elapsedMs += deltaMillis
 
-        // 1) Consumir el reloj de partida (nunca por debajo de 0).
-        val remaining = (s.remainingMs - deltaMillis).coerceAtLeast(0L)
-        val elapsed = NeonPulseConfig.GAME_DURATION_MS - remaining
+        // 0) Cartel entre hordas: solo corre su cuenta atrás. El lienzo está vacío
+        //    por definición (una horda no se cierra hasta que no queda ni un nodo),
+        //    así que no hay nada más que simular durante el respiro.
+        if (s.waveBannerMs > 0L) {
+            setState { copy(waveBannerMs = (waveBannerMs - deltaMillis).coerceAtLeast(0L)) }
+            return
+        }
 
-        // 2) Envejecer nodos y separar los que expiran en este frame.
+        // 1) Envejecer/desplazar nodos y separar los que expiran en este frame.
         val survivors = ArrayList<Node>(s.activeNodes.size)
         var livesLost = 0
+        var resolved = 0
         for (node in s.activeNodes) {
             val left = node.remainingMs - deltaMillis
             if (left > 0L) {
-                survivors += node.copy(remainingMs = left)
-            } else if (node.type == NodeType.NORMAL) {
-                // Dejar expirar un objetivo normal cuesta una vida y rompe el combo.
-                livesLost++
+                survivors += advance(node, deltaMillis).copy(remainingMs = left)
+                continue
             }
-            // Las trampas expiradas desaparecen sin penalización (comportamiento deseado).
+            when (node.type) {
+                // Dejar expirar un objetivo normal cuesta una vida y rompe el combo.
+                NodeType.NORMAL -> { livesLost++; resolved++ }
+                // Las trampas expiradas desaparecen sin penalización (es lo deseado:
+                // la trampa se gana ignorándola), pero sí cuentan como resueltas.
+                NodeType.TRAP -> resolved++
+                // El corazón no forma parte del cupo de la horda: ni penaliza ni suma
+                // al progreso, solo se pierde la oportunidad.
+                NodeType.HEART -> Unit
+            }
         }
         if (livesLost > 0) {
             misses += livesLost
@@ -190,37 +271,138 @@ class NeonPulseViewModel(
             sendEffect(NeonPulseEffect.Vibrate.Heavy)
         }
 
-        // 3) Agendar spawns según la cadencia vigente (dificultad progresiva).
+        val newLives = (s.lives - livesLost).coerceAtLeast(0)
+
+        // 2) Agendar spawns de la horda según su cadencia.
         spawnAccumulatorMs += deltaMillis
-        val interval = SpawnCadence.intervalFor(elapsed)
-        while (spawnAccumulatorMs >= interval && remaining > 0L) {
-            spawnAccumulatorMs -= interval
-            spawnNode(elapsed, survivors)?.let { survivors += it }
+        while (spawnAccumulatorMs >= spec.spawnIntervalMs && pendingSpawns > 0) {
+            // Lienzo saturado: no forzamos el hueco, reintentamos en el próximo frame
+            // conservando el acumulador (la aparición se retrasa, no se pierde).
+            val node = spawnNode(survivors) ?: break
+            spawnAccumulatorMs -= spec.spawnIntervalMs
+            survivors += node
+            pendingSpawns--
+            spawnedInWave++
+            maybeSpawnHeart(newLives, survivors)?.let { survivors += it }
+        }
+        // Evita ráfagas: si el lienzo estuvo saturado (o la horda ya soltó todo), el
+        // acumulador no debe engordar y soltar varios nodos de golpe al liberarse.
+        spawnAccumulatorMs = spawnAccumulatorMs.coerceAtMost(spec.spawnIntervalMs)
+
+        // 3) Publicar el nuevo estado.
+        setState {
+            copy(
+                activeNodes = survivors,
+                lives = newLives,
+                waveNodesResolved = waveNodesResolved + resolved,
+            )
         }
 
-        // 4) Publicar el nuevo estado.
-        val newLives = (s.lives - livesLost).coerceAtLeast(0)
-        setState { copy(activeNodes = survivors, remainingMs = remaining, lives = newLives) }
-
-        // 5) Condiciones de fin: sin tiempo o sin vidas.
-        if (remaining <= 0L || newLives <= 0) finish()
+        // 4) Fin de partida (sin vidas) o cierre de horda (nada por soltar ni vivo).
+        if (newLives <= 0) {
+            loseAllLives()
+        } else if (pendingSpawns == 0 && survivors.isEmpty()) {
+            completeWave()
+        }
     }
 
     /**
-     * Genera un nodo en coordenadas aleatorias **sin superponerse** con los ya
-     * activos. Se prueban hasta [MAX_SPAWN_TRIES] posiciones; si ninguna queda
-     * libre (lienzo muy poblado), se **omite** el spawn en vez de forzar un
-     * solapamiento —preferimos saltar una aparición antes que apilar nodos que la
-     * UI no podría desambiguar al tocar—.
+     * Cierra la horda superada: bonus proporcional a su número (aguantar más lejos
+     * es lo que se premia en una partida infinita) y arranque de la siguiente.
+     */
+    private fun completeWave() {
+        val cleared = currentState.wave
+        setState { copy(score = score + NeonPulseConfig.WAVE_CLEAR_BONUS * cleared) }
+        sendEffect(NeonPulseEffect.WaveCleared)
+        beginWave(cleared + 1)
+    }
+
+    /**
+     * Desplaza un nodo según su velocidad y lo hace **rebotar** contra los límites
+     * jugables del lienzo. El rebote (en vez de dejarlo salir y reaparecer) mantiene
+     * todos los objetivos siempre visibles y alcanzables: un nodo que se fuera por el
+     * borde se perdería sin que el jugador pudiera hacer nada, y eso sería una vida
+     * robada, no dificultad.
      *
-     * El tipo se decide aquí: pasado [NeonPulseConfig.TRAP_UNLOCK_MS], con
-     * probabilidad [NeonPulseConfig.TRAP_SPAWN_CHANCE] el nodo es trampa.
+     * El delta se convierte a segundos porque [Node.vx]/[Node.vy] están expresadas
+     * por segundo (independencia del framerate).
+     */
+    private fun advance(node: Node, deltaMillis: Long): Node {
+        if (node.vx == 0f && node.vy == 0f) return node
+        val dt = deltaMillis / 1000f
+        val r = node.radius
+        val minX = r
+        val maxX = 1f - r
+        val minY = maxOf(r, NeonPulseConfig.TOP_SPAWN_MARGIN)
+        val maxY = 1f - r
+
+        var x = node.x + node.vx * dt
+        var y = node.y + node.vy * dt
+        var vx = node.vx
+        var vy = node.vy
+        if (x < minX) { x = minX; vx = -vx }
+        if (x > maxX) { x = maxX; vx = -vx }
+        if (y < minY) { y = minY; vy = -vy }
+        if (y > maxY) { y = maxY; vy = -vy }
+        return node.copy(x = x, y = y, vx = vx, vy = vy)
+    }
+
+    /**
+     * Genera un nodo de la horda en curso, en coordenadas aleatorias **sin
+     * superponerse** con los ya activos. Se prueban hasta [MAX_SPAWN_TRIES]
+     * posiciones; si ninguna queda libre (lienzo muy poblado), se devuelve `null`
+     * y el spawn se reintenta más adelante —preferimos retrasar una aparición antes
+     * que apilar nodos que la UI no podría desambiguar al tocar—.
      *
-     * @param elapsedMs tiempo de partida transcurrido (habilita/decide trampas).
+     * El tipo (normal o trampa) y la velocidad salen de la rampa de la horda
+     * ([WaveSpec]); la dirección del movimiento es aleatoria y uniforme en el
+     * círculo, para que ninguna horda tenga una deriva sistemática.
+     *
      * @param existing nodos ya presentes contra los que comprobar la distancia.
      * @return el nodo colocado, o `null` si no se encontró hueco.
      */
-    private fun spawnNode(elapsedMs: Long, existing: List<Node>): Node? {
+    private fun spawnNode(existing: List<Node>): Node? {
+        val isTrap = random.nextFloat() < spec.trapChance
+        return placeNode(
+            existing = existing,
+            type = if (isTrap) NodeType.TRAP else NodeType.NORMAL,
+            lifeMs = spec.nodeLifeMs,
+            speed = spec.speed,
+        )
+    }
+
+    /**
+     * Suelta el **corazón de rescate** de la horda si toca: cada
+     * [NeonPulseConfig.HEART_EVERY_WAVES] hordas y solo **si el jugador lo
+     * necesita** (le falta alguna vida). Aparece a mitad de oleada —no al principio—
+     * para que se cruce con el juego real en vez de regalarse en el momento de calma.
+     *
+     * Es estático aunque la horda mueva a los demás: un premio que huye sería una
+     * penalización encubierta justo cuando el jugador va peor.
+     *
+     * @return el corazón colocado, o `null` si no procede o no había hueco.
+     */
+    private fun maybeSpawnHeart(lives: Int, existing: List<Node>): Node? {
+        if (!heartPending || lives >= NeonPulseConfig.MAX_LIVES) return null
+        if (spawnedInWave < spec.nodeCount / 2) return null
+        val heart = placeNode(
+            existing = existing,
+            type = NodeType.HEART,
+            lifeMs = NeonPulseConfig.HEART_LIFE_MS,
+            speed = 0f,
+        ) ?: return null
+        heartPending = false
+        return heart
+    }
+
+    /** Busca hueco libre y construye el nodo. Comparte la búsqueda de posición entre
+     *  objetivos, trampas y corazones para que todos respeten la misma separación. */
+    private fun placeNode(
+        existing: List<Node>,
+        type: NodeType,
+        lifeMs: Long,
+        speed: Float,
+    ): Node? {
         val r = NeonPulseConfig.NODE_RADIUS
         // Margen horizontal/inferior para que el nodo no quede cortado por el borde
         // del lienzo; el margen superior es mayor para no aparecer bajo el HUD/botón
@@ -229,27 +411,21 @@ class NeonPulseViewModel(
         val maxX = 1f - r
         val minY = maxOf(r, NeonPulseConfig.TOP_SPAWN_MARGIN)
         val maxY = 1f - r
-        // Pasado FAST_LIFE_UNLOCK_MS los nodos viven menos tiempo encendidos: último
-        // escalón de dificultad, exige reacciones más rápidas.
-        val lifeMs = if (elapsedMs >= NeonPulseConfig.FAST_LIFE_UNLOCK_MS) {
-            NeonPulseConfig.NODE_LIFE_FAST_MS
-        } else {
-            NeonPulseConfig.NODE_LIFE_MS
-        }
         repeat(MAX_SPAWN_TRIES) {
             val x = minX + random.nextFloat() * (maxX - minX)
             val y = minY + random.nextFloat() * (maxY - minY)
             if (existing.none { overlaps(it, x, y, r) }) {
-                val isTrap = elapsedMs >= NeonPulseConfig.TRAP_UNLOCK_MS &&
-                    random.nextFloat() < NeonPulseConfig.TRAP_SPAWN_CHANCE
+                val angle = random.nextFloat() * 2f * PI.toFloat()
                 return Node(
                     id = nextNodeId++,
-                    type = if (isTrap) NodeType.TRAP else NodeType.NORMAL,
+                    type = type,
                     x = x,
                     y = y,
                     radius = r,
                     totalLifeMs = lifeMs,
                     remainingMs = lifeMs,
+                    vx = cos(angle) * speed,
+                    vy = sin(angle) * speed,
                 )
             }
         }
@@ -271,10 +447,11 @@ class NeonPulseViewModel(
 
     /**
      * El jugador tocó dentro del nodo [id] (el hit-testing geométrico lo resolvió el
-     * `Canvas`, FASE 3). Aquí solo aplicamos la **semántica**:
+     * `Canvas`). Aquí solo aplicamos la **semántica**:
      *  - Nodo normal → acierto: puntúa con multiplicador de combo, refuerza racha y
      *    pide la animación de explosión ([NeonPulseEffect.ShowComboAnim]).
      *  - Nodo trampa → error: penaliza (vida + combo) con feedback fuerte.
+     *  - Corazón → rescate: devuelve una vida (hasta [NeonPulseConfig.MAX_LIVES]).
      *  - Id ya ausente (expiró en el mismo frame) → se ignora sin penalizar.
      */
     private fun onTapNode(id: Long) {
@@ -288,20 +465,54 @@ class NeonPulseViewModel(
                 combo++
                 if (combo > maxCombo) maxCombo = combo
                 val gained = NeonPulseConfig.POINTS_PER_HIT * comboMultiplier()
-                setState { copy(activeNodes = remaining, score = score + gained) }
+                setState {
+                    copy(
+                        activeNodes = remaining,
+                        score = score + gained,
+                        waveNodesResolved = waveNodesResolved + 1,
+                    )
+                }
                 sendEffect(NeonPulseEffect.PlaySound.Hit)
                 sendEffect(NeonPulseEffect.Vibrate.Tick)
-                sendEffect(NeonPulseEffect.ShowComboAnim(node.x, node.y))
+                sendEffect(NeonPulseEffect.ShowComboAnim(node.x, node.y, NodeType.NORMAL))
             }
             NodeType.TRAP -> {
                 misses++
                 combo = 0
                 val newLives = (currentState.lives - 1).coerceAtLeast(0)
-                setState { copy(activeNodes = remaining, lives = newLives) }
+                setState {
+                    copy(
+                        activeNodes = remaining,
+                        lives = newLives,
+                        waveNodesResolved = waveNodesResolved + 1,
+                    )
+                }
                 sendEffect(NeonPulseEffect.PlaySound.Error)
                 sendEffect(NeonPulseEffect.Vibrate.Heavy)
-                if (newLives <= 0) finish()
+                if (newLives <= 0) loseAllLives()
             }
+            NodeType.HEART -> {
+                // No suma puntos ni cuenta como acierto de precisión: es un rescate,
+                // no un objetivo; puntuarlo premiaría ir mal para que aparezcan más.
+                val newLives = (currentState.lives + 1).coerceAtMost(NeonPulseConfig.MAX_LIVES)
+                setState { copy(activeNodes = remaining, lives = newLives) }
+                sendEffect(NeonPulseEffect.PlaySound(SoundEffect.LEVEL_UP))
+                sendEffect(NeonPulseEffect.Vibrate.Tick)
+                sendEffect(NeonPulseEffect.ShowComboAnim(node.x, node.y, NodeType.HEART))
+            }
+        }
+
+        // Tocar el último nodo pendiente cierra la horda en el acto: esperar al
+        // siguiente tick dejaría un parpadeo de lienzo vacío antes del cartel. El
+        // guard de `awaitingRevive` evita que esto dispare tras un TRAP que agotó
+        // las vidas: [loseAllLives] ya vació el lienzo para ofrecer la revancha, y
+        // ese vacío no debe leerse como "horda superada".
+        if (remaining.isEmpty() &&
+            pendingSpawns == 0 &&
+            currentState.status == GameStatus.RUNNING &&
+            !currentState.awaitingRevive
+        ) {
+            completeWave()
         }
     }
 
@@ -322,31 +533,90 @@ class NeonPulseViewModel(
     private fun comboMultiplier(): Int = 1 + combo / COMBO_STEP
 
     // ---------------------------------------------------------------------------
+    // Segunda oportunidad: revivir viendo un anuncio
+    // ---------------------------------------------------------------------------
+
+    /**
+     * Se han agotado las vidas. La primera vez que ocurre en la partida se ofrece
+     * **revivir viendo un anuncio** ([NeonPulseUiState.awaitingRevive]) en vez de
+     * terminar directamente; si ya se usó esa segunda oportunidad, la partida
+     * acaba de verdad. Mismo patrón que `Neon2048ViewModel`/`BubbleMathEngine`.
+     *
+     * Congela el motor mientras se decide (cancela [loopJob] y vacía el lienzo):
+     * ni ticks ni spawns hasta que el jugador resuelva la oferta, para que nada
+     * expire ni aparezca mientras mira el anuncio.
+     */
+    private fun loseAllLives() {
+        if (reviveOffered) {
+            finish()
+            return
+        }
+        loopJob?.cancel()
+        loopJob = null
+        setState { copy(activeNodes = emptyList(), awaitingRevive = true) }
+    }
+
+    /**
+     * El anuncio concedió la recompensa: repone **una vida** y la partida continúa
+     * la horda en curso (conserva puntuación, horda y progreso ya resuelto). Se
+     * marca la segunda oportunidad como consumida: no se vuelve a ofrecer en la
+     * sesión. Sin efecto si no se estaba ofreciendo.
+     *
+     * Solo una vida (no todas las iniciales): es una prórroga puntual, no un
+     * reinicio del reto de vidas que sostiene la tensión de la horda.
+     */
+    private fun grantRevive() {
+        if (!currentState.awaitingRevive) return
+        reviveOffered = true
+        // Respiro antes del próximo spawn: reaparecer con un nodo ya a punto de
+        // expirar sería una segunda muerte injusta, no una segunda oportunidad.
+        spawnAccumulatorMs = 0L
+        setState { copy(lives = 1, awaitingRevive = false) }
+        startLoop()
+    }
+
+    /**
+     * El jugador rechaza la oferta (o el anuncio se cerró / no había): fin de
+     * partida real. Sin efecto si no se estaba ofreciendo.
+     */
+    private fun declineRevive() {
+        if (!currentState.awaitingRevive) return
+        reviveOffered = true
+        setState { copy(awaitingRevive = false) }
+        finish()
+    }
+
+    // ---------------------------------------------------------------------------
     // Fin de partida (local-first)
     // ---------------------------------------------------------------------------
 
     /** Cierra la partida, detiene el loop y persiste el resultado. Idempotente:
-     *  si ya está FINISHED no hace nada (evita doble guardado por tiempo + vidas). */
+     *  si ya está FINISHED no hace nada (evita doble guardado). */
     private fun finish() {
         if (currentState.status == GameStatus.FINISHED) return
         loopJob?.cancel()
         loopJob = null
         setState { copy(status = GameStatus.FINISHED, activeNodes = emptyList()) }
 
-        val elapsed = NeonPulseConfig.GAME_DURATION_MS - currentState.remainingMs
         val attempts = hits + misses
         val result = GameResult(
             gameId = GameIds.NEON_PULSE,
             score = currentState.score,
-            completionTimeMs = elapsed,
+            completionTimeMs = elapsedMs,
             accuracyPercentage = if (attempts == 0) 100.0 else hits.toDouble() / attempts * 100.0,
             difficultyLevel = difficulty,
-            reachedMetric = maxCombo, // récord = mejor racha de aciertos alcanzada
+            // Récord = horda alcanzada: en una partida infinita es la unidad natural
+            // de progresión (antes era la mejor racha, que no dice hasta dónde llegaste).
+            reachedMetric = currentState.wave,
         )
         viewModelScope.launch {
-            val outcome = progress.saveResult(result)
             audio.playSound(SoundEffect.LEVEL_UP)
-            setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+            // `saveResult` emite el resultado LOCAL primero (el cartel no espera a
+            // Supabase) y, si hay sesión, el percentil/ranking real después (ver KDoc
+            // de `ProgressRepository.saveResult`).
+            progress.saveResult(result).collect { outcome ->
+                setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+            }
         }
     }
 
@@ -355,7 +625,7 @@ class NeonPulseViewModel(
          *  monotónico, así que este valor solo fija la frecuencia de muestreo. */
         const val FRAME_MS = 16L
 
-        /** Intentos de recolocación antes de omitir un spawn por falta de hueco. */
+        /** Intentos de recolocación antes de posponer un spawn por falta de hueco. */
         const val MAX_SPAWN_TRIES = 20
 
         /** Separación mínima extra (espacio normalizado) entre nodos al spawnear. */

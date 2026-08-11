@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.Leaderboard
 import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.MilitaryTech
 import androidx.compose.material.icons.automirrored.rounded.TrendingUp
 import androidx.compose.material.icons.rounded.MusicNote
@@ -122,6 +123,9 @@ object KortexIcons {
 
     /** Candado: nivel aún bloqueado (selector de niveles). */
     val Lock: ImageVector = Icons.Rounded.Lock
+
+    /** Candado abierto: dificultad recién desbloqueada (diálogo de fin de partida). */
+    val LockOpen: ImageVector = Icons.Rounded.LockOpen
 
     /** Cronómetro: récord de tiempo (mejor tiempo por nivel en el selector). */
     val Timer: ImageVector = Icons.Rounded.Timer

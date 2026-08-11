@@ -180,9 +180,15 @@ data class GameRanking(
  * @property isNewRecord true si la partida **batió el récord previo** del jugador en
  *   ese juego (según la dirección de su métrica). Es false en la primera marca
  *   registrada (sin récord anterior que superar) para no celebrar la primera partida.
+ * @property isSyncPending true en la emisión LOCAL intermedia (usuario autenticado,
+ *   subida a Supabase todavía en vuelo): distingue "todavía no sabemos el percentil
+ *   porque estamos preguntando" de "no hay percentil porque eres invitado/falló la
+ *   red", para que la tarjeta de resultados no le diga "inicia sesión" a alguien que
+ *   ya inició sesión mientras espera la respuesta (ver [ProgressRepository.saveResult]).
  */
 data class SaveOutcome(
     val percentile: PercentileResult?,
     val ranking: GameRanking?,
     val isNewRecord: Boolean,
+    val isSyncPending: Boolean = false,
 )

@@ -9,31 +9,45 @@ import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
 
 /**
- * # Neon Pulse — contrato MVI (FASE 1)
+ * # Neon Pulse — contrato MVI
  *
  * Define las tres piezas del ciclo unidireccional (ver [com.kortexgames.app.core.mvi.MviViewModel]):
  * el [NeonPulseUiState] renderizable, los [NeonPulseIntent] que la UI emite y los
  * [NeonPulseEffect] one-shot (sonido/háptica/animaciones) que el ViewModel dispara.
  *
  * > Nota de firma: la base es `MviViewModel<Intent, State, Effect>` (ese es el
- * > orden real de los parámetros de tipo en este proyecto). El motor de tiempo y
- * > la reducción se implementan en FASE 2.
+ * > orden real de los parámetros de tipo en este proyecto).
  */
 
 /**
  * Estado inmutable de la pantalla de Neon Pulse (fuente única de verdad de la UI).
  *
+ * La partida es **infinita por hordas**: no hay reloj de partida, solo vidas. Por
+ * eso el HUD muestra la horda en curso y su progreso en lugar de una cuenta atrás.
+ *
  * @property score puntuación acumulada de la partida.
- * @property lives vidas restantes ([NeonPulseConfig.INITIAL_LIVES] al empezar). A
- *   `0` la partida termina antes de agotarse el tiempo.
+ * @property lives vidas restantes ([NeonPulseConfig.INITIAL_LIVES] al empezar,
+ *   hasta [NeonPulseConfig.MAX_LIVES] recogiendo corazones). A `0` la partida acaba.
  * @property activeNodes nodos actualmente visibles en el lienzo. Es la lista que el
- *   `Canvas` (FASE 3) dibuja y sobre la que resuelve el hit-testing del toque. Se
- *   reemplaza entera en cada `tick` (estado inmutable), nunca se muta in situ.
- * @property remainingMs tiempo restante de partida en milisegundos; alimenta la
- *   barra/《countdown》 de la cabecera.
+ *   `Canvas` dibuja y sobre la que resuelve el hit-testing del toque. Se reemplaza
+ *   entera en cada `tick` (estado inmutable), nunca se muta in situ.
+ * @property wave número de horda en curso (1-based); es la métrica de progresión
+ *   del juego y lo que se guarda como récord al terminar.
+ * @property waveNodesTotal nodos que trae la horda en curso.
+ * @property waveNodesResolved nodos de la horda ya resueltos (tocados o expirados).
+ *   Junto con [waveNodesTotal] alimenta la barra de progreso de la horda.
+ * @property waveBannerMs milisegundos que le quedan al cartel "HORDA N" que precede
+ *   a cada oleada. Mientras sea `> 0` el motor no genera nodos: es el respiro entre
+ *   hordas. `0` = no hay cartel visible.
  * @property status fase de la partida (IDLE mientras se muestra la antesala/intro,
  *   RUNNING en juego, PAUSED, FINISHED). Reutiliza el [GameStatus] común a todos
  *   los juegos para que la navegación y los overlays se comporten igual.
+ * @property awaitingRevive true mientras se ofrece **revivir viendo un anuncio**
+ *   tras agotar las vidas (una sola vez por partida). El [status] sigue siendo
+ *   [GameStatus.RUNNING] —la partida aún no ha terminado, solo está en pausa de
+ *   decisión— y es la UI la que muestra [com.kortexgames.app.ui.components.ReviveAdOverlay]
+ *   mientras esto sea `true`, igual que en el resto de juegos con segunda
+ *   oportunidad (ver `Neon2048ViewModel`/`BubbleMathEngine`).
  * @property gameOver resumen del resultado (puntaje + percentil) cuando la partida
  *   termina; `null` mientras se juega. Igual patrón que el resto de juegos.
  */
@@ -41,8 +55,12 @@ data class NeonPulseUiState(
     val score: Int = 0,
     val lives: Int = NeonPulseConfig.INITIAL_LIVES,
     val activeNodes: List<Node> = emptyList(),
-    val remainingMs: Long = NeonPulseConfig.GAME_DURATION_MS,
+    val wave: Int = 1,
+    val waveNodesTotal: Int = 0,
+    val waveNodesResolved: Int = 0,
+    val waveBannerMs: Long = 0L,
     val status: GameStatus = GameStatus.IDLE,
+    val awaitingRevive: Boolean = false,
     val gameOver: GameOverInfo? = null,
 ) : UiState
 
@@ -67,8 +85,20 @@ sealed interface NeonPulseIntent : UiIntent {
     data object Resume : NeonPulseIntent
 
     /**
+     * El anuncio recompensado concedió el trato: repone una vida y la partida
+     * continúa la horda en curso. Solo tiene efecto mientras
+     * [NeonPulseUiState.awaitingRevive] sea `true`; ver KDoc de esa propiedad.
+     */
+    data object Revive : NeonPulseIntent
+
+    /** El jugador rechazó la segunda oportunidad (o el anuncio falló/se cerró):
+     *  la partida termina de verdad. Mismo guard que [Revive]. */
+    data object DeclineRevive : NeonPulseIntent
+
+    /**
      * El jugador tocó **dentro** del nodo [id]. El reducer decidirá si fue acierto
-     * (nodo normal → suma) o error (nodo trampa → penaliza) según su [NodeType].
+     * (nodo normal → suma), error (nodo trampa → penaliza) o rescate (corazón →
+     * suma una vida) según su [NodeType].
      *
      * @property id identificador del [Node] impactado (resuelto por el `Canvas`).
      */
@@ -80,8 +110,9 @@ sealed interface NeonPulseIntent : UiIntent {
 
     /**
      * Pulso del bucle de juego. Avanza la simulación [deltaMillis] milisegundos:
-     * descuenta vida a cada nodo, retira los expirados (perdiendo vida si eran
-     * normales), agenda nuevos spawns y consume el reloj de partida.
+     * descuenta vida a cada nodo, los desplaza si la horda los tiene en movimiento,
+     * retira los expirados (perdiendo vida si eran normales), agenda nuevos spawns
+     * y encadena la siguiente horda cuando la actual se vacía.
      *
      * Se modela como intent (y no como método interno) para mantener el ciclo MVI
      * puro y unidireccional: el motor de tiempo es la única fuente que emite
@@ -132,12 +163,26 @@ sealed interface NeonPulseEffect : UiEffect {
     }
 
     /**
-     * Solicita a la UI la animación de "explosión"/combo sobre un acierto: un
-     * círculo que crece y se desvanece en alpha (FASE 3). Lleva la posición
-     * normalizada del nodo impactado para que el `Canvas` sepa dónde animarla.
+     * Solicita a la UI la animación de "explosión"/combo sobre un acierto: chispas
+     * y una onda expansiva que se desvanecen. Lleva la posición normalizada del
+     * nodo impactado para que el `Canvas` sepa dónde animarla.
      *
      * @property x centro X normalizado `[0f..1f]` del acierto.
      * @property y centro Y normalizado `[0f..1f]` del acierto.
+     * @property type tipo del nodo impactado; la UI tiñe la explosión con su color
+     *   (coral en un objetivo, verde en un corazón) para que el premio se lea de
+     *   inmediato sin texto.
      */
-    data class ShowComboAnim(val x: Float, val y: Float) : NeonPulseEffect
+    data class ShowComboAnim(
+        val x: Float,
+        val y: Float,
+        val type: NodeType = NodeType.NORMAL,
+    ) : NeonPulseEffect
+
+    /**
+     * Se ha superado una horda y arranca la siguiente. La UI lo usa para el sonido
+     * de progresión y el destello del cartel; el número de horda ya viaja en el
+     * estado ([NeonPulseUiState.wave]), así que este efecto no lo duplica.
+     */
+    data object WaveCleared : NeonPulseEffect
 }

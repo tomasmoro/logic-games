@@ -71,6 +71,15 @@ import kotlinx.serialization.Serializable
  *   Se conserva entre partidas —incluida [Neon2048Intent.RestartGame]— porque es
  *   una preferencia del jugador, no parte del resultado de la partida anterior;
  *   solo se vuelve a elegir explícitamente desde el selector de la antesala.
+ * @property unlockedBoardSizes cuántos tamaños de tablero tiene abiertos el jugador
+ *   (1-based: `1` = solo 4×4). Cada uno se gana llegando a cierto puntaje en el anterior;
+ *   el estado se **deriva del historial de partidas** —sin columna nueva en la BD—, así que
+ *   viaja con la cuenta al iniciar sesión. Ver [com.kortexgames.app.game.DifficultyUnlocks].
+ * @property justUnlockedBoardSize el tablero que ESTA corrida acaba de desbloquear (llegar
+ *   al puntaje mínimo en [boardSize] cumplía el requisito y no había ningún tablero por
+ *   encima ya abierto), o `null` si no desbloqueó ninguno. Se fija junto a [gameOver] en
+ *   `finish()` y el diálogo de fin de partida lo usa para ofrecer "Jugar en …" como CTA.
+ *   Mismo patrón que Neon Defuser y Neon Sudoku Matrix.
  * @property savedScore puntuación de la corrida guardada al salir, o null si no hay
  *   ninguna pendiente. Solo relevante en la antesala (IDLE), donde se ofrece como
  *   "Continuar" (ver [com.kortexgames.app.ui.components.ResumeState]).
@@ -86,6 +95,8 @@ data class Neon2048UiState(
     val gameOver: GameOverInfo? = null,
     val awaitingRevive: Boolean = false,
     val boardSize: Int = Neon2048Config.DEFAULT_BOARD_SIZE,
+    val unlockedBoardSizes: Int = 1,
+    val justUnlockedBoardSize: Int? = null,
     val savedScore: Int? = null,
 ) : UiState {
 
@@ -159,6 +170,17 @@ sealed interface Neon2048Intent : UiIntent {
      * @property size lado nuevo; debe ser uno de [Neon2048Config.BOARD_SIZE_OPTIONS].
      */
     data class SelectBoardSize(val size: Int) : Neon2048Intent
+
+    /**
+     * Arranca una corrida nueva directamente en un tablero [size], saltándose la antesala.
+     * Lo dispara el CTA "JUGAR EN …" del diálogo de fin de partida cuando esa corrida acaba
+     * de desbloquear el tablero siguiente ([Neon2048UiState.justUnlockedBoardSize]): a
+     * diferencia de [SelectBoardSize] (solo cambia la preferencia en IDLE) esto SÍ arranca a
+     * jugar, y a diferencia de [RestartGame] (repite el tablero actual) usa el que se le
+     * indique. El ViewModel revalida igualmente que esté desbloqueado antes de arrancar — el
+     * intent es público y no debe fiarse de que la UI ya lo comprobó.
+     */
+    data class PlayBoardSize(val size: Int) : Neon2048Intent
 
     /**
      * El jugador deslizó el dedo hacia [direction].

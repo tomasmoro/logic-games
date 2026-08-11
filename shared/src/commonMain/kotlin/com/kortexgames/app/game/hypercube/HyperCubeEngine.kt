@@ -573,8 +573,19 @@ class HyperCubeEngine(
 }
 
 /**
- * Profundidad de la mezcla del nivel [level]: el nivel 1 baraja con 2 giros y cada nivel añade
- * uno, hasta los 9 del último ([MAX_LEVEL]).
+ * Profundidad de la mezcla del nivel [level]: empieza en **1 solo giro** y sube de uno en uno,
+ * pero **cada profundidad se juega un tramo de niveles cada vez más largo** antes de subir el
+ * listón (ver [RAMP_WIDTHS]), hasta los 8 giros del último ([MAX_LEVEL]).
+ *
+ * ## Por qué el ancho del tramo crece (y no es constante)
+ * Una rampa "cada profundidad dura N niveles" con N fijo ya mejoró el problema original (nivel 3
+ * imposible, ver historial), pero sigue tratando igual el salto de 1→2 giros que el de 7→8: el
+ * segundo es objetivamente más difícil de asimilar (más piezas en juego, más combinaciones que
+ * descartar mentalmente), así que merece más niveles de práctica antes de subir. [RAMP_WIDTHS]
+ * hace explícito ese criterio: empieza calentando con tramos cortos (2 niveles) y va alargando
+ * cada tramo un nivel más que el anterior, así el ritmo de "asimilar antes de subir" también crece
+ * con la dificultad. El techo se bajó de 9 a 8 giros a propósito: un tramo por encima ya duraría
+ * 10 niveles y alargaría la rampa sin aportar dificultad perceptible (ver la sección siguiente).
  *
  * ## Por qué la rampa es corta (y por qué existe el modo libre)
  * El puzzle de los niveles es **"deshaz la mezcla"**, al estilo de un "mate en 3": el jugador ve
@@ -588,10 +599,50 @@ class HyperCubeEngine(
  * en [MAX_LEVEL] y el cubo entero mezclado se ofrece aparte, como **modo libre** sin nivel
  * ([HyperCubeEngine.startFreeMode]), para quien busque ese reto.
  */
-fun scrambleDepthFor(level: Int): Int = level.coerceIn(1, MAX_LEVEL) + 1
+fun scrambleDepthFor(level: Int): Int {
+    val clamped = level.coerceIn(1, MAX_LEVEL)
+    // RAMP_STARTS está ordenado, así que el último inicio de tramo que no supera al nivel es el
+    // que le corresponde. Con solo 8 tramos, un recorrido lineal es más claro que una búsqueda
+    // binaria y su coste es irrelevante (se llama una vez por nivel, no por frame).
+    var depth = 1
+    for (index in RAMP_STARTS.indices) {
+        if (clamped >= RAMP_STARTS[index]) depth = index + 1 else break
+    }
+    return depth
+}
 
-/** Último nivel de la progresión; su mezcla es de 9 giros (ver [scrambleDepthFor]). */
-const val MAX_LEVEL = 8
+/**
+ * Ancho, en niveles, de cada profundidad de mezcla (1 giro, 2 giros, … 8 giros): cuántos niveles
+ * seguidos se juegan con esa profundidad antes de subir a la siguiente. Los dos primeros tramos
+ * (calentamiento) duran igual; de ahí en adelante cada tramo dura un nivel más que el anterior.
+ * Ver el KDoc de [scrambleDepthFor] para el razonamiento completo.
+ */
+private val RAMP_WIDTHS = intArrayOf(2, 2, 4, 5, 6, 7, 8, 9)
+
+/**
+ * Nivel (1-based) en el que arranca cada profundidad de mezcla: la suma acumulada de
+ * [RAMP_WIDTHS]. Se calcula una sola vez al cargar el archivo, no en cada llamada a
+ * [scrambleDepthFor].
+ */
+private val RAMP_STARTS: IntArray = run {
+    val starts = IntArray(RAMP_WIDTHS.size)
+    var nextStart = 1
+    for (index in RAMP_WIDTHS.indices) {
+        starts[index] = nextStart
+        nextStart += RAMP_WIDTHS[index]
+    }
+    starts
+}
+
+/**
+ * Último nivel de la progresión; su mezcla es de 8 giros (ver [scrambleDepthFor]).
+ *
+ * Suma de todos los [RAMP_WIDTHS] (2+2+4+5+6+7+8+9 = 43) en vez de un número elegido a mano: así
+ * ajustar un ancho en [RAMP_WIDTHS] mueve automáticamente dónde termina la rampa, sin un segundo
+ * sitio que recordar actualizar. No es `const` por eso mismo —depende de la suma de un array, no
+ * de un literal— pero se calcula una sola vez al cargar el archivo, igual que [RAMP_STARTS].
+ */
+val MAX_LEVEL: Int = RAMP_STARTS.last() + RAMP_WIDTHS.last() - 1
 
 /**
  * Valor de `difficultyLevel` con el que se registran las partidas del **modo libre**.
@@ -600,7 +651,7 @@ const val MAX_LEVEL = 8
  * `GameRankingScopes`) en vez de mezclarse con las de un nivel de la rampa, que no son
  * comparables: el modo libre baraja el cubo a fondo.
  */
-const val FREE_MODE_DIFFICULTY = MAX_LEVEL + 1
+val FREE_MODE_DIFFICULTY: Int = MAX_LEVEL + 1
 
 /**
  * Giros de la mezcla del modo libre: suficientes para dejar el cubo en un estado prácticamente
