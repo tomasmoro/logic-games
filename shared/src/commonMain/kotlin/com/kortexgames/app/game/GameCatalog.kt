@@ -121,6 +121,17 @@ object GameIds {
      * catálogo cuando la pantalla Compose (FASE 3) esté lista para publicarse.
      */
     const val NEON_LINE = "5f2a9c41-8e73-4b06-9d15-3a6e8c204b7f"
+
+    /**
+     * Quantum Merge / esferas de energía que caen y se fusionan (categoría "spatial" / Visión
+     * Espacial). UUID v4 aleatorio, como los dos anteriores.
+     *
+     * El prefijo se eligió a conciencia para que **no se parezca a ningún otro id del catálogo**:
+     * dos UUID que solo difieren en un par de dígitos transpuestos son un accidente esperando a
+     * ocurrir (basta copiar el constante equivocado para que las partidas de un juego se guarden
+     * en la tabla de otro, y la FK no lo detectaría porque ambos existen).
+     */
+    const val QUANTUM_MERGE = "c17b40de-92a5-4f38-8b61-0d7e5a3c9142"
 }
 
 /**
@@ -216,6 +227,9 @@ enum class GameMotif {
     /** Atracción Geométrica: círculo de 4 sectores con partículas que llegan de fuera. */
     POLARITY_SECTORS,
 
+    /** Quantum Merge: esferas de luz de tamaños crecientes apiladas dentro del reactor. */
+    QUANTUM_SPHERES,
+
     /**
      * Línea Neón: rejilla con bloques inertes y UNA sola línea serpenteando entre
      * ellos. Motivo propio (y no [CIRCUIT_FLOW]) porque comparte categoría con
@@ -285,6 +299,7 @@ object GameCatalog {
         GameInfo(GameIds.NEON_CIRCUIT, "Conectores", GameCategory.PROBLEM_SOLVING, playable = true, motif = GameMotif.CIRCUIT_FLOW),
         GameInfo(GameIds.NEON_LINE, "Línea Neón", GameCategory.PROBLEM_SOLVING, playable = true, motif = GameMotif.SINGLE_LINE),
         GameInfo(GameIds.HYPERGATE, "Hypergate", GameCategory.REFLEXES, playable = true, motif = GameMotif.HYPERGATE),
+        GameInfo(GameIds.QUANTUM_MERGE, "Quantum Merge", GameCategory.SPATIAL, playable = true, motif = GameMotif.QUANTUM_SPHERES),
         GameInfo(null, "Parejas Relámpago", GameCategory.MEMORY, playable = false),
         GameInfo(null, "Cadena Lógica", GameCategory.LOGIC, playable = false),
         GameInfo(null, "Encuentra el Intruso", GameCategory.ATTENTION, playable = false),

@@ -38,6 +38,7 @@ import com.kortexgames.app.game.crucigrama.CrucigramaNeonScreen
 import com.kortexgames.app.game.energyflow.EnergyFlowScreen
 import com.kortexgames.app.game.memory.SequenceMemoryScreen
 import com.kortexgames.app.game.hypergate.HypergateScreen
+import com.kortexgames.app.game.quantummerge.QuantumMergeScreen
 import com.kortexgames.app.game.blockgrid.BlockGridScreen
 import com.kortexgames.app.game.wordsearch.NeonLexiconScreen
 import com.kortexgames.app.game.screws.ScrewGameScreen
@@ -458,6 +459,9 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean, introGamesPlay
                 }
                 composable(Routes.HYPER_CUBE) {
                     HyperCubeScreen(graph, exitGame)
+                }
+                composable(Routes.QUANTUM_MERGE) {
+                    QuantumMergeScreen(graph) { navController.popBackStack() }
                 }
             }
             }
