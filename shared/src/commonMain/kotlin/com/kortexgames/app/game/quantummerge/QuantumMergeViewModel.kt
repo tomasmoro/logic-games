@@ -140,13 +140,18 @@ class QuantumMergeViewModel(
      * Ojo con el sonido: la derrota ya emitió `ERROR` desde el motor, así que aquí **no** se repite
      * un pitido de fallo; el `LEVEL_UP` de cierre es el mismo remate que usan el resto de juegos al
      * mostrar la tarjeta de resultados, y llega después, no encima.
+     *
+     * `saveResult` emite el `gameOver` en 1 o 2 pasos: primero el resultado LOCAL para que el
+     * cartel aparezca sin esperar a Supabase, y luego —si hay sesión— el percentil/ranking cuando
+     * la red responda (ver KDoc de `ProgressRepository.saveResult`).
      */
     private fun onFinished(result: GameResult) {
         viewModelScope.launch {
-            val outcome = progress.saveResult(result)
             audio.playSound(SoundEffect.LEVEL_UP)
             audio.hapticFeedback(HapticFeedback.SUCCESS)
-            setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+            progress.saveResult(result).collect { outcome ->
+                setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+            }
         }
     }
 }
