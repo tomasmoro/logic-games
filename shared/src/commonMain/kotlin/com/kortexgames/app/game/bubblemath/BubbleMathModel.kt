@@ -57,6 +57,14 @@ data class RoundSpec(
  * conforme se avanza entran operaciones más difíciles (primero + y −, luego ×, al
  * final ÷), crecen los operandos y aumenta el número de burbujas simultáneas.
  *
+ * **Modo infinito**: la partida no tiene última ronda y la curva de dificultad
+ * tampoco tiene meseta final. Los dos ejes que sí están topados lo están por
+ * motivos físicos, no de diseño: el nº de burbujas (caben 6 en pantalla) y la
+ * velocidad de caída (por debajo de [MIN_FALL_MS] deja de ser reacción y pasa a
+ * ser lotería). El eje que crece **sin techo** es el cognitivo: los operandos
+ * siguen subiendo ronda tras ronda —cada vez más despacio— para que ninguna
+ * ronda alta sea idéntica a la anterior (ver [randomExpression]).
+ *
  * Los distractores se acotan a una banda alrededor del objetivo para que el jugador
  * tenga que **calcular de verdad** (no le vale con localizar "el número más grande").
  */
@@ -76,21 +84,31 @@ object BubbleMathGenerator {
      * se recortaba el tiempo ronda tras ronda, los tres ejes se multiplicaban y la
      * curva se volvía injugable enseguida. Congelando el reloj, a partir de la ronda 5
      * el reto es puramente cognitivo: mismo tiempo, cuentas más difíciles.
+     *
+     * La interpolación es lineal entre [BASE_FALL_MS] y [MIN_FALL_MS] (en vez de un
+     * recorte fijo por ronda) para que el techo de velocidad se pueda ajustar en un
+     * solo sitio sin recalcular el paso.
      */
-    fun fallDurationMs(round: Int): Long =
-        BASE_FALL_MS - (round.coerceIn(1, SPEED_CAP_ROUND) - 1) * FALL_STEP_MS
+    fun fallDurationMs(round: Int): Long {
+        val t = (round.coerceIn(1, SPEED_CAP_ROUND) - 1).toFloat() / (SPEED_CAP_ROUND - 1)
+        return BASE_FALL_MS - ((BASE_FALL_MS - MIN_FALL_MS) * t).toLong()
+    }
 
     /** Tiempo de caída en la ronda 1, el más holgado (ms). */
     const val BASE_FALL_MS = 7_000L
 
-    /** Recorte de tiempo de caída por ronda mientras la velocidad aún sube (ms). */
-    const val FALL_STEP_MS = 280L
-
     /** Ronda a partir de la cual la velocidad deja de subir (queda congelada). */
     const val SPEED_CAP_ROUND = 5
 
-    /** Caída más rápida del juego: la de [SPEED_CAP_ROUND] en adelante (ms). */
-    const val MIN_FALL_MS = BASE_FALL_MS - (SPEED_CAP_ROUND - 1) * FALL_STEP_MS
+    /**
+     * Caída más rápida del juego: la de [SPEED_CAP_ROUND] en adelante (ms).
+     *
+     * Es el **límite de velocidad**, y se subió un 10 % respecto al original de
+     * 5 880 ms (5 880 ÷ 1,1 ≈ 5 345): con el modo infinito la partida se sostiene
+     * en las rondas altas por las cuentas, y el techo anterior se sentía demasiado
+     * plácido para un jugador ya entrenado. Se toca AQUÍ, no en la rampa.
+     */
+    const val MIN_FALL_MS = 5_345L
 
     /** Operaciones habilitadas según la ronda (curva de dificultad progresiva). */
     fun opsFor(round: Int): List<MathOp> = when {
@@ -151,10 +169,8 @@ object BubbleMathGenerator {
      * el dividendo, y las restas eligen el sustraendo dentro del minuendo.
      */
     private fun randomExpression(op: MathOp, round: Int, random: Random): MathExpression {
-        // Cota de operandos para + y −; crece con la ronda pero con techo razonable.
-        val maxN = (9 + round * 2).coerceAtMost(40)
-        // Cota de factores para × y ÷ (tablas): más contenida para no dar cifras enormes.
-        val maxF = (5 + round / 2).coerceIn(5, 12)
+        val maxN = maxTerm(round)
+        val maxF = maxFactor(round)
 
         return when (op) {
             MathOp.ADD -> {
@@ -179,6 +195,32 @@ object BubbleMathGenerator {
             }
         }
     }
+
+    /**
+     * Cota de operandos para + y − en la ronda [round]. Crece rápido al principio
+     * (hasta ~40 en la ronda 16) y luego **sigue creciendo despacio y sin techo**:
+     * +1 cada 4 rondas. Ese goteo es lo que hace que el modo infinito no se
+     * estanque —la ronda 60 no es la ronda 20— sin que los números se disparen a
+     * cifras imposibles de calcular de cabeza en pocos segundos.
+     */
+    fun maxTerm(round: Int): Int =
+        if (round <= SLOW_GROWTH_ROUND) 9 + round * 2
+        else 9 + SLOW_GROWTH_ROUND * 2 + (round - SLOW_GROWTH_ROUND) / 4
+
+    /**
+     * Cota de factores para × y ÷ en la ronda [round]: más contenida que [maxTerm]
+     * porque un producto crece como el cuadrado del factor. Mismo criterio infinito:
+     * llega a 12 (las tablas clásicas) y luego sube +1 cada 8 rondas.
+     */
+    fun maxFactor(round: Int): Int =
+        if (round <= FACTOR_GROWTH_ROUND) (5 + round / 2).coerceAtLeast(5)
+        else 12 + (round - FACTOR_GROWTH_ROUND) / 8
+
+    /** Ronda hasta la que [maxTerm] crece deprisa (+2 por ronda); después, a goteo. */
+    private const val SLOW_GROWTH_ROUND = 16
+
+    /** Ronda en la que [maxFactor] llega a 12; después, a goteo. */
+    private const val FACTOR_GROWTH_ROUND = 14
 
     /** Tope de intentos para llenar la ronda antes de recurrir al relleno seguro. */
     private const val MAX_ATTEMPTS = 200

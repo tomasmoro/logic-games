@@ -77,8 +77,10 @@ class RemoteProgressDataSource(
         @SerialName("p_score") val score: Int,
         // El id de la partida recién insertada: el backend lo excluye al calcular la
         // mejor marca mundial anterior, si no la partida se compararía consigo misma
-        // y nunca podría ser récord global.
-        @SerialName("p_progress_id") val progressId: String,
+        // y nunca podría ser récord global. Nulo en una vista previa ([fetchRankingPreview]):
+        // ahí no hay ninguna partida nueva que excluir, solo se lee la mejor marca ya
+        // guardada del jugador.
+        @SerialName("p_progress_id") val progressId: String? = null,
         // Solo en los juegos con dificultad elegible: acota el ranking a esa
         // dificultad para que un Fácil rápido no aplaste a un Experto (ver
         // `GameRankingScopes`). null ⇒ tabla única para todo el juego.
@@ -167,23 +169,67 @@ class RemoteProgressDataSource(
             ),
         ).decodeAsOrNull<RankingRow>() ?: return null
 
-        return GameRanking(
-            rank = row.rank,
-            totalPlayers = row.totalPlayers,
-            betterThanPct = row.betterThanPct,
-            isGlobalRecord = row.isGlobalRecord,
+        return row.toDomain(
             difficultyLabel = GameRankingScopes.difficultyLabel(result.gameId, result.difficultyLevel),
             rankedByTime = byTime,
-            entries = row.entries.map {
-                LeaderboardEntry(
-                    rank = it.rank,
-                    displayName = it.displayName,
-                    score = it.score,
-                    isCurrentUser = it.isCurrentUser,
-                )
-            },
         )
     }
+
+    /**
+     * Comparativa mundial **sin haber jugado esta partida**: para pintar en la
+     * antesala (ver `WorldRankingPreviewPanel`) el mismo puesto que se vería en el
+     * diálogo de fin de partida, pero contra la mejor marca YA guardada del
+     * jugador. Reutiliza `get_game_ranking` con `p_progress_id = null` (no hay fila
+     * nueva que excluir del cálculo del récord mundial anterior) y `p_score = 0`
+     * (el backend solo lo mira para decidir `is_global_record`, que aquí no tiene
+     * sentido —no se acaba de batir nada— así que se descarta explícitamente en
+     * vez de fiarse de lo que devuelva con un puntaje inventado).
+     *
+     * @return null si el jugador no tiene ninguna marca en [gameId]/[difficultyLevel]
+     *   (incluye "nunca jugó esta dificultad" y "sin sesión": la RPC exige
+     *   `auth.uid()` para ubicar al jugador en la tabla) o si la RPC falla.
+     */
+    suspend fun fetchRankingPreview(gameId: String, difficultyLevel: Int?): GameRanking? {
+        val byTime = GameRankingScopes.isRankedByTime(gameId)
+        val row = client.postgrest.rpc(
+            function = "get_game_ranking",
+            parameters = RankingParams(
+                gameId = gameId,
+                score = 0,
+                difficultyLevel = difficultyLevel,
+                rankByTime = byTime,
+            ),
+        ).decodeAsOrNull<RankingRow>() ?: return null
+
+        return row.toDomain(
+            difficultyLabel = difficultyLevel?.let { GameRankingScopes.difficultyLabel(gameId, it) },
+            rankedByTime = byTime,
+            isGlobalRecord = false,
+        )
+    }
+
+    /** Traduce la fila cruda del RPC al modelo de dominio; ver KDoc de cada llamador
+     *  sobre qué [isGlobalRecord] hay que forzar cuando el puntaje no es real. */
+    private fun RankingRow.toDomain(
+        difficultyLabel: String?,
+        rankedByTime: Boolean,
+        isGlobalRecord: Boolean = this.isGlobalRecord,
+    ): GameRanking = GameRanking(
+        rank = rank,
+        totalPlayers = totalPlayers,
+        betterThanPct = betterThanPct,
+        isGlobalRecord = isGlobalRecord,
+        difficultyLabel = difficultyLabel,
+        rankedByTime = rankedByTime,
+        entries = entries.map {
+            LeaderboardEntry(
+                rank = it.rank,
+                displayName = it.displayName,
+                score = it.score,
+                isCurrentUser = it.isCurrentUser,
+            )
+        },
+    )
 
     /**
      * Descarga TODO el historial del usuario autenticado (descarga bidireccional).

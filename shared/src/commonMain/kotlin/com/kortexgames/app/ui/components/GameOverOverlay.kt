@@ -14,8 +14,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -36,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -47,6 +50,7 @@ import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.core.theme.LogicGradients
 import com.kortexgames.app.domain.model.PercentileResult
 import com.kortexgames.app.game.GameOverInfo
+import com.kortexgames.app.ui.onboarding.LocalFirstRunFlow
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -58,8 +62,19 @@ import kotlin.math.roundToInt
  */
 private const val REVEAL_DELAY_MS = 500L
 
+/** Separación vertical estándar entre bloques de la tarjeta de fin de partida. */
+private val CardItemGap = 14.dp
+
 /**
- * Capa modal de fin de partida. Muestra puntaje, precisión y tiempo, y si hay
+ * Separación alrededor del trofeo: un 10% menos que [CardItemGap]. El trofeo es
+ * puro remate visual (no aporta información como el resto de bloques), así que
+ * se le pide menos aire para que la tarjeta se sienta más compacta sin perder
+ * el respiro entre insignia/titular y las métricas.
+ */
+private val TrophyGap = CardItemGap * 0.9f
+
+/**
+ * Capa modal de fin de partida. Muestra puntaje y tiempo, y si hay
  * percentil (usuario autenticado) el mensaje "Eres mejor que el X% de los
  * jugadores" de la FASE 2. Botones para reintentar o salir.
  *
@@ -68,12 +83,22 @@ private const val REVEAL_DELAY_MS = 500L
  * solo tienen que renderizar el overlay cuando la partida termina; el timing y el
  * "juice" viven aquí, centralizados para los tres juegos.
  *
+ * ## Durante la bienvenida de primera apertura
+ * Si el juego que acaba de terminar es uno de los de
+ * [com.kortexgames.app.game.FirstRunGames] ([LocalFirstRunFlow] activo), el bloque
+ * de botones se reduce a uno solo: **Volver** (usa [onExit]). Repetir nivel,
+ * avanzar de nivel o elegir nivel no tienen sentido ahí —el siguiente paso siempre
+ * es volver al hub de la bienvenida ([com.kortexgames.app.ui.App], vía
+ * `exitGame`), nunca seguir en este juego—, así que ninguno de esos CTA se pinta.
+ * No hace falta que ningún juego lo sepa ni lo pase por parámetro: se detecta solo,
+ * igual que hace [GameIntroScreen] con el mismo `CompositionLocal`.
+ *
  * @param unlockedDifficultyLabel rótulo del escalón de dificultad que la partida recién
  *   terminada acaba de abrir ("Medio"), o `null` si no abrió ninguno. Lo calcula el
  *   ViewModel del juego con
  *   [com.kortexgames.app.game.DifficultyUnlocks.justUnlockedLabel] en el momento de
  *   terminar la partida — solo los juegos con dificultades escalonadas (Neon Defuser,
- *   Neon Sudoku Matrix, Neon Grid 2048) lo rellenan.
+ *   Neon Sudoku Matrix, Neon Grid 2048) lo rellenan. Se ignora durante la bienvenida.
  * @param onPlayUnlockedDifficulty arranca una partida nueva en el escalón que se acaba de
  *   abrir. Requerido junto a [unlockedDifficultyLabel] para que aparezca el CTA; si uno de
  *   los dos falta, el diálogo cae al layout normal (sin celebrar el desbloqueo).
@@ -132,6 +157,12 @@ fun GameOverOverlay(
     // el retardo).
     if (scrimAlpha <= 0f) return
 
+    // ¿Esta partida es uno de los juegos de la bienvenida de primera apertura? Se
+    // lee de [LocalFirstRunFlow] —el mismo seam que ya usa [GameIntroScreen]— para
+    // que NINGÚN juego tenga que pasar un flag propio: los 19 juegos llaman a este
+    // overlay igual, sea o no parte de la bienvenida, y el overlay se adapta solo.
+    val duringFirstRun = LocalFirstRunFlow.current?.isActive == true
+
     // Se celebra HABER BATIDO algo en ESTA partida, no ostentar un título.
     //
     // Ser el nº1 del mundo no basta: si bastara, el campeón vería fuegos artificiales
@@ -178,7 +209,10 @@ fun GameOverOverlay(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            // Espaciado MANUAL (no `spacedBy`): el hueco alrededor del trofeo es
+            // distinto al del resto de bloques ([TrophyGap] vs [CardItemGap]), así
+            // que cada gap se declara explícito con un `Spacer` en vez de un valor
+            // uniforme para toda la columna.
         ) {
             // Cerrar rápido (X): la partida ya terminó, así que "cerrar" equivale a
             // salir (no hay estado al que "reanudar"), igual criterio que el resto
@@ -193,11 +227,15 @@ fun GameOverOverlay(
             // píldora, y batir al mundo entero implica batirse a uno mismo — dos
             // insignias seguidas diciendo casi lo mismo restarían fuerza a la buena.
             if (info.isNewRecord && !isGlobalRecord) {
+                Spacer(Modifier.height(CardItemGap))
                 NewRecordBadge(visible = visible)
             }
 
-            // Trofeo con halo: remate visual de recompensa.
+            // Trofeo con halo: remate visual de recompensa, con [TrophyGap] (10%
+            // menos que el resto de bloques) a cada lado.
+            Spacer(Modifier.height(TrophyGap))
             NeonIcon(icon = KortexIcons.Trophy, tint = LogicColors.Amber, size = 46.dp)
+            Spacer(Modifier.height(TrophyGap))
 
             Text(
                 headline ?: "¡Partida terminada!",
@@ -205,37 +243,40 @@ fun GameOverOverlay(
                 color = LogicColors.OnDarkMuted,
             )
 
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    "$animatedScore",
-                    style = MaterialTheme.typography.displayLarge,
-                    color = LogicColors.Electric,
-                )
-                Text(
-                    "PUNTOS",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = LogicColors.OnDarkMuted,
-                )
-            }
+            Spacer(Modifier.height(CardItemGap))
 
-            // Métricas en "chips" para dar jerarquía y ritmo (no un renglón plano).
+            // Puntos y tiempo lado a lado (antes uno arriba y otro abajo): misma
+            // tarjeta elevada para las dos métricas, con el puntaje algo más grande
+            // para que siga leyéndose como la cifra principal. `IntrinsicSize.Max` +
+            // `fillMaxHeight()` en cada chip: como el valor de puntos usa una
+            // tipografía más grande que la de tiempo, sin esto el chip de puntos
+            // saldría más alto y las dos tarjetas quedarían descuadradas.
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Max),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 StatChip(
-                    label = "Precisión",
-                    value = "${info.result.accuracyPercentage.roundToInt()}%",
-                    accent = LogicColors.NeonGreen,
-                    modifier = Modifier.weight(1f),
+                    label = "PUNTOS",
+                    value = "$animatedScore",
+                    accent = LogicColors.Electric,
+                    valueStyle = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
                 )
                 StatChip(
                     label = "Tiempo",
                     value = "${info.result.completionTimeMs / 1000}s",
                     accent = LogicColors.NeonCyan,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
                 )
             }
+
+            Spacer(Modifier.height(CardItemGap))
 
             // Comparativa con el mundo, en orden de preferencia:
             //   1. ranking por jugadores (puesto, tramo y vecinos) — lo normal;
@@ -265,14 +306,32 @@ fun GameOverOverlay(
                 else -> WorldRankingUnavailable()
             }
 
-            Spacer(Modifier.height(2.dp))
+            // Mismo hueco que el resto de bloques de la tarjeta: un `2.dp` aquí dejaba
+            // el aviso de ranking/"inicia sesión" pegado a los botones de abajo,
+            // rompiendo el ritmo vertical uniforme del resto del cartel.
+            Spacer(Modifier.height(CardItemGap))
 
-            if (unlockedDifficultyLabel != null && onPlayUnlockedDifficulty != null) {
+            if (duringFirstRun) {
+                // Bienvenida de primera apertura: un único CTA. Repetir nivel, avanzar
+                // o elegir nivel no pintan nada aquí —el siguiente paso NO es seguir en
+                // este juego, es volver al hub y encadenar el siguiente de la
+                // bienvenida (ver KDoc de esta función)—, así que ninguno de esos
+                // botones se muestra: solo "Volver".
+                AnimatedGameButton(
+                    text = "VOLVER",
+                    onClick = onExit,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pulse(),
+                    gradient = LogicGradients.play,
+                )
+            } else if (unlockedDifficultyLabel != null && onPlayUnlockedDifficulty != null) {
                 // Escalón recién abierto: es el hito más "accionable" del cartel —hay un
                 // reto nuevo esperando— así que se lleva el CTA principal (pulse) y el badge
                 // que lo anuncia. `onNextLevel` no puede coincidir con esto: es exclusivo de
                 // los juegos LEVELED, y los juegos con dificultad escalonada son ENDLESS.
                 DifficultyUnlockedBadge(label = unlockedDifficultyLabel, visible = visible)
+                Spacer(Modifier.height(CardItemGap))
                 AnimatedGameButton(
                     text = "JUGAR EN ${unlockedDifficultyLabel.uppercase()}",
                     onClick = onPlayUnlockedDifficulty,
@@ -281,12 +340,14 @@ fun GameOverOverlay(
                         .pulse(),
                     gradient = LogicGradients.play,
                 )
+                Spacer(Modifier.height(CardItemGap))
                 AnimatedGameButton(
                     text = "JUGAR DE NUEVO",
                     onClick = onPlayAgain,
                     modifier = Modifier.fillMaxWidth(),
                     gradient = LogicGradients.energy,
                 )
+                Spacer(Modifier.height(CardItemGap))
                 Text(
                     "Salir",
                     style = MaterialTheme.typography.labelLarge,
@@ -300,6 +361,7 @@ fun GameOverOverlay(
             } else if (onNextLevel != null) {
                 // Juego LEVELED: el CTA principal es avanzar; luego repetir el nivel
                 // y volver al selector. El único bucle (pulse) va al CTA que guía (§9.4).
+                Spacer(Modifier.height(CardItemGap))
                 AnimatedGameButton(
                     text = "SIGUIENTE NIVEL",
                     onClick = onNextLevel,
@@ -308,6 +370,7 @@ fun GameOverOverlay(
                         .pulse(),
                     gradient = LogicGradients.play,
                 )
+                Spacer(Modifier.height(CardItemGap))
                 AnimatedGameButton(
                     text = "REPETIR NIVEL",
                     onClick = onPlayAgain,
@@ -315,6 +378,7 @@ fun GameOverOverlay(
                     gradient = LogicGradients.energy,
                 )
                 if (onChooseLevel != null) {
+                    Spacer(Modifier.height(CardItemGap))
                     Text(
                         "Elegir nivel",
                         style = MaterialTheme.typography.labelLarge,
@@ -337,6 +401,7 @@ fun GameOverOverlay(
                         .pulse(),
                     gradient = LogicGradients.play,
                 )
+                Spacer(Modifier.height(CardItemGap))
                 AnimatedGameButton(
                     text = "SALIR",
                     onClick = onExit,
@@ -454,8 +519,12 @@ private fun DifficultyUnlockedBadge(label: String, visible: Boolean) {
 }
 
 /**
- * Métrica individual de fin de partida (precisión/tiempo) sobre superficie
- * elevada, con el valor teñido de su color de acento neón.
+ * Métrica individual de fin de partida (p. ej. puntos o tiempo) sobre
+ * superficie elevada, con el valor teñido de su color de acento neón. Puntos
+ * y tiempo se muestran lado a lado con este mismo chip (ver [GameOverOverlay]);
+ * [valueStyle] deja que el de puntos siga leyéndose como la cifra principal.
+ *
+ * @param valueStyle estilo tipográfico del valor; por defecto `titleLarge`.
  */
 @Composable
 private fun StatChip(
@@ -463,6 +532,7 @@ private fun StatChip(
     value: String,
     accent: Color,
     modifier: Modifier = Modifier,
+    valueStyle: TextStyle = MaterialTheme.typography.titleLarge,
 ) {
     Column(
         modifier = modifier
@@ -470,11 +540,16 @@ private fun StatChip(
             .background(LogicColors.SurfaceVariantDark)
             .padding(vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+        // Centrado vertical (no solo `Top`): con `fillMaxHeight()` en el chip de
+        // fuera, este chip puede recibir más alto del que necesita su propio
+        // contenido (p. ej. el de tiempo, junto al de puntos con tipografía más
+        // grande) — centrar mantiene el par visualmente equilibrado en vez de
+        // quedar pegado arriba con hueco muerto abajo.
+        verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
     ) {
         Text(
             value,
-            style = MaterialTheme.typography.titleLarge,
+            style = valueStyle,
             color = accent,
             fontWeight = FontWeight.Bold,
         )

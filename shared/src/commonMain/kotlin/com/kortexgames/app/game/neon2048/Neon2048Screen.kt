@@ -67,9 +67,12 @@ import com.kortexgames.app.game.GameHelpContent
 import com.kortexgames.app.ui.components.GameOverOverlay
 import com.kortexgames.app.ui.components.GamePauseControls
 import com.kortexgames.app.ui.components.KortexIcons
+import com.kortexgames.app.ui.components.RankingPreviewUnavailable
 import com.kortexgames.app.ui.components.ResumeState
 import com.kortexgames.app.ui.components.ReviveAdOverlay
 import com.kortexgames.app.ui.components.SpaceBackdrop
+import com.kortexgames.app.ui.components.WorldRankingLoading
+import com.kortexgames.app.ui.components.WorldRankingPreviewPanel
 import com.kortexgames.app.ui.components.bounceClick
 import com.kortexgames.app.ui.components.drawNeonTile
 import kotlinx.coroutines.delay
@@ -106,7 +109,6 @@ fun Neon2048Screen(graph: AppGraph, onExit: () -> Unit) {
     val vm: Neon2048ViewModel = viewModel {
         Neon2048ViewModel(
             graph.progressRepository,
-            graph.playerProgressRepository,
             graph.savedGameStateRepository,
             graph.audio,
         )
@@ -197,20 +199,33 @@ fun Neon2048Screen(graph: AppGraph, onExit: () -> Unit) {
                 )
             },
             configContent = {
-                DifficultyGateSelector(
-                    title = "TAMAÑO DEL TABLERO",
-                    options = BOARD_SIZE_OPTIONS_UI,
-                    selectedIndex = Neon2048Config.BOARD_SIZE_OPTIONS.indexOf(state.boardSize),
-                    unlockedTiers = state.unlockedBoardSizes,
-                    onSelect = { index ->
-                        vm.onIntent(
-                            Neon2048Intent.SelectBoardSize(Neon2048Config.BOARD_SIZE_OPTIONS[index]),
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    DifficultyGateSelector(
+                        title = "TAMAÑO DEL TABLERO",
+                        options = BOARD_SIZE_OPTIONS_UI,
+                        selectedIndex = Neon2048Config.BOARD_SIZE_OPTIONS.indexOf(state.boardSize),
+                        unlockedTiers = state.unlockedBoardSizes,
+                        onSelect = { index ->
+                            vm.onIntent(
+                                Neon2048Intent.SelectBoardSize(Neon2048Config.BOARD_SIZE_OPTIONS[index]),
+                            )
+                        },
+                        accent = CategoryPalette.MentalMath,
+                        hint = DifficultyUnlocks.nextUnlockHint(GameIds.NEON_2048, state.unlockedBoardSizes),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    // Comparativa mundial del tablero elegido, ANTES de jugar (mismo panel
+                    // que el diálogo de fin de partida): pedido explícito para que la
+                    // antesala también responda "¿cómo me va ahí?".
+                    val preview = state.rankingPreview
+                    when {
+                        state.rankingPreviewLoading -> WorldRankingLoading()
+                        preview != null -> WorldRankingPreviewPanel(ranking = preview)
+                        else -> RankingPreviewUnavailable(
+                            difficultyLabel = "${state.boardSize}×${state.boardSize}",
                         )
-                    },
-                    accent = CategoryPalette.MentalMath,
-                    hint = DifficultyUnlocks.nextUnlockHint(GameIds.NEON_2048, state.unlockedBoardSizes),
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                    }
+                }
             },
             onExit = onExit,
             background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },

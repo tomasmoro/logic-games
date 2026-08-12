@@ -33,6 +33,15 @@ object Routes {
      */
     const val AUTH_ONBOARDING = "auth/onboarding"
 
+    /**
+     * Bienvenida de la **primera apertura**: presenta los tres juegos que se van a
+     * jugar antes de pedir cuenta (ver
+     * [com.kortexgames.app.ui.onboarding.FirstRunWelcomeScreen]). Es el primer
+     * destino de una instalación nueva; quien prefiera registrarse ya salta desde
+     * aquí a [AUTH_ONBOARDING].
+     */
+    const val FIRST_RUN_WELCOME = "onboarding/welcome"
+
     /** Ajustes de cuenta (nombre de usuario, borrar cuenta…), abierta desde Perfil. */
     const val SETTINGS = "settings"
 

@@ -64,8 +64,11 @@ import com.kortexgames.app.ui.components.GameOverOverlay
 import com.kortexgames.app.ui.components.GamePauseControls
 import com.kortexgames.app.ui.components.KortexIcons
 import com.kortexgames.app.ui.components.NeonIcon
+import com.kortexgames.app.ui.components.RankingPreviewUnavailable
 import com.kortexgames.app.ui.components.ReviveAdOverlay
 import com.kortexgames.app.ui.components.SpaceBackdrop
+import com.kortexgames.app.ui.components.WorldRankingLoading
+import com.kortexgames.app.ui.components.WorldRankingPreviewPanel
 import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.cos
@@ -147,6 +150,18 @@ fun NeonPulseScreen(graph: AppGraph, onExit: () -> Unit) {
             onExit = onExit,
             background = {
                 SpaceBackdrop(modifier = Modifier.fillMaxSize())
+            },
+            // Comparativa mundial del jugador, ANTES de jugar (mismo panel que el
+            // diálogo de fin de partida): pedido explícito para que la antesala
+            // también responda "¿cómo me va?". Sin selector de dificultad —el juego
+            // rankea en una tabla única—, así que solo hay que resolver el panel.
+            configContent = {
+                val preview = state.rankingPreview
+                when {
+                    state.rankingPreviewLoading -> WorldRankingLoading()
+                    preview != null -> WorldRankingPreviewPanel(ranking = preview)
+                    else -> RankingPreviewUnavailable(difficultyLabel = null)
+                }
             },
         )
         return

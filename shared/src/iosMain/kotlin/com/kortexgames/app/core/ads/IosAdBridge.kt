@@ -16,6 +16,16 @@ import kotlin.coroutines.resume
  * `suspendCancellableCoroutine`.
  */
 interface IosAdBridge {
+    /**
+     * Encadena ATT (App Tracking Transparency) → consentimiento UMP → arranque del SDK.
+     *
+     * Lo llama [beginAdConsentFlow] **cuando termina la primera apertura**, no al lanzar
+     * la app: durante la bienvenida jugable no se pide ningún anuncio, y estrenar la app
+     * con dos diálogos de permisos es la mejor forma de perder al jugador. Debe ser
+     * idempotente (el puente ya evita el doble arranque con su flag `sdkStarted`).
+     */
+    fun requestConsentAndStart()
+
     /** Carga y muestra un intersticial; invoca [onFinished] al cerrarse (o si no había). */
     fun showInterstitial(onFinished: () -> Unit)
 

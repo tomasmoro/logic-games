@@ -271,6 +271,7 @@ en vez de pedir credenciales.
 - No commitear secretos (service_role, keystores, contraseñas).
 - No editar migraciones SQL ya aplicadas (crea una nueva).
 - No poner colores/strings hardcodeados donde exista tema/recurso.
+- **No escribir textos de UI nuevos embebidos en el código** (ver §10).
 - No dejar código público sin KDoc (ver sección 3).
 - No introducir dependencias de plataforma en `commonMain` sin `expect/actual`.
 
@@ -449,3 +450,44 @@ Si un juego nuevo necesita un borde de neón que estos componentes no cubren,
 amplía `drawNeonTile`/`NeonFrame` (parámetros o nueva variante) en vez de
 copiar su lógica: así todos los tableros comparten idéntica estética y un
 ajuste de "look" se hace en un solo sitio.
+
+---
+
+## 10. Textos: archivo de strings (REGLA OBLIGATORIA)
+
+> **Todo texto de UI que se escriba a partir de ahora vive en
+> `shared/src/commonMain/composeResources/values/strings.xml`.** Sin excepciones.
+
+Por qué: la app va a abrirse a más público y hoy no hay forma de traducirla ni de
+revisar la voz de la marca sin peinar 100 `@Composable`. Con el catálogo de
+recursos, añadir un idioma es crear `values-<código>/strings.xml` con las mismas
+claves — cero cambios en Kotlin.
+
+**Cómo se usa:**
+
+```kotlin
+// En Compose
+Text(stringResource(Res.string.settings_notifications_toggle_title))
+
+// Fuera de Compose (suspend) — p. ej. el módulo de notificaciones
+val titulo = getString(Res.string.notif_streak_risk_title_1)
+
+// Con argumentos: la clave usa %1$s (nunca %1$d) y el valor se pasa ya como String
+getString(Res.string.notif_daily_mission_body_1, restantes.toString())
+```
+
+Los accesores (`Res.string.*`) los genera el plugin de Compose Resources al
+compilar; el import es `kortexgames.shared.generated.resources.<clave>`.
+
+**Convención de claves:** `<área>_<pantalla/concepto>_<detalle>`
+(`settings_notifications_section`, `notif_streak_risk_title_1`). Las variantes de un
+mismo mensaje terminan en `_1`, `_2`, `_3`.
+
+**Alcance:** las pantallas y juegos que ya existían siguen con sus textos
+embebidos; se migran de forma progresiva (hay una entrada en `BACKLOG.md`). La
+regla aplica a **código nuevo o modificado**: si tocas una pantalla y cambias un
+texto, ese texto se lleva al archivo de strings.
+
+**Qué NO va al archivo de strings:** los nombres de los juegos (viven en
+`GameCatalog`, que es contenido de catálogo sincronizado con Supabase) y cualquier
+dato que venga del backend.

@@ -11,11 +11,20 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
-/** Preferencias de audio/háptica del usuario. */
+/**
+ * Preferencias del usuario: audio/háptica y recordatorios.
+ *
+ * @property areRemindersEnabled interruptor propio de la app para las notificaciones
+ *   de retención (racha, misión diaria, récords). Es independiente del permiso del
+ *   sistema: por defecto está activado, pero mientras el sistema no conceda el
+ *   permiso no se programa ni un aviso — así, al concederlo, los recordatorios
+ *   empiezan a funcionar sin obligar al usuario a activar dos interruptores.
+ */
 data class UserSettings(
     val isSfxEnabled: Boolean = true,
     val isMusicEnabled: Boolean = true,
     val isHapticsEnabled: Boolean = true,
+    val areRemindersEnabled: Boolean = true,
 )
 
 /**
@@ -30,6 +39,7 @@ class SettingsRepository(
         val SFX = booleanPreferencesKey("is_sfx_enabled")
         val MUSIC = booleanPreferencesKey("is_music_enabled")
         val HAPTICS = booleanPreferencesKey("is_haptics_enabled")
+        val REMINDERS = booleanPreferencesKey("are_reminders_enabled")
     }
 
     val settings: StateFlow<UserSettings> = dataStore.data
@@ -38,6 +48,7 @@ class SettingsRepository(
                 isSfxEnabled = prefs[Keys.SFX] ?: true,
                 isMusicEnabled = prefs[Keys.MUSIC] ?: true,
                 isHapticsEnabled = prefs[Keys.HAPTICS] ?: true,
+                areRemindersEnabled = prefs[Keys.REMINDERS] ?: true,
             )
         }
         .stateIn(scope, SharingStarted.Eagerly, UserSettings())
@@ -48,6 +59,9 @@ class SettingsRepository(
     suspend fun setSfxEnabled(enabled: Boolean) = update(Keys.SFX, enabled)
     suspend fun setMusicEnabled(enabled: Boolean) = update(Keys.MUSIC, enabled)
     suspend fun setHapticsEnabled(enabled: Boolean) = update(Keys.HAPTICS, enabled)
+
+    /** Activa/desactiva los recordatorios (ver [UserSettings.areRemindersEnabled]). */
+    suspend fun setRemindersEnabled(enabled: Boolean) = update(Keys.REMINDERS, enabled)
 
     private suspend fun update(key: Preferences.Key<Boolean>, value: Boolean) {
         dataStore.edit { it[key] = value }

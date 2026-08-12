@@ -14,8 +14,10 @@ import com.google.android.ump.UserMessagingPlatform
  *  - Google **exige** resolver el consentimiento antes de pedir el primer anuncio a
  *    usuarios que puedan estar en la UE/UK; no hacerlo puede suspender la cuenta.
  *  - El formulario de consentimiento **necesita una `Activity`** para presentarse (no
- *    basta el `applicationContext` con el que se arma el grafo), así que este flujo lo
- *    dispara [com.kortexgames.app.MainActivity], no el `AppGraph`.
+ *    basta el `applicationContext` con el que se arma el grafo); de buscarla se encarga
+ *    el `actual` de [beginAdConsentFlow], que es quien dispara este flujo.
+ *  - **Cuándo** se dispara ya no es "al abrir la app" sino al terminar la primera
+ *    apertura (la bienvenida jugable): ver el KDoc de [beginAdConsentFlow].
  *  - `MobileAds.initialize` se llama **después** de resolver el consentimiento (o de
  *    saber que ya se pueden pedir anuncios), no en el registro de presentadores
  *    ([installPlatformAdPresenters]).
@@ -36,7 +38,7 @@ object AdConsentManager {
 
     /**
      * Pide/actualiza el consentimiento y, en cuanto se puedan pedir anuncios, inicializa
-     * el SDK. Idempotente: puede llamarse en cada `onCreate` sin re-inicializar.
+     * el SDK. Idempotente: puede llamarse de más sin re-inicializar.
      *
      * Para **probar el formulario en desarrollo** (fuera de la UE no aparece), añadir un
      * `ConsentDebugSettings` a los [ConsentRequestParameters] con

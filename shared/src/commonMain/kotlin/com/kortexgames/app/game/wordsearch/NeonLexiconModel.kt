@@ -58,6 +58,18 @@ enum class LineDirection(val rowStep: Int, val colStep: Int) {
     NORTH_EAST(-1, 1),
     NORTH_WEST(-1, -1);
 
+    /**
+     * Dirección opuesta (mismo eje, sentido contrario). [NeonLexiconGenerator]
+     * la usa desde el nivel de dificultad correspondiente para colocar una
+     * palabra "al revés": mismas celdas que su [forPlacement] original, pero el
+     * orden de lectura natural (izquierda→derecha, arriba→abajo) muestra las
+     * letras en orden inverso, sin tocar la validación (Fase 2 ya acepta el
+     * trazo del jugador en cualquiera de los dos sentidos, ver
+     * `NeonLexiconEngine.matchesPath`).
+     */
+    val opposite: LineDirection
+        get() = entries.first { it.rowStep == -rowStep && it.colStep == -colStep }
+
     companion object {
         /** Las 4 direcciones "positivas": suficientes para COLOCAR palabras sin
          *  duplicar orientaciones (una palabra de W a E es la misma línea que de
@@ -222,6 +234,12 @@ data class NeonLexiconLevelSpec(
  *    NE. Las 8 direcciones serían redundantes al colocar —una palabra y su
  *    reverso ocupan la misma línea— y el jugador igualmente puede trazarla en
  *    cualquiera de los dos sentidos, cosa que resuelve la validación de Fase 2.
+ *  - Desde [REVERSE_WORDS_FROM_LEVEL], cada palabra real (nunca las trampas)
+ *    tiene 50% de probabilidad de colocarse en su [LineDirection.opposite]: la
+ *    letra inicial visual pasa a ser la última del texto, así que a veces se lee
+ *    "de corrido" y a veces al revés. Sube la dificultad de lectura del tablero
+ *    sin tocar la validación —la selección del jugador ya aceptaba ambos
+ *    sentidos— así que no hace falta cambiar nada en Fase 2.
  *  - El relleno usa letras uniformes A–Z. Un generador real sesgaría el relleno
  *    hacia la frecuencia del idioma para que "camufle" mejor las palabras; se
  *    deja fuera del mock a propósito.
@@ -240,6 +258,16 @@ object NeonLexiconGenerator {
 
     /** Reintentos de rejilla completa si alguna palabra no encaja. */
     private const val MAX_GRID_ATTEMPTS = 50
+
+    /**
+     * A partir de este nivel, cada palabra real tiene 50% de probabilidad de
+     * colocarse en su [LineDirection.opposite] (al revés). Sube la dificultad
+     * visual sin tocar la validación —el jugador ya podía trazar en cualquier
+     * sentido (ver `NeonLexiconEngine.matchesPath`)— y es aleatorio por palabra
+     * y por partida, así que en un mismo nivel unas veces sale del derecho y
+     * otras al revés, nunca de forma predecible.
+     */
+    private const val REVERSE_WORDS_FROM_LEVEL = 7
 
     private const val ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -488,9 +516,10 @@ object NeonLexiconGenerator {
         val spec = levelSpecs[indexFor(level)]
         // Colocar las largas primero minimiza los reintentos (ver KDoc de la clase).
         val ordered = spec.words.sortedByDescending { it.length }
+        val allowReversed = level >= REVERSE_WORDS_FROM_LEVEL
 
         repeat(MAX_GRID_ATTEMPTS) {
-            tryBuild(spec, ordered, random)?.let { return it }
+            tryBuild(spec, ordered, random, allowReversed)?.let { return it }
         }
         error("No se pudo generar el nivel $level con las palabras: ${spec.words}")
     }
@@ -500,13 +529,14 @@ object NeonLexiconGenerator {
         spec: NeonLexiconLevelSpec,
         ordered: List<String>,
         random: Random,
+        allowReversed: Boolean,
     ): NeonLexiconPuzzle? {
         // ' ' marca celda libre; se rellena con letras al final.
         val grid = MutableList(spec.rows) { MutableList(spec.cols) { ' ' } }
         val placed = mutableListOf<TargetWord>()
 
         for (word in ordered) {
-            val target = placeWord(word, spec, grid, random) ?: return null
+            val target = placeWord(word, spec, grid, random, allowReversed) ?: return null
             target.cells.forEachIndexed { i, c -> grid[c.row][c.col] = word[i] }
             placed += target
         }
@@ -541,15 +571,22 @@ object NeonLexiconGenerator {
      * [MAX_WORD_ATTEMPTS] veces. Una colocación es legal si toda la palabra cae
      * dentro de la rejilla y cada celda está libre o ya contiene la MISMA letra
      * (cruce válido, como en el Crucigrama). Devuelve null si no encuentra sitio.
+     *
+     * @param allowReversed si es true (nivel ≥ [REVERSE_WORDS_FROM_LEVEL] y solo
+     *        para palabras reales, nunca trampas), cada intento tiene 50% de
+     *        probabilidad de usar la dirección [LineDirection.opposite]: la
+     *        palabra queda al revés en la rejilla en vez de "de corrido".
      */
     private fun placeWord(
         word: String,
         spec: NeonLexiconLevelSpec,
         grid: List<List<Char>>,
         random: Random,
+        allowReversed: Boolean = false,
     ): TargetWord? {
         repeat(MAX_WORD_ATTEMPTS) {
-            val dir = LineDirection.forPlacement[random.nextInt(LineDirection.forPlacement.size)]
+            var dir = LineDirection.forPlacement[random.nextInt(LineDirection.forPlacement.size)]
+            if (allowReversed && random.nextBoolean()) dir = dir.opposite
             val start = Coordinate(random.nextInt(spec.rows), random.nextInt(spec.cols))
             val candidate = TargetWord(word, start, dir)
             if (fits(candidate, spec, grid)) return candidate

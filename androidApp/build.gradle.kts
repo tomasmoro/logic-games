@@ -5,6 +5,9 @@ plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
+    // Consumidor del Baseline Profile generado por :macrobenchmark (ver §"Rendimiento
+    // de arranque" al final de este archivo y macrobenchmark/build.gradle.kts).
+    alias(libs.plugins.baselineProfile)
 }
 
 /**
@@ -100,6 +103,18 @@ dependencies {
 
     implementation(libs.compose.uiToolingPreview)
     debugImplementation(libs.compose.uiTooling)
+
+    // Instala en el dispositivo, en segundo plano, el Baseline Profile empaquetado
+    // con el APK/AAB para que ART lo compile AOT en cuanto pueda tras instalar o
+    // actualizar. Sin esta dependencia, el perfil que genera :macrobenchmark
+    // quedaría en el repo pero no llegaría a compilarse en el dispositivo del
+    // usuario real (Play Store también lo instala solo, pero conviene no depender
+    // únicamente de eso).
+    implementation(libs.androidx.profileinstaller)
+
+    // Wiring del plugin `androidx.baselineprofile`: apunta a :macrobenchmark como
+    // fuente del perfil que consume el build type `benchmark`/`release` de abajo.
+    "baselineProfile"(project(":macrobenchmark"))
 }
 
 android {
@@ -152,6 +167,16 @@ android {
             ndk {
                 debugSymbolLevel = "SYMBOL_TABLE"
             }
+        }
+        // Build type SOLO para :macrobenchmark (nunca se publica): calca `release`
+        // (mismo código optimizado que instalará un usuario real) pero se firma con
+        // la clave de debug para poder compilar/instalar en CI o en local sin las
+        // credenciales de publicación. Ver macrobenchmark/build.gradle.kts.
+        create("benchmark") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+            isDebuggable = false
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {

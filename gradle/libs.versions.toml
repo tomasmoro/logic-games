@@ -30,6 +30,10 @@ googleId = "1.1.1"
 playServicesAds = "25.4.0"
 # UMP: consentimiento GDPR/EEA (User Messaging Platform), exigido antes del 1er anuncio
 userMessaging = "4.0.0"
+# --- Rendimiento de arranque: módulo :macrobenchmark + Baseline Profile ---
+androidxBenchmark = "1.5.0-beta01"
+androidxProfileinstaller = "1.4.1"
+androidxUiautomator = "2.4.0"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -90,9 +94,19 @@ google-googleid = { module = "com.google.android.libraries.identity.googleid:goo
 play-services-ads = { module = "com.google.android.gms:play-services-ads", version.ref = "playServicesAds" }
 user-messaging-platform = { module = "com.google.android.ump:user-messaging-platform", version.ref = "userMessaging" }
 
+# --- Rendimiento de arranque: benchmarking instrumentado + consumo de perfil ---
+# `profileinstaller` va en androidApp (runtime): deja el Baseline Profile listo para
+# que ART lo compile AOT en la primera oportunidad (tras instalar/actualizar).
+androidx-profileinstaller = { module = "androidx.profileinstaller:profileinstaller", version.ref = "androidxProfileinstaller" }
+# El resto son solo del módulo :macrobenchmark (instrumentado, no viaja en el APK final).
+androidx-benchmark-macro-junit4 = { module = "androidx.benchmark:benchmark-macro-junit4", version.ref = "androidxBenchmark" }
+androidx-test-uiautomator = { module = "androidx.test.uiautomator:uiautomator", version.ref = "androidxUiautomator" }
+
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
 androidMultiplatformLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+androidTest = { id = "com.android.test", version.ref = "agp" }
+baselineProfile = { id = "androidx.baselineprofile", version.ref = "androidxBenchmark" }
 composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }

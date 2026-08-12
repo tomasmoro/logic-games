@@ -4,6 +4,7 @@ import com.kortexgames.app.data.local.LocalProgressDataSource
 import com.kortexgames.app.data.remote.RemoteProgressDataSource
 import com.kortexgames.app.domain.model.AuthState
 import com.kortexgames.app.domain.model.GameProgress
+import com.kortexgames.app.domain.model.GameRanking
 import com.kortexgames.app.domain.model.GameResult
 import com.kortexgames.app.domain.model.SaveOutcome
 import com.kortexgames.app.domain.repository.PlayerProgressRepository
@@ -36,12 +37,19 @@ import kotlinx.datetime.todayIn
  * @param authState proveedor del estado de sesión actual (invitado/autenticado).
  * @param playerProgress progresión por juego (récord/reanudación); se actualiza en
  *   la misma ruta de fin de partida para no duplicar el hook en cada ViewModel.
+ * @param onNewRecord aviso de "esta partida batió el récord previo", con el id del
+ *   juego. Es un seam (lambda) y no una dependencia del módulo de notificaciones a
+ *   propósito: el repositorio no debe saber que existen las notificaciones, pero es
+ *   el ÚNICO punto por el que pasan todas las partidas de todos los juegos, así que
+ *   engancharlo aquí evita repetir el hook en los 17 ViewModels. Debe ser barato y
+ *   no lanzar: se invoca dentro del guardado del resultado.
  */
 class ProgressRepositoryImpl(
     private val local: LocalProgressDataSource,
     private val remote: RemoteProgressDataSource,
     private val authState: () -> AuthState,
     private val playerProgress: PlayerProgressRepository,
+    private val onNewRecord: (gameId: String) -> Unit = {},
     private val clock: Clock = Clock.System,
 ) : ProgressRepository {
 
@@ -53,6 +61,9 @@ class ProgressRepositoryImpl(
         //     averigua si batió el récord previo. No debe tumbar el guardado del
         //     historial si algo falla (por eso runCatching → false en el peor caso).
         val isNewRecord = runCatching { playerProgress.recordResult(result) }.getOrDefault(false)
+        // Mismo criterio que arriba: notificar el récord es un extra, nunca un motivo
+        // para que se pierda la partida que el jugador acaba de terminar.
+        if (isNewRecord) runCatching { onNewRecord(result.gameId) }
 
         // 2) ¿Podemos ir al backend?
         val auth = authState()
@@ -123,6 +134,18 @@ class ProgressRepositoryImpl(
         runCatching {
             local.mergeRemote(remote.fetchAll())
         }
+    }
+
+    /**
+     * Sin sesión no hay con quién comparar (invitado/offline): se corta aquí, antes
+     * de tocar la red, en vez de dejar que la RPC falle por falta de `auth.uid()`.
+     * Un fallo de red o una consulta sin marca previa también acaban en `null` (ver
+     * KDoc de la interfaz) — el `runCatching` cubre ambos sin distinguirlos, igual
+     * criterio que el resto de la comparativa mundial en este repositorio.
+     */
+    override suspend fun previewRanking(gameId: String, difficultyLevel: Int?): GameRanking? {
+        if (authState() !is AuthState.Authenticated) return null
+        return runCatching { remote.fetchRankingPreview(gameId, difficultyLevel) }.getOrNull()
     }
 
     override suspend fun countPlayedToday(): Int {

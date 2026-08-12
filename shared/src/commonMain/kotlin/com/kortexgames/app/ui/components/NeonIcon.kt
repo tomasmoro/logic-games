@@ -27,6 +27,8 @@ import androidx.compose.material.icons.rounded.MilitaryTech
 import androidx.compose.material.icons.automirrored.rounded.TrendingUp
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.MusicOff
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.OndemandVideo
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Person
@@ -197,6 +199,12 @@ object KortexIcons {
      * que es justo lo que el poder hace, sin prometer que la desactive gratis.
      */
     val Scan: ImageVector = Icons.Rounded.Radar
+
+    /** Campana: recordatorios activados (ajuste de notificaciones). */
+    val Notifications: ImageVector = Icons.Rounded.Notifications
+
+    /** Campana tachada: recordatorios desactivados. */
+    val NotificationsOff: ImageVector = Icons.Rounded.NotificationsOff
 }
 
 /**

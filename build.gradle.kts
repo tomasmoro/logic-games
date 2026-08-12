@@ -6,4 +6,7 @@ plugins {
     alias(libs.plugins.composeMultiplatform) apply false
     alias(libs.plugins.composeCompiler) apply false
     alias(libs.plugins.kotlinMultiplatform) apply false
+    // :macrobenchmark (rendimiento de arranque, ver macrobenchmark/build.gradle.kts)
+    alias(libs.plugins.androidTest) apply false
+    alias(libs.plugins.baselineProfile) apply false
 }

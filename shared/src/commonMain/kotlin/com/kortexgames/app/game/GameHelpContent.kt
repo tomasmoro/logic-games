@@ -187,6 +187,11 @@ object GameHelpContent {
                 title = "Encadena combos",
                 text = "Los aciertos seguidos suben el combo y la puntuación.",
             ),
+            HelpStep(
+                icon = KortexIcons.Heart,
+                title = "Nube de ecuación",
+                text = "Cada 20 s aparece una ecuación incompleta: complétala en 7 s y recuperas una vida.",
+            ),
         ),
     )
 
@@ -328,7 +333,7 @@ object GameHelpContent {
     /** Atracción Geométrica / polaridad (Visión Espacial). */
     val polarity = GameHelp(
         title = "Atracción Geométrica",
-        summary = "Captura las piezas de tu color y esquiva las contrarias.",
+        summary = "Captura las piezas de tu color: la partida solo acaba sin vidas.",
         accent = CategoryPalette.SpatialVision,
         art = motifHelpArt(GameMotif.POLARITY_SECTORS),
         steps = listOf(
@@ -338,14 +343,14 @@ object GameHelpContent {
                 text = "Gira los sectores para presentar el color adecuado a cada pieza.",
             ),
             HelpStep(
-                icon = KortexIcons.Check,
-                title = "Captura tu color",
-                text = "Recibe las piezas que coinciden con el sector para puntuar.",
+                icon = KortexIcons.Heart,
+                title = "Cada fallo cuesta una vida",
+                text = "Si la pieza choca contra un sector de otro color, pierdes una vida.",
             ),
             HelpStep(
                 icon = KortexIcons.Timer,
-                title = "Contra el reloj",
-                text = "Evita las piezas contrarias antes de que se acabe el tiempo.",
+                title = "Lluvia de meteoros",
+                text = "Cada 30 s llueven meteoros: solo suman aciertos y regalan vida y color nuevo.",
             ),
         ),
     )

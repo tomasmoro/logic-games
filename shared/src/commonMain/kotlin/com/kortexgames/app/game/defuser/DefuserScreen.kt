@@ -55,8 +55,11 @@ import com.kortexgames.app.ui.components.GameOverOverlay
 import com.kortexgames.app.ui.components.GamePauseControls
 import com.kortexgames.app.ui.components.KortexIcons
 import com.kortexgames.app.ui.components.NeonIcon
+import com.kortexgames.app.ui.components.RankingPreviewUnavailable
 import com.kortexgames.app.ui.components.ReviveAdOverlay
 import com.kortexgames.app.ui.components.SpaceBackdrop
+import com.kortexgames.app.ui.components.WorldRankingLoading
+import com.kortexgames.app.ui.components.WorldRankingPreviewPanel
 import com.kortexgames.app.ui.components.bounceClick
 import com.kortexgames.app.ui.components.pulse
 import kotlinx.coroutines.delay
@@ -240,25 +243,36 @@ fun DefuserScreen(graph: AppGraph, onExit: () -> Unit) {
             // Solo se ofrece cuando no hay partida guardada que continuar.
             configContent = if (!state.hasSavedGame) {
                 {
-                    DifficultyGateSelector(
-                        title = "DIFICULTAD",
-                        options = DEFUSER_DIFFICULTY_OPTIONS,
-                        selectedIndex = state.difficulty.ordinal,
-                        unlockedTiers = state.unlockedDifficulties,
-                        onSelect = { index ->
-                            vm.onIntent(DefuserIntent.SelectDifficulty(MineDifficulty.entries[index]))
-                        },
-                        accent = CategoryPalette.Attention,
-                        hint = DifficultyUnlocks.nextUnlockHint(
-                            GameIds.NEON_DEFUSER,
-                            state.unlockedDifficulties,
-                        ),
-                        // Los chips llevan dos líneas de detalle de longitud dispar
-                        // ("10×14 / 37 minas" es el más largo): a ancho propio, ese no
-                        // cabría y envolvería, descuadrando la tarjeta entera.
-                        equalWidth = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        DifficultyGateSelector(
+                            title = "DIFICULTAD",
+                            options = DEFUSER_DIFFICULTY_OPTIONS,
+                            selectedIndex = state.difficulty.ordinal,
+                            unlockedTiers = state.unlockedDifficulties,
+                            onSelect = { index ->
+                                vm.onIntent(DefuserIntent.SelectDifficulty(MineDifficulty.entries[index]))
+                            },
+                            accent = CategoryPalette.Attention,
+                            hint = DifficultyUnlocks.nextUnlockHint(
+                                GameIds.NEON_DEFUSER,
+                                state.unlockedDifficulties,
+                            ),
+                            // Los chips llevan dos líneas de detalle de longitud dispar
+                            // ("10×14 / 37 minas" es el más largo): a ancho propio, ese no
+                            // cabría y envolvería, descuadrando la tarjeta entera.
+                            equalWidth = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        // Comparativa mundial de la dificultad elegida, ANTES de jugar
+                        // (mismo panel que el diálogo de fin de partida): pedido explícito
+                        // para que la antesala también responda "¿cómo me va ahí?".
+                        val preview = state.rankingPreview
+                        when {
+                            state.rankingPreviewLoading -> WorldRankingLoading()
+                            preview != null -> WorldRankingPreviewPanel(ranking = preview)
+                            else -> RankingPreviewUnavailable(difficultyLabel = state.difficulty.displayName)
+                        }
+                    }
                 }
             } else {
                 null

@@ -92,6 +92,14 @@ import kotlinx.coroutines.launch
  *        [com.kortexgames.app.game.ResumableGameEngine] / [GameExitGuard]): cuando
  *        es `true` se aclara bajo "SALIR" que no se pierde el progreso. `false` por
  *        defecto para no cambiar el copy de los juegos que aún no lo activan.
+ * @param onAdvanceLevel si no es `null`, el menú de pausa suma un botón "SIGUIENTE
+ *        NIVEL" que cierra el nivel actual (con lo ya resuelto) y avanza directo,
+ *        sin pasar por el cartel de fin de partida. Pensado para el momento en que
+ *        un juego LEVELED deja la partida "técnicamente ganada" pero con contenido
+ *        opcional pendiente (p. ej. el Crucigrama Neón con extras por descubrir
+ *        tras completar la rejilla, ver [com.kortexgames.app.game.crucigrama.CrucigramaNeonState.gridComplete]):
+ *        el jugador puede saltarse ese contenido opcional sin tener que reanudar
+ *        primero. `null` (por defecto) no cambia el menú del resto de juegos.
  */
 @Composable
 fun GamePauseControls(
@@ -107,6 +115,7 @@ fun GamePauseControls(
     helpText: String? = null,
     accent: Color = LogicColors.NeonCyan,
     exitKeepsProgress: Boolean = false,
+    onAdvanceLevel: (() -> Unit)? = null,
 ) {
     // Estado de la hoja de ayuda genérica (solo cuando se inyecta [help]): se abre desde el
     // menú de pausa y se dibuja como última capa para quedar por encima de él.
@@ -141,6 +150,7 @@ fun GamePauseControls(
             onResume = onResume,
             onExit = onExit,
             exitKeepsProgress = exitKeepsProgress,
+            onAdvanceLevel = onAdvanceLevel,
         )
 
         // Hoja de ayuda genérica por encima del menú de pausa (su propio scrim lo tapa).
@@ -218,6 +228,7 @@ private fun BoxScope.PauseMenu(
     onResume: () -> Unit,
     onExit: () -> Unit,
     exitKeepsProgress: Boolean,
+    onAdvanceLevel: (() -> Unit)?,
 ) {
     val scrimAlpha by animateFloatAsState(
         targetValue = if (visible) 0.82f else 0f,
@@ -375,6 +386,34 @@ private fun BoxScope.PauseMenu(
                         color = LogicColors.BackgroundDark,
                         fontWeight = FontWeight.ExtraBold,
                     )
+                }
+            }
+            // Atajo condicional: nivel "técnicamente ganado" con contenido opcional
+            // pendiente (ver KDoc de [onAdvanceLevel]). Sin `pulse()`: el único bucle
+            // de atención va a "REANUDAR" (§9.4), este es un CTA secundario.
+            if (onAdvanceLevel != null) {
+                AnimatedGameButton(
+                    onClick = onAdvanceLevel,
+                    gradient = LogicGradients.reward,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        NeonIcon(
+                            icon = KortexIcons.ChevronRight,
+                            tint = LogicColors.BackgroundDark,
+                            size = 22.dp,
+                            glow = false,
+                        )
+                        Text(
+                            "SIGUIENTE NIVEL",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = LogicColors.BackgroundDark,
+                            fontWeight = FontWeight.ExtraBold,
+                        )
+                    }
                 }
             }
             AnimatedGameButton(

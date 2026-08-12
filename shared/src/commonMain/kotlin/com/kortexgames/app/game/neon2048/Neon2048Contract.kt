@@ -5,6 +5,7 @@ import com.kortexgames.app.core.audio.SoundEffect
 import com.kortexgames.app.core.mvi.UiEffect
 import com.kortexgames.app.core.mvi.UiIntent
 import com.kortexgames.app.core.mvi.UiState
+import com.kortexgames.app.domain.model.GameRanking
 import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
 import kotlinx.serialization.Serializable
@@ -46,9 +47,12 @@ import kotlinx.serialization.Serializable
  *   que filtrar fichas fantasma: son puro artefacto de render.
  * @property score puntuación de la partida en curso. Sigue la regla del 2048
  *   clásico: cada fusión suma el **valor resultante** (2+2 → +4).
- * @property bestScore mejor puntuación histórica del jugador en este juego. Se
- *   lee del repositorio local al iniciar y se refresca en vivo cuando [score] lo
- *   supera, para que la cabecera muestre el récord cayendo en tiempo real.
+ * @property bestScore mejor puntuación histórica del jugador **en el tablero
+ *   [boardSize] actual** (no un máximo global del juego: un 8×8 siempre puede sacar
+ *   más puntos que un 4×4, así que mezclarlos volvería el récord imposible de batir
+ *   en un tablero chico — ver KDoc de `Neon2048ViewModel.bestScoreByBoardSize`). Se
+ *   resuelve al elegir tablero y se refresca en vivo cuando [score] lo supera, para
+ *   que la cabecera muestre el récord cayendo en tiempo real.
  * @property status ciclo de vida estándar (IDLE en la antesala/intro, RUNNING en
  *   juego, PAUSED, FINISHED al no quedar jugadas).
  * @property hasWon true en cuanto aparece la primera ficha de
@@ -83,6 +87,14 @@ import kotlinx.serialization.Serializable
  * @property savedScore puntuación de la corrida guardada al salir, o null si no hay
  *   ninguna pendiente. Solo relevante en la antesala (IDLE), donde se ofrece como
  *   "Continuar" (ver [com.kortexgames.app.ui.components.ResumeState]).
+ * @property rankingPreview comparativa mundial del tablero [boardSize], para pintar
+ *   en la antesala el mismo panel que el diálogo de fin de partida ANTES de jugar
+ *   (ver [com.kortexgames.app.domain.repository.ProgressRepository.previewRanking]).
+ *   `null` mientras se resuelve ([rankingPreviewLoading]) o si no hay comparativa
+ *   que mostrar (invitado, sin red, o sin ninguna marca todavía en ese tablero).
+ * @property rankingPreviewLoading `true` mientras se pide [rankingPreview] tras
+ *   entrar en la antesala o cambiar de tablero. Arranca en `true` (no en `false`)
+ *   para no enseñar el aviso de "sin comparativa" un instante antes de que llegue.
  */
 data class Neon2048UiState(
     val tiles: List<Tile> = emptyList(),
@@ -98,6 +110,8 @@ data class Neon2048UiState(
     val unlockedBoardSizes: Int = 1,
     val justUnlockedBoardSize: Int? = null,
     val savedScore: Int? = null,
+    val rankingPreview: GameRanking? = null,
+    val rankingPreviewLoading: Boolean = true,
 ) : UiState {
 
     /** Atajo semántico: la partida terminó por falta de movimientos válidos. */

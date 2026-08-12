@@ -51,8 +51,18 @@ final class AdMobBridge: NSObject, IosAdBridge {
     /// antes de que `MainViewController()` construya el `AppGraph`.
     func requestConsentAndStart() {
         if #available(iOS 14, *) {
+            // Apple NO garantiza que este completion handler llegue en el hilo
+            // principal (aunque en la práctica casi siempre lo hace). Sin el
+            // `DispatchQueue.main.async`, `requestConsentInfo()` puede acabar
+            // tocando `UIApplication.shared` (en `rootViewController()`) y el SDK
+            // de UMP desde un hilo en segundo plano — comportamiento indefinido en
+            // UIKit que se manifestaba como el formulario de consentimiento
+            // quedándose "congelado" (no respondía al toque) hasta forzar cierre y
+            // reabrir la app.
             ATTrackingManager.requestTrackingAuthorization { [weak self] _ in
-                self?.requestConsentInfo()
+                DispatchQueue.main.async {
+                    self?.requestConsentInfo()
+                }
             }
         } else {
             requestConsentInfo()

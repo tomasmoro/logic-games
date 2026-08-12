@@ -135,6 +135,16 @@ class NeonSudokuViewModel(
      *  cualquier otra recomputación repetiría los fuegos artificiales. */
     private val celebratedDigits = mutableSetOf<Int>()
 
+    /** `true` en cuanto el jugador toca un chip del selector de dificultad; a partir
+     *  de ahí el auto-select del `init` deja de tocar [NeonSudokuUiState.difficulty]
+     *  (ver KDoc de la suscripción al historial). */
+    private var userSelectedDifficulty = false
+
+    /** Pedido en vuelo de [refreshRankingPreview]; se cancela al lanzar uno nuevo para
+     *  que un cambio rápido de dificultad no deje que una respuesta vieja pise a la
+     *  actual (condición de carrera de red). */
+    private var rankingPreviewJob: Job? = null
+
     init {
         // La antesala ofrece "Continuar" (CTA principal, ver ResumeState) si hay
         // partida guardada: se observa (reactivo) para que el resumen desaparezca
@@ -157,8 +167,33 @@ class NeonSudokuViewModel(
             .onEach { history ->
                 val unlocked = DifficultyUnlocks.unlockedTiers(GameIds.NEON_SUDOKU_MATRIX, history)
                 setState { copy(unlockedDifficulties = unlocked) }
+                // Por defecto se preselecciona la dificultad MÁS DIFÍCIL ya desbloqueada
+                // (pedido explícito): a alguien que vuelve a jugar le importa más "cómo
+                // le va en lo difícil" que en Fácil, que es donde arrancaba antes. Solo
+                // en la antesala (IDLE): a mitad de partida no hay a qué reengancharla.
+                if (!userSelectedDifficulty && currentState.status == GameStatus.IDLE) {
+                    val hardest = SudokuDifficulty.entries[unlocked - 1]
+                    setState { copy(difficulty = hardest) }
+                    refreshRankingPreview(hardest.ordinal + 1)
+                }
             }
             .launchIn(viewModelScope)
+    }
+
+    /**
+     * Pide la comparativa mundial de la dificultad [difficultyLevel] (1-based) para
+     * la antesala — mismo panel que el diálogo de fin de partida
+     * ([com.kortexgames.app.ui.components.WorldRankingPreviewPanel]), pero sin haber
+     * jugado esta partida (ver [ProgressRepository.previewRanking]). Cancela
+     * cualquier pedido anterior en vuelo (ver [rankingPreviewJob]).
+     */
+    private fun refreshRankingPreview(difficultyLevel: Int) {
+        rankingPreviewJob?.cancel()
+        setState { copy(rankingPreview = null, rankingPreviewLoading = true) }
+        rankingPreviewJob = viewModelScope.launch {
+            val ranking = progress.previewRanking(GameIds.NEON_SUDOKU_MATRIX, difficultyLevel)
+            setState { copy(rankingPreview = ranking, rankingPreviewLoading = false) }
+        }
     }
 
     override fun onIntent(intent: NeonSudokuIntent) {
@@ -197,7 +232,9 @@ class NeonSudokuViewModel(
     private fun onSelectDifficulty(difficulty: SudokuDifficulty) {
         if (currentState.status != GameStatus.IDLE) return
         if (difficulty.ordinal + 1 > currentState.unlockedDifficulties) return
+        userSelectedDifficulty = true
         setState { copy(difficulty = difficulty) }
+        refreshRankingPreview(difficulty.ordinal + 1)
     }
 
     /**

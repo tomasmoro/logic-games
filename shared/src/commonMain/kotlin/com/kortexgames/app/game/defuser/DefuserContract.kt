@@ -5,6 +5,7 @@ import com.kortexgames.app.core.audio.SoundEffect
 import com.kortexgames.app.core.mvi.UiEffect
 import com.kortexgames.app.core.mvi.UiIntent
 import com.kortexgames.app.core.mvi.UiState
+import com.kortexgames.app.domain.model.GameRanking
 import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
 import kotlinx.serialization.Serializable
@@ -77,6 +78,14 @@ import kotlinx.serialization.Serializable
  *   "Jugar en …" como CTA. Vive aparte de [gameOver] (no en [GameOverInfo]) porque es
  *   exclusivo de los juegos con dificultad escalonada, no algo que todo juego del catálogo
  *   necesite cargar.
+ * @property rankingPreview comparativa mundial de [difficulty], para pintar en la
+ *   antesala el mismo panel que el diálogo de fin de partida ANTES de jugar (ver
+ *   [com.kortexgames.app.domain.repository.ProgressRepository.previewRanking]).
+ *   `null` mientras se resuelve ([rankingPreviewLoading]) o si no hay comparativa
+ *   que mostrar (invitado, sin red, o sin ninguna marca todavía en esa dificultad).
+ * @property rankingPreviewLoading `true` mientras se pide [rankingPreview] tras
+ *   entrar en la antesala o cambiar de dificultad. Arranca en `true` (no en `false`)
+ *   para no enseñar el aviso de "sin comparativa" un instante antes de que llegue.
  */
 data class DefuserUiState(
     val board: MineBoard = MineBoard.blank(MineDifficulty.FACIL),
@@ -93,6 +102,8 @@ data class DefuserUiState(
     val scanning: Boolean = false,
     val gameOver: GameOverInfo? = null,
     val justUnlockedDifficulty: MineDifficulty? = null,
+    val rankingPreview: GameRanking? = null,
+    val rankingPreviewLoading: Boolean = true,
 ) : UiState {
 
     /**

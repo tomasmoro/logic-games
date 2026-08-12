@@ -22,11 +22,74 @@ import kotlin.math.sqrt
 import kotlin.random.Random
 
 /**
+ * Balance de "Atracción Geométrica". Vive fuera del motor (y es público) porque la
+ * pantalla necesita parte de estos valores para dibujar el HUD —cuántos huecos de
+ * vida pintar, cuántos sectores puede llegar a tener el disco— y porque tener el
+ * tuning en un solo sitio permite ajustar la curva sin tocar la física.
+ */
+object PolarityConfig {
+    /** Sectores de color al empezar la partida: el disco arranca fácil de leer. */
+    const val INITIAL_COLOR_COUNT = 3
+
+    /** Tope de sectores. Cada lluvia de meteoros suma uno hasta llegar aquí. */
+    const val MAX_COLOR_COUNT = 5
+
+    /** Vidas iniciales. Cada mal impacto (color que no coincide) cuesta una. */
+    const val INITIAL_LIVES = 3
+
+    /**
+     * Tope de vidas acumulables. Igual a [INITIAL_LIVES]: la vida de la lluvia
+     * **repone**, no acumula. Con un tope mayor, encadenar lluvias sin fallar daría
+     * un colchón que anularía la tensión de la partida; así el regalo vale justo
+     * cuando el jugador viene tocado, que es cuando de verdad importa.
+     */
+    const val MAX_LIVES = 3
+
+    /** Duración de una oleada normal antes de la lluvia de meteoros. */
+    const val WAVE_DURATION_MS = 30_000L
+
+    /** Pausa con cartel de aviso justo antes de la lluvia. */
+    const val SHOWER_INTRO_MS = 1_600L
+
+    /** Duración de la lluvia de meteoros (fase de regalo, sin riesgo). */
+    const val SHOWER_DURATION_MS = 9_000L
+
+    /** Pausa con cartel de recompensa tras la lluvia (vida + color nuevo). */
+    const val WAVE_INTRO_MS = 2_000L
+}
+
+/**
+ * Fase en la que está la partida infinita. El ciclo es siempre el mismo:
+ * [PLAYING] → [SHOWER_INTRO] → [SHOWER] → [WAVE_INTRO] → [PLAYING]…
+ *
+ * Las dos fases de cartel ([SHOWER_INTRO], [WAVE_INTRO]) congelan la simulación —el
+ * campo se limpia y no spawnea nada— para que el cambio de reglas se lea antes de
+ * volver a jugar. No usan [GameStatus.PAUSED] a propósito: el jugador puede seguir
+ * girando el disco para colocarse, y el menú de pausa real sigue siendo suyo.
+ */
+enum class PolarityPhase {
+    /** Oleada normal: los fallos cuestan vida. */
+    PLAYING,
+
+    /** Cartel "lluvia de meteoros" (campo congelado). */
+    SHOWER_INTRO,
+
+    /** Lluvia de meteoros: solo suman los aciertos, no se pierden vidas. */
+    SHOWER,
+
+    /** Cartel de recompensa: +1 vida y +1 color (campo congelado). */
+    WAVE_INTRO,
+}
+
+/**
  * Partícula individual de Atracción Geométrica.
  *
  * @property mass masa relativa: valores altos aceleran menos en curvas magnéticas,
  *            pero suelen spawnear con mayor velocidad inicial para subir presión.
- * @property colorIndex índice de 0..3 que debe coincidir con el sector del círculo.
+ * @property colorIndex índice del color que debe coincidir con el sector del círculo.
+ *            Siempre `< colorCount` de la oleada en curso.
+ * @property meteor true si nació en la lluvia de meteoros: la pantalla le pinta
+ *            estela y el motor no cobra vida si falla.
  */
 data class PolarityParticle(
     val id: Long,
@@ -38,6 +101,7 @@ data class PolarityParticle(
     val colorIndex: Int,
     val magnetic: Boolean,
     val radius: Float,
+    val meteor: Boolean = false,
 )
 
 /**
@@ -50,6 +114,9 @@ data class PolarityParticle(
  *
  * @property success true = acierto (color coincide, chispas del color del sector),
  *   false = fallo (chispas rojas de error).
+ * @property harmless fallo que NO castiga (meteoro perdido durante la lluvia). Se
+ *   dibuja apagado en vez de rojo: pintar "error" donde no se pierde nada enseñaría
+ *   al jugador a temer la fase que precisamente es un regalo.
  */
 data class PolarityImpact(
     val id: Long,
@@ -57,6 +124,7 @@ data class PolarityImpact(
     val y: Float,
     val colorIndex: Int,
     val success: Boolean,
+    val harmless: Boolean = false,
     val ageMs: Long = 0L,
 )
 
@@ -66,6 +134,22 @@ data class PolarityImpact(
  * El estado conserva geometría de viewport para mantener el motor desacoplado del
  * framework visual: la pantalla reporta tamaño y el motor calcula spawns/física con
  * ese dato, evitando usar APIs de plataforma dentro del engine.
+ *
+ * @property lives vidas restantes; a 0 termina la partida.
+ * @property wave oleada en curso (1-based). Sube tras cada lluvia de meteoros.
+ * @property colorCount sectores de color activos ahora mismo (3..5).
+ * @property phaseRemainingMs cuenta atrás de la fase actual, no de la partida: la
+ *   partida es infinita y solo la cortan las vidas.
+ * @property showerCaught meteoros capturados en la lluvia en curso; alimenta el
+ *   cartel de recompensa ("has cazado N").
+ * @property rewardedLife true si la última lluvia SÍ dio vida (no estaba al tope).
+ * @property rewardedColor true si la última lluvia SÍ añadió color (no estaba al tope).
+ *   Ambos existen para que el cartel de recompensa no prometa lo que el tope ya no
+ *   concede: cantar "+1 vida" con las vidas llenas se leería como un bug.
+ * @property elapsedPlayMs tiempo total sobrevivido; entra en el bonus de puntaje y
+ *   marca la rampa de dificultad.
+ * @property mismatches impactos de color equivocado. NO se muestra en el HUD (el
+ *   castigo visible son las vidas); solo alimenta la precisión del [com.kortexgames.app.domain.model.GameResult].
  */
 data class PolarityCollisionState(
     val rotationRad: Float = 0f,
@@ -75,24 +159,47 @@ data class PolarityCollisionState(
     val viewportHeightPx: Float = 0f,
     val score: Int = 0,
     val caught: Int = 0,
-    val missed: Int = 0,
-    val remainingMs: Long = DEFAULT_ROUND_DURATION_MS,
-)
+    val mismatches: Int = 0,
+    val lives: Int = PolarityConfig.INITIAL_LIVES,
+    val wave: Int = 1,
+    val colorCount: Int = PolarityConfig.INITIAL_COLOR_COUNT,
+    val phase: PolarityPhase = PolarityPhase.PLAYING,
+    val phaseRemainingMs: Long = PolarityConfig.WAVE_DURATION_MS,
+    val showerCaught: Int = 0,
+    val rewardedLife: Boolean = false,
+    val rewardedColor: Boolean = false,
+    val elapsedPlayMs: Long = 0L,
+) {
+    /** ¿Estamos en un cartel entre fases? La física está congelada. */
+    val isInterlude: Boolean
+        get() = phase == PolarityPhase.SHOWER_INTRO || phase == PolarityPhase.WAVE_INTRO
+}
 
 /**
  * Motor de "Atracción Geométrica" (Polarity Collision).
  *
  * Reglas clave:
- *  - El jugador rota un círculo de 4 sectores de color.
+ *  - El jugador rota un círculo de sectores de color (3 al empezar, hasta 5).
  *  - Partículas caen desde bordes hacia el centro con masas/velocidades distintas.
  *  - Partículas magnéticas curvan trayectorias cercanas, obligando anticipación.
- *  - Una partícula se captura solo si su color coincide con el sector impactado.
+ *  - Una partícula se captura solo si su color coincide con el sector impactado; si
+ *    no coincide, cuesta una vida.
  *
- * Curva de onboarding + escalado continuo: la ronda arranca deliberadamente más
+ * **Partida infinita por oleadas.** No hay reloj de fin: se juega hasta agotar las
+ * vidas ([PolarityConfig.INITIAL_LIVES]). Cada [PolarityConfig.WAVE_DURATION_MS] la
+ * simulación se congela y entra una **lluvia de meteoros** de todos los colores y
+ * direcciones donde solo suman los aciertos —fallar no cuesta vida— y que funciona
+ * como regalo de puntos y respiro. Al terminar la lluvia se regala **una vida** y se
+ * añade **un color** al disco (tope [PolarityConfig.MAX_COLOR_COUNT]): el premio y
+ * la subida de dificultad llegan juntos, así el juego crece sin depender solo de la
+ * velocidad.
+ *
+ * Curva de onboarding + escalado continuo: la partida arranca deliberadamente más
  * amable para enseñar la lectura espacial antes de saturar. Al inicio salen un 50%
  * menos de asteroides y viajan un 25% más despacio; desde ahí la presión aumenta de
- * forma gradual durante toda la cuenta atrás subiendo spawn, velocidad, gravedad y
- * probabilidad de magnetismo. La partida termina SOLO cuando se agota el tiempo.
+ * forma gradual (spawn, velocidad, gravedad y probabilidad de magnetismo) según el
+ * tiempo sobrevivido, más un empujón fijo por oleada que no satura nunca —es lo que
+ * garantiza que una partida infinita acabe cayendo—.
  *
  * El loop de render corre en Compose (`withFrameNanos`), pero la física y scoring
  * viven aquí para que la lógica sea portable/testeable y coherente con MVI.
@@ -146,7 +253,7 @@ class PolarityCollisionEngine(
         }
     }
 
-    /** Aplica una rotación incremental al hexágono (en radianes). */
+    /** Aplica una rotación incremental al disco (en radianes). */
     fun rotateBy(deltaRad: Float) {
         if (status.value != GameStatus.RUNNING) return
         _state.update { it.copy(rotationRad = normalizeAngle(it.rotationRad + deltaRad)) }
@@ -169,41 +276,140 @@ class PolarityCollisionEngine(
         val updated = step(current, dtSec)
         _state.value = updated
 
-        if (updated.remainingMs <= 0L && status.value == GameStatus.RUNNING) {
+        // Única condición de fin: quedarse sin vidas. La partida no tiene reloj.
+        if (updated.lives <= 0 && status.value == GameStatus.RUNNING) {
             finish()
         }
     }
 
+    /**
+     * Puntaje = puntos de captura + bonus por supervivencia + bonus por oleada
+     * superada. Los dos bonus existen porque en una partida infinita el mérito no es
+     * solo cuánto capturas, sino **cuánto aguantas**: sin ellos, morir pronto con
+     * muchas capturas empataría con sobrevivir varias oleadas.
+     */
     override fun calculateScore(): Int {
         val state = _state.value
-        val survivalBonus = ((state.remainingMs / 1_000L) * 12L).toInt().coerceAtLeast(0)
-        return (state.score + survivalBonus).coerceAtLeast(0)
+        val survivalBonus = (state.elapsedPlayMs / 1_000L * SURVIVAL_POINTS_PER_SEC).toInt()
+        val waveBonus = (state.wave - 1) * WAVE_CLEAR_BONUS
+        return (state.score + survivalBonus + waveBonus).coerceAtLeast(0)
     }
 
+    /**
+     * Precisión = capturas / (capturas + impactos de color equivocado). Incluye las
+     * capturas de la lluvia de meteoros, que la inflan ligeramente al alza; es
+     * deliberado: la lluvia es una recompensa y penalizar la estadística por
+     * aprovecharla sería contradictorio.
+     */
     override fun currentAccuracy(): Double {
-        val attempts = _state.value.caught + _state.value.missed
-        return if (attempts == 0) 100.0 else (_state.value.caught.toDouble() / attempts.toDouble() * 100.0)
+        val state = _state.value
+        val attempts = state.caught + state.mismatches
+        return if (attempts == 0) 100.0 else (state.caught.toDouble() / attempts.toDouble() * 100.0)
     }
 
     /** Récord = mejor puntaje de la corrida; null si no sumó puntos. */
     override fun reachedMetric(): Int? = calculateScore().takeIf { it > 0 }
 
+    /**
+     * Un frame de simulación: envejece efectos, descuenta la fase en curso, deja
+     * avanzar la física (solo si la fase no está congelada) y, cuando la cuenta
+     * atrás llega a 0, encadena la fase siguiente.
+     */
     private fun step(state: PolarityCollisionState, dtSec: Float): PolarityCollisionState {
-        val progression = roundProgress(state)
-        val dynamicDifficulty = dynamicDifficultyMultiplier(progression)
-        val baseSpawnInterval = (BASE_SPAWN_INTERVAL_SEC - (difficulty.coerceIn(1, 5) - 1) * 0.08f)
-            .coerceAtLeast(MIN_SPAWN_INTERVAL_SEC)
-        val spawnInterval = lerp(
-            start = baseSpawnInterval * INITIAL_SPAWN_INTERVAL_MULTIPLIER,
-            end = (baseSpawnInterval * END_SPAWN_INTERVAL_MULTIPLIER / dynamicDifficulty).coerceAtLeast(MIN_SPAWN_INTERVAL_SEC),
-            progress = progression,
+        val dtMs = (dtSec * 1_000f).toLong()
+
+        val agedImpacts = state.impacts.mapNotNull { impact ->
+            val aged = impact.ageMs + dtMs
+            if (aged >= IMPACT_LIFETIME_MS) null else impact.copy(ageMs = aged)
+        }
+        val ticked = state.copy(
+            impacts = agedImpacts,
+            elapsedPlayMs = state.elapsedPlayMs + dtMs,
+            phaseRemainingMs = (state.phaseRemainingMs - dtMs).coerceAtLeast(0L),
         )
+
+        val advanced = when (state.phase) {
+            PolarityPhase.PLAYING -> advance(ticked, dtSec, shower = false)
+            PolarityPhase.SHOWER -> advance(ticked, dtSec, shower = true)
+            // Carteles: el campo está congelado, solo corre la cuenta atrás.
+            PolarityPhase.SHOWER_INTRO, PolarityPhase.WAVE_INTRO -> ticked
+        }
+
+        return if (advanced.phaseRemainingMs > 0L) advanced else nextPhase(advanced)
+    }
+
+    /**
+     * Transición al terminar la cuenta atrás de la fase actual.
+     *
+     * El premio (vida + color) se aplica al ENTRAR en [PolarityPhase.WAVE_INTRO], no
+     * al salir, para que el cartel pueda mostrar ya los valores nuevos ("4 colores")
+     * en lugar de prometer algo que aún no está en el estado.
+     */
+    private fun nextPhase(state: PolarityCollisionState): PolarityCollisionState = when (state.phase) {
+        PolarityPhase.PLAYING -> {
+            audio.playSound(SoundEffect.LEVEL_UP)
+            state.copy(
+                phase = PolarityPhase.SHOWER_INTRO,
+                phaseRemainingMs = PolarityConfig.SHOWER_INTRO_MS,
+                // Se limpia el campo: entrar en la lluvia con asteroides "de verdad"
+                // aún volando mezclaría las dos reglas (unos cuestan vida, otros no).
+                particles = emptyList(),
+                showerCaught = 0,
+            )
+        }
+
+        PolarityPhase.SHOWER_INTRO -> {
+            spawnAccumulatorSec = 0f // el primer meteoro sale ya, sin esperar al intervalo
+            state.copy(phase = PolarityPhase.SHOWER, phaseRemainingMs = PolarityConfig.SHOWER_DURATION_MS)
+        }
+
+        PolarityPhase.SHOWER -> {
+            audio.playSound(SoundEffect.LEVEL_UP)
+            audio.hapticFeedback(HapticFeedback.SUCCESS)
+            state.copy(
+                phase = PolarityPhase.WAVE_INTRO,
+                phaseRemainingMs = PolarityConfig.WAVE_INTRO_MS,
+                particles = emptyList(),
+                lives = min(state.lives + 1, PolarityConfig.MAX_LIVES),
+                colorCount = min(state.colorCount + 1, PolarityConfig.MAX_COLOR_COUNT),
+                wave = state.wave + 1,
+                rewardedLife = state.lives < PolarityConfig.MAX_LIVES,
+                rewardedColor = state.colorCount < PolarityConfig.MAX_COLOR_COUNT,
+            )
+        }
+
+        PolarityPhase.WAVE_INTRO -> {
+            spawnAccumulatorSec = 0f
+            state.copy(phase = PolarityPhase.PLAYING, phaseRemainingMs = PolarityConfig.WAVE_DURATION_MS)
+        }
+    }
+
+    /**
+     * Física + spawns + colisiones de un frame jugable.
+     *
+     * @param shower true durante la lluvia de meteoros: spawn mucho más denso y, sobre
+     *   todo, **los fallos no cuestan vida ni puntos** (solo se cuentan éxitos).
+     */
+    private fun advance(state: PolarityCollisionState, dtSec: Float, shower: Boolean): PolarityCollisionState {
+        val progression = rampProgress(state)
+        val dynamicDifficulty = dynamicDifficultyMultiplier(state, progression)
+        val spawnInterval = if (shower) {
+            SHOWER_SPAWN_INTERVAL_SEC
+        } else {
+            val baseSpawnInterval = (BASE_SPAWN_INTERVAL_SEC - (difficulty.coerceIn(1, 5) - 1) * 0.08f)
+                .coerceAtLeast(MIN_SPAWN_INTERVAL_SEC)
+            lerp(
+                start = baseSpawnInterval * INITIAL_SPAWN_INTERVAL_MULTIPLIER,
+                end = (baseSpawnInterval * END_SPAWN_INTERVAL_MULTIPLIER / dynamicDifficulty).coerceAtLeast(MIN_SPAWN_INTERVAL_SEC),
+                progress = progression,
+            )
+        }
 
         var particles = state.particles
         spawnAccumulatorSec += dtSec
         while (spawnAccumulatorSec >= spawnInterval) {
             spawnAccumulatorSec -= spawnInterval
-            particles = particles + spawnParticle(state, progression)
+            particles = particles + spawnParticle(state, progression, shower)
         }
 
         val centerX = state.viewportWidthPx * 0.5f
@@ -213,7 +419,9 @@ class PolarityCollisionEngine(
 
         var scoreDelta = 0
         var caughtDelta = 0
-        var missedDelta = 0
+        var mismatchDelta = 0
+        var livesDelta = 0
+        var showerCaughtDelta = 0
         val nextParticles = ArrayList<PolarityParticle>(particles.size)
         val newImpacts = ArrayList<PolarityImpact>()
 
@@ -265,16 +473,35 @@ class PolarityCollisionEngine(
                     radius = catchRadius,
                 )
                 val impactAngle = atan2(impactY - centerY, impactX - centerX)
-                val isMatch = isColorMatch(impactAngle, state.rotationRad, particle.colorIndex)
+                val isMatch = isColorMatch(impactAngle, state.rotationRad, particle.colorIndex, state.colorCount)
                 if (isMatch) {
                     caughtDelta++
-                    val speed = hypot(vx, vy)
-                    scoreDelta += (80f * particle.mass + speed * 0.14f).toInt() + if (particle.magnetic) 35 else 0
+                    if (shower) {
+                        // Regalo de puntos: valor fijo y generoso, sin depender de masa
+                        // ni velocidad. La lluvia premia cazar mucho, no cazar "bien".
+                        scoreDelta += SHOWER_HIT_SCORE
+                        showerCaughtDelta++
+                    } else {
+                        val speed = hypot(vx, vy)
+                        scoreDelta += (80f * particle.mass + speed * 0.14f).toInt() + if (particle.magnetic) 35 else 0
+                    }
                     audio.playSound(SoundEffect.SUCCESS)
                     audio.hapticFeedback(HapticFeedback.LIGHT)
+                } else if (shower) {
+                    // Meteoro con el color equivocado: se desintegra y ya está. Ni vida,
+                    // ni puntos, ni sonido de error (ver [PolarityImpact.harmless]).
+                    newImpacts += PolarityImpact(
+                        id = nextImpactId++,
+                        x = impactX,
+                        y = impactY,
+                        colorIndex = particle.colorIndex,
+                        success = false,
+                        harmless = true,
+                    )
+                    continue
                 } else {
-                    missedDelta++
-                    scoreDelta -= MISMATCH_PENALTY
+                    mismatchDelta++
+                    livesDelta--
                     audio.playSound(SoundEffect.ERROR)
                     audio.hapticFeedback(HapticFeedback.ERROR)
                 }
@@ -298,24 +525,22 @@ class PolarityCollisionEngine(
             }
         }
 
-        val dtMs = (dtSec * 1_000f).toLong()
-        val agedImpacts = state.impacts.mapNotNull { impact ->
-            val aged = impact.ageMs + dtMs
-            if (aged >= IMPACT_LIFETIME_MS) null else impact.copy(ageMs = aged)
-        }
-
-
         return state.copy(
             particles = nextParticles,
-            impacts = agedImpacts + newImpacts,
+            impacts = state.impacts + newImpacts,
             score = (state.score + scoreDelta).coerceAtLeast(0),
             caught = state.caught + caughtDelta,
-            missed = state.missed + missedDelta,
-            remainingMs = (state.remainingMs - dtMs).coerceAtLeast(0L),
+            mismatches = state.mismatches + mismatchDelta,
+            lives = (state.lives + livesDelta).coerceAtLeast(0),
+            showerCaught = state.showerCaught + showerCaughtDelta,
         )
     }
 
-    private fun spawnParticle(state: PolarityCollisionState, progression: Float): PolarityParticle {
+    private fun spawnParticle(
+        state: PolarityCollisionState,
+        progression: Float,
+        shower: Boolean,
+    ): PolarityParticle {
         val w = state.viewportWidthPx
         val h = state.viewportHeightPx
         val cx = w * 0.5f
@@ -332,23 +557,31 @@ class PolarityCollisionEngine(
         val toCenterX = cx - x
         val toCenterY = cy - y
         val baseAngle = atan2(toCenterY, toCenterX)
-        val jitter = random.nextFloat() * SPAWN_ANGLE_JITTER_RAD * 2f - SPAWN_ANGLE_JITTER_RAD
+        // La lluvia abre más el abanico de entrada: los meteoros llegan claramente en
+        // diagonal y desde todos lados, que es lo que la hace leerse como "lluvia" y
+        // no como más de lo mismo.
+        val jitterRange = if (shower) SHOWER_ANGLE_JITTER_RAD else SPAWN_ANGLE_JITTER_RAD
+        val jitter = random.nextFloat() * jitterRange * 2f - jitterRange
         val angle = baseAngle + jitter
 
         val mass = random.nextFloat() * 1.5f + 0.65f
         val baseSpeed = (PARTICLE_BASE_SPEED_PX + random.nextFloat() * PARTICLE_SPEED_VARIANCE_PX) / mass
         val difficultySpeed = baseSpeed * (1f + (difficulty.coerceIn(1, 5) - 1) * 0.07f)
-        val speed = difficultySpeed * lerp(
-            start = INITIAL_SPEED_MULTIPLIER,
-            end = END_SPEED_MULTIPLIER,
-            progress = progression,
-        )
+        val speed = difficultySpeed * if (shower) {
+            SHOWER_SPEED_MULTIPLIER
+        } else {
+            lerp(start = INITIAL_SPEED_MULTIPLIER, end = END_SPEED_MULTIPLIER, progress = progression)
+        }
 
-        val magneticProbability = lerp(
-            start = INITIAL_MAGNETIC_PROBABILITY + (difficulty.coerceIn(1, 5) - 1) * 0.02f,
-            end = FINAL_MAGNETIC_PROBABILITY + (difficulty.coerceIn(1, 5) - 1) * 0.03f,
-            progress = progression,
-        ).coerceAtMost(MAX_MAGNETIC_PROBABILITY)
+        val magneticProbability = if (shower) {
+            SHOWER_MAGNETIC_PROBABILITY
+        } else {
+            lerp(
+                start = INITIAL_MAGNETIC_PROBABILITY + (difficulty.coerceIn(1, 5) - 1) * 0.02f,
+                end = FINAL_MAGNETIC_PROBABILITY + (difficulty.coerceIn(1, 5) - 1) * 0.03f,
+                progress = progression,
+            ).coerceAtMost(MAX_MAGNETIC_PROBABILITY)
+        }
         val magnetic = random.nextFloat() <= magneticProbability
 
         return PolarityParticle(
@@ -358,10 +591,16 @@ class PolarityCollisionEngine(
             vx = cos(angle) * speed,
             vy = sin(angle) * speed,
             mass = mass,
-            colorIndex = random.nextInt(COLOR_SECTORS),
+            colorIndex = random.nextInt(state.colorCount),
             magnetic = magnetic,
-            // Asteroides 3x para priorizar lectura visual sobre precisión milimétrica.
-            radius = if (magnetic) 39f else 30f,
+            // Asteroides 3x para priorizar lectura visual sobre precisión milimétrica;
+            // los meteoros son algo menores porque caen muchos a la vez.
+            radius = when {
+                shower -> 24f
+                magnetic -> 39f
+                else -> 30f
+            },
+            meteor = shower,
         )
     }
 
@@ -398,47 +637,49 @@ class PolarityCollisionEngine(
     /**
      * Ángulo [angleRad] llevado al sistema de la rejilla de sectores: se le resta la
      * rotación del círculo para que `[0, sectorSize)` sea el sector 0. Resultado en
-     * `[0, 2π)`. Base común de [sectorFromAngle] e [isColorMatch].
+     * `[0, 2π)`. Base de [isColorMatch].
      *
      * IMPORTANTE: sin desplazamiento de medio sector. El sector 0 dibujado en pantalla
      * ([drawRingSectors][com.kortexgames.app.game.polarity.PolarityCollisionScreenKt])
      * arranca justo en `rotationRad` (no está centrado ahí) y las costuras/separadores
      * caen en `rotationRad + sectorSize·i`; esta función tiene que reproducir esas MISMAS
-     * fronteras o el hit-test queda desfasado medio sector (~45°) respecto al color que
-     * el jugador ve, que es justo el bug que esto corrige.
+     * fronteras o el hit-test queda desfasado medio sector respecto al color que el
+     * jugador ve, que es justo el bug que esto corrige.
      */
     private fun alignedAngle(angleRad: Float, rotationRad: Float): Float {
         return normalizeAnglePositive(angleRad - rotationRad)
     }
 
-    private fun sectorFromAngle(angleRad: Float, rotationRad: Float): Int {
-        val sectorSize = (2.0 * PI / COLOR_SECTORS).toFloat()
-        return (alignedAngle(angleRad, rotationRad) / sectorSize).toInt().mod(COLOR_SECTORS)
-    }
-
     /**
-     * ¿El impacto en [angleRad] (con el círculo girado [rotationRad]) cuenta como acierto
-     * para una partícula de color [colorIndex]?
+     * ¿El impacto en [angleRad] (con el círculo girado [rotationRad] y [sectorCount]
+     * sectores) cuenta como acierto para una partícula de color [colorIndex]?
      *
      * Además del sector que contiene el ángulo, concede el **beneficio de la duda** cuando
      * el impacto cae MUY cerca de una frontera entre sectores (±[SECTOR_EDGE_TOLERANCE_RAD]):
      * ahí el color bajo el asteroide es ambiguo (toca ambos sectores), así que si su color
      * coincide con cualquiera de los dos contiguos se acepta. Evita fallos "injustos" en la
-     * costura, donde el jugador percibe que el color sí coincidía.
+     * costura, donde el jugador percibe que el color sí coincidía. Con más sectores los
+     * arcos son más estrechos, pero la tolerancia sigue siendo fija y pequeña (~5.7°):
+     * escalarla con el número de sectores la volvería el caso normal, no la excepción.
      */
-    private fun isColorMatch(angleRad: Float, rotationRad: Float, colorIndex: Int): Boolean {
-        val sectorSize = (2.0 * PI / COLOR_SECTORS).toFloat()
+    private fun isColorMatch(
+        angleRad: Float,
+        rotationRad: Float,
+        colorIndex: Int,
+        sectorCount: Int,
+    ): Boolean {
+        val sectorSize = (2.0 * PI / sectorCount).toFloat()
         val aligned = alignedAngle(angleRad, rotationRad)
-        val sector = (aligned / sectorSize).toInt().mod(COLOR_SECTORS)
+        val sector = (aligned / sectorSize).toInt().mod(sectorCount)
         if (sector == colorIndex) return true
 
         // Distancia a cada frontera del sector actual (within ∈ [0, sectorSize)).
         val within = aligned - sector * sectorSize
         if (within <= SECTOR_EDGE_TOLERANCE_RAD &&
-            (sector - 1).mod(COLOR_SECTORS) == colorIndex
+            (sector - 1).mod(sectorCount) == colorIndex
         ) return true
         if (sectorSize - within <= SECTOR_EDGE_TOLERANCE_RAD &&
-            (sector + 1).mod(COLOR_SECTORS) == colorIndex
+            (sector + 1).mod(sectorCount) == colorIndex
         ) return true
         return false
     }
@@ -458,31 +699,37 @@ class PolarityCollisionEngine(
         return angle
     }
 
-    /** Progreso normalizado 0..1 de la ronda actual, útil para rampas suaves. */
-    private fun roundProgress(state: PolarityCollisionState): Float {
-        val elapsed = (ROUND_DURATION_MS - state.remainingMs).coerceAtLeast(0L)
-        return (elapsed.toFloat() / ROUND_DURATION_MS.toFloat()).coerceIn(0f, 1f)
-    }
+    /**
+     * Progreso 0..1 de la rampa de dificultad, medido sobre el tiempo TOTAL
+     * sobrevivido (no sobre la oleada): así la presión no se reinicia cada 30 s.
+     * Satura en [RAMP_FULL_MS]; a partir de ahí la partida sigue endureciéndose por
+     * el empujón de oleada y por los colores nuevos.
+     */
+    private fun rampProgress(state: PolarityCollisionState): Float =
+        (state.elapsedPlayMs.toFloat() / RAMP_FULL_MS.toFloat()).coerceIn(0f, 1f)
 
     /** Interpolación lineal explícita para dejar clara la intención de tuning. */
     private fun lerp(start: Float, end: Float, progress: Float): Float =
         start + (end - start) * progress.coerceIn(0f, 1f)
 
-    /** Multiplicador de dificultad base + rampa temporal continua. */
-    private fun dynamicDifficultyMultiplier(progress: Float): Float {
+    /**
+     * Multiplicador de dificultad: base por nivel elegido × rampa temporal (satura)
+     * × empujón por oleada (no satura). El término de oleada es el que garantiza que
+     * una partida infinita termine: sin él, pasado [RAMP_FULL_MS] el juego se
+     * quedaría igual de difícil para siempre y un jugador bueno no moriría nunca.
+     */
+    private fun dynamicDifficultyMultiplier(state: PolarityCollisionState, progress: Float): Float {
         val difficultyBase = 1f + (difficulty.coerceIn(1, 5) - 1) * 0.18f
         val timeRamp = lerp(1f, END_DIFFICULTY_MULTIPLIER, progress)
-        return difficultyBase * timeRamp
+        val waveBoost = 1f + (state.wave - 1) * WAVE_DIFFICULTY_STEP
+        return difficultyBase * timeRamp * waveBoost
     }
 
     private companion object {
-        const val COLOR_SECTORS = 4
-        const val ROUND_DURATION_MS = DEFAULT_ROUND_DURATION_MS
-
         /**
          * Media banda de tolerancia (rad) a cada lado de una frontera de sector donde el
-         * impacto se considera ambiguo y se da el beneficio de la duda (~5.7°, estrecha:
-         * cada sector mide 90°). Ver [isColorMatch].
+         * impacto se considera ambiguo y se da el beneficio de la duda (~5.7°). Ver
+         * [isColorMatch].
          */
         const val SECTOR_EDGE_TOLERANCE_RAD = 0.10f
 
@@ -498,6 +745,21 @@ class PolarityCollisionEngine(
         const val FINAL_MAGNETIC_PROBABILITY = 0.18f
         const val MAX_MAGNETIC_PROBABILITY = 0.30f
 
+        /** Tiempo sobrevivido en el que la rampa temporal llega a su tope (~4 oleadas). */
+        const val RAMP_FULL_MS = 160_000L
+
+        /** Cuánto endurece cada oleada superada (acumulativo y sin tope). */
+        const val WAVE_DIFFICULTY_STEP = 0.05f
+
+        // --- Lluvia de meteoros (fase regalo) ---
+        /** Muy denso: la lluvia debe verse "llena" de meteoros de todos los colores. */
+        const val SHOWER_SPAWN_INTERVAL_SEC = 0.14f
+        const val SHOWER_SPEED_MULTIPLIER = 1.0f
+        /** Poco magnetismo: da variedad de trayectorias sin volver ilegible la lluvia. */
+        const val SHOWER_MAGNETIC_PROBABILITY = 0.08f
+        const val SHOWER_ANGLE_JITTER_RAD = 0.75f
+        const val SHOWER_HIT_SCORE = 60
+
         const val BASE_GRAVITY_ACCEL = 360f
         const val MAGNETIC_CURVE_ACCEL = 820f
         const val MAGNET_RADIUS_PX = 190f
@@ -509,11 +771,13 @@ class PolarityCollisionEngine(
         const val PARTICLE_BASE_SPEED_PX = 210f
         const val PARTICLE_SPEED_VARIANCE_PX = 240f
 
-        const val MISMATCH_PENALTY = 95
+        /** Bonus por segundo sobrevivido (incluye lluvias y carteles). */
+        const val SURVIVAL_POINTS_PER_SEC = 8L
+
+        /** Bonus fijo por cada oleada completada (es decir, por cada lluvia vivida). */
+        const val WAVE_CLEAR_BONUS = 250
     }
 }
-
-private const val DEFAULT_ROUND_DURATION_MS = 30_000L
 
 /**
  * Duración del estallido de chispas de un impacto (ver [PolarityImpact.ageMs]) antes de
@@ -521,6 +785,3 @@ private const val DEFAULT_ROUND_DURATION_MS = 30_000L
  * la pantalla la necesita para interpolar la misma animación que hace avanzar el motor.
  */
 const val IMPACT_LIFETIME_MS = 420L
-
-
-

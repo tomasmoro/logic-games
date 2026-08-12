@@ -309,7 +309,7 @@ object CrucigramaNeonGenerator {
                 "MAR" to "Gran masa de agua salada",
                 "ORO" to "Metal precioso",
             ),
-            extras = listOf("ROMA", "ARO", "RAMA", "MARA", "ARMA"),
+            extras = listOf("ROMA", "ARO", "RAMA", "MARA", "ARMA", "MAMA"),
         ),
         LevelDef(
             listOf(
@@ -397,12 +397,12 @@ object CrucigramaNeonGenerator {
             listOf(
                 "MOLINO" to "Maquina que produce energía con el viento",
                 "LIMON" to "Fruto cítrico",
-                "MIO" to "Que pertenece a mí",
+                "MILLON" to "100 x 100 x 100",
                 "MONO" to "Animal primate",
                 "LINO" to "Planta textil de la que se obtienen hilos y telas frescas",
-                "MILLON" to "100 x 100 x 100"
+                "ION" to "Átomo o molécula con carga eléctrica",
             ),
-            extras = listOf("MIMO", "LILO", "ION", "LIO", "OLMO"),
+            extras = listOf("MIMO", "LILO", "LIO", "OLMO", "MINIMO", "MIO"),
         ),
         LevelDef(
             listOf(
@@ -411,9 +411,10 @@ object CrucigramaNeonGenerator {
                 "DIOS" to "Ser supremo al que se rinde culto en distintas religiones como creador del universo",
                 "OIDO" to "Órgano de la audición o sentido corporal con el que se perciben los sonidos",
                 "SINO" to "Destino o fuerza que según algunas creencias determina la vida de las personas",
-                "DON" to "Habilidad especial"
+                "DON" to "Habilidad especial",
+                "SODIO" to "Elemento químico metálico de número atómico 11, muy reactivo y presente en la sal común"
             ),
-            extras = listOf( "DOS", "SIDO", "DINOS", "DIN"),
+            extras = listOf( "DOS", "SIDO", "DINOS", "DIN", "ION", "NODO", "OSO"),
         ),
         LevelDef(
             listOf(
@@ -433,7 +434,8 @@ object CrucigramaNeonGenerator {
                 "GRUA" to "Máquina con un brazo móvil que sirve para levantar y mover cargas muy pesadas",
                 "AREA" to "Espacio de tierra comprendido dentro de ciertos límites, o medida de superficie",
                 "RUGE" to "Emite un sonido profundo y fuerte el león u otro animal salvaje",
-                "GUERRA" to "Conflicto armado entre dos o más países o grupos"
+                "GUERRA" to "Conflicto armado entre dos o más países o grupos",
+                "GARRA" to "Uña fuerte y curva de algunos animales",
             ),
             extras = listOf("AGUAR", "GARUA", "GUERA", "ERRAR", "GUAU", "ERA", "REA","REGAR","RARA"),
         ),

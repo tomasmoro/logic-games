@@ -1,6 +1,7 @@
 package com.kortexgames.app.domain.repository
 
 import com.kortexgames.app.domain.model.GameProgress
+import com.kortexgames.app.domain.model.GameRanking
 import com.kortexgames.app.domain.model.GameResult
 import com.kortexgames.app.domain.model.SaveOutcome
 import kotlinx.coroutines.flow.Flow
@@ -48,6 +49,19 @@ interface ProgressRepository {
 
     /** Nº de partidas jugadas HOY (para el Daily Goal). */
     suspend fun countPlayedToday(): Int
+
+    /**
+     * Comparativa mundial del jugador **antes de jugar**: la misma tabla que se ve al
+     * terminar una partida (puesto, % superado, vecinos), pero pedida desde la
+     * antesala contra la mejor marca YA guardada, sin enviar ningún resultado nuevo.
+     *
+     * @param difficultyLevel dificultad/tablero a consultar (1-based) en los juegos
+     *   que separan su ranking por ella (ver `GameRankingScopes`); `null` en el resto.
+     * @return `null` en modo invitado/offline, si el jugador no tiene ninguna marca
+     *   en esa dificultad todavía, o si la consulta falla — la UI lo trata como "sin
+     *   comparativa que mostrar", nunca como error.
+     */
+    suspend fun previewRanking(gameId: String, difficultyLevel: Int? = null): GameRanking?
 
     /**
      * Vacía el historial local. Es puramente local (no toca la nube): lo usa el

@@ -39,6 +39,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -46,6 +48,11 @@ import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.core.theme.LogicGradients
 import com.kortexgames.app.domain.model.formatDurationShort
 import com.kortexgames.app.game.GameMotif
+import com.kortexgames.app.ui.onboarding.LocalFirstRunFlow
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.firstrun_age_notice
+import kortexgames.shared.generated.resources.firstrun_progress
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Datos del **selector de niveles** para la pantalla de intro de un juego LEVELED.
@@ -165,6 +172,18 @@ fun GameIntroScreen(
     // orquestar nada (por eso [onHelp] solo se usa como respaldo si no hay [help]).
     var showHelp by remember { mutableStateOf(false) }
 
+    // Bienvenida de primera apertura: si esta antesala es uno de sus juegos, se le
+    // añaden las dos piezas que la bienvenida necesita —indicador de paso y aviso
+    // legal— sin que el juego tenga que saber nada (ver [LocalFirstRunFlow]).
+    val firstRun = LocalFirstRunFlow.current?.takeIf { it.isActive }
+
+    // Arrancar la partida es además el momento en que el jugador acepta las
+    // condiciones durante la bienvenida: son el texto que tiene justo bajo el botón.
+    val startGame: () -> Unit = {
+        firstRun?.onGameStarted()
+        onStart()
+    }
+
     Box(modifier = modifier.fillMaxSize().background(LogicColors.BackgroundDark)) {
         // Capa ambiental temática del juego (muro arcade, skyline…), si la hay.
         background?.invoke()
@@ -249,7 +268,7 @@ fun GameIntroScreen(
                 }
 
                 AnimatedGameButton(
-                    onClick = resume?.onResume ?: onStart,
+                    onClick = resume?.onResume ?: startGame,
                     gradient = LogicGradients.play,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -299,8 +318,20 @@ fun GameIntroScreen(
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .bounceClick(onClick = onStart)
+                            .bounceClick(onClick = startGame)
                             .padding(vertical = 12.dp),
+                    )
+                }
+
+                // Pie de la bienvenida: en qué paso va y —hasta que pulsa Comenzar por
+                // primera vez— qué acepta al continuar.
+                if (firstRun != null) {
+                    Spacer(Modifier.height(16.dp))
+                    FirstRunIntroFooter(
+                        step = firstRun.step,
+                        total = firstRun.totalSteps,
+                        accent = accent,
+                        showLegalNotice = firstRun.needsLegalNotice,
                     )
                 }
             }
@@ -314,6 +345,78 @@ fun GameIntroScreen(
                 help = help,
                 visible = showHelp,
                 onDismiss = { showHelp = false },
+            )
+        }
+    }
+}
+
+/**
+ * Pie que la antesala añade **solo durante la bienvenida** de primera apertura
+ * (ver [com.kortexgames.app.ui.onboarding.FirstRunFlow]). Dos piezas:
+ *
+ *  - **Indicador de paso**: puntos, no texto grande. La bienvenida encadena juegos y
+ *    el jugador merece saber que tiene final, pero eso es información de contexto: si
+ *    compitiera con el CTA estaríamos vendiendo el trámite en vez del juego.
+ *  - **Aviso legal**: la misma frase de aceptación con enlaces reales que la pantalla
+ *    de sesión ([LegalPassiveNotice]) más la edad recomendada. Va aquí porque este es
+ *    el **primer botón** que el jugador pulsa en la app: si las condiciones no se
+ *    muestran junto a él, no hay acto de aceptación que valga (patrón *clickwrap*).
+ *    Desaparece en cuanto queda constancia de la aceptación.
+ *
+ * @param step índice 0-based del juego actual de la bienvenida.
+ * @param total cuántos juegos la componen.
+ * @param accent color de acento de la categoría del juego (el punto activo).
+ * @param showLegalNotice si aún hay que mostrar el aviso de condiciones/privacidad.
+ */
+@Composable
+private fun FirstRunIntroFooter(
+    step: Int,
+    total: Int,
+    accent: Color,
+    showLegalNotice: Boolean,
+) {
+    // El indicador es visual (puntos); los lectores de pantalla necesitan la frase.
+    val progressLabel = stringResource(
+        Res.string.firstrun_progress,
+        (step + 1).toString(),
+        total.toString(),
+    )
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.semantics { contentDescription = progressLabel },
+        ) {
+            repeat(total) { index ->
+                Box(
+                    modifier = Modifier
+                        .size(if (index == step) 10.dp else 7.dp)
+                        .clip(CircleShape)
+                        .background(
+                            when {
+                                index == step -> accent
+                                index < step -> accent.copy(alpha = 0.45f)
+                                else -> LogicColors.SurfaceVariantDark
+                            },
+                        ),
+                )
+            }
+        }
+
+        if (showLegalNotice) {
+            Spacer(Modifier.height(14.dp))
+            LegalPassiveNotice()
+            Spacer(Modifier.height(6.dp))
+            Text(
+                stringResource(Res.string.firstrun_age_notice),
+                style = MaterialTheme.typography.bodyMedium,
+                color = LogicColors.OnDarkMuted,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }

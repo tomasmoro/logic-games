@@ -282,6 +282,14 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
       replicar el patrón real-solo-en-Release de Android. También falta
       `SKAdNetworkItems` en `Info.plist` (lista oficial de Google, no incluida aquí por
       tamaño) y afinar la precarga (reintento/backoff) antes de publicar.
+- [ ] **Verificar en dispositivo el consentimiento diferido.** El formulario UMP (y el
+      ATT de iOS) ya no se piden al arrancar: los dispara `beginAdConsentFlow` cuando
+      termina la bienvenida jugable de la primera apertura (`OnboardingGate
+      .isFirstRunOver`), y hasta entonces el `AdManager` está suspendido
+      (`adsSuspended`) — ni intersticiales ni contador, y los rewarded se conceden
+      gratis. Falta comprobarlo en dispositivo real con `ConsentDebugSettings`
+      (geografía EEA forzada): que el formulario aparezca justo al salir del tercer
+      juego y que el primer intersticial llegue con normalidad después.
 
 ## Técnico / limpieza
 - [ ] **La recompensa diaria no se reclama desde ningún sitio.**
@@ -322,7 +330,46 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
 
 ## Extras
 
+- [ ] **Bienvenida jugable — pulido pendiente.** El flujo ya existe (`FirstRunGames`
+      + `ui/onboarding/FirstRunFlow`, encadenado en `App.kt`) como un **hub**:
+      `FirstRunWelcomeScreen` → juego → **vuelve al hub** (celebra el que se acaba de
+      jugar con `FireworksOverlay` localizado + rebote del check + `SoundEffect
+      .LEVEL_UP`, y **desbloquea** la tarjeta siguiente con su propia animación de
+      candado→número) → siguiente juego → hub → … → puerta de sesión. El patrón
+      juego→hub→juego es el mismo sin importar cuántos haya en `FirstRunGames
+      .sequence` (hoy Ordena las Pociones, Pulso Neon y Línea Neón): añadir un
+      cuarto juego a esa lista no toca `App.kt` ni `FirstRunWelcomeScreen`.
+      Las tarjetas son interactivas (`WelcomeCardState` en `FirstRunWelcomeScreen`):
+      solo la CURRENT es clicable y lleva directo al juego (mismo destino que el
+      CTA); DONE queda marcada y quieta; LOCKED se ve gris/atenuada con candado y no
+      reacciona al toque. La entrada de toda la pantalla es además escalonada
+      (`StaggeredReveal` con un contador secuencial, no solo en las tarjetas).
+      `GameOverOverlay` se adapta solo (lee `LocalFirstRunFlow`, igual que
+      `GameIntroScreen`): durante la bienvenida el cartel de fin de partida muestra
+      un único CTA ("Volver"), sin "repetir nivel"/"siguiente nivel"/"elegir
+      nivel" — ninguno de esos tiene sentido cuando el siguiente paso es volver al
+      hub. De paso se corrigió el hueco de 2dp (ahora `CardItemGap`, 14dp) entre el
+      panel de ranking/"inicia sesión para comparar" y los botones de abajo, que
+      quedaban pegados en todos los juegos, no solo en la bienvenida.
+      Queda por decidir: (a) hoy se **avanza al salir** del juego, no al completar un
+      nivel — si se quiere exigir partida jugada, el gancho es `FirstRunFlow
+      .onGameStarted`; (b) enlazar la bienvenida con el **desafío semanal** cuando
+      exista (Fase 7), que es de donde salieron estos tres juegos; (c) rematar la
+      llegada al login con el percentil de lo que acaba de jugar ("eres mejor que el
+      X%") como argumento para crear la cuenta.
 - [ ] **Crear torneos de juegos y rankings**
+- [ ] **Atracción Geométrica — segunda oportunidad con anuncio.** El juego ya es
+      infinito y por vidas (`PolarityConfig.INITIAL_LIVES`), así que encaja el
+      mismo patrón de revivir que Burbujas de Cálculo y Neon Pulse:
+      `ReviveAdOverlay` + una fase `REVIVE_OFFER` al llegar a 0 vidas, una sola vez
+      por partida. No se ha añadido ahora para no mezclarlo con el cambio de
+      formato (y porque toca el balance: revivir en la oleada 6 no vale lo mismo
+      que en la 1).
+- [ ] **Atracción Geométrica — telemetría de balance de la lluvia.** Falta medir
+      en partidas reales cuántos meteoros se cazan por lluvia
+      (`PolarityCollisionState.showerCaught`) y en qué oleada muere la gente, para
+      ajustar `SHOWER_SPAWN_INTERVAL_SEC`, `SHOWER_HIT_SCORE` y
+      `WAVE_DIFFICULTY_STEP`. Los valores actuales son una primera estimación.
 - [ ] **Neon Circuit Flow — SFX de "estática" por celda.** El avance de cable
       (`CellAdvanced`) solo da háptica; el catálogo `SoundEffect` no tiene aún un
       sonido de estática suave. Añadir el asset y cablearlo en
@@ -367,3 +414,48 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
   - [ ] **Proximos juegos** Unir puntos evitando puntos rojos. Anagramas. Recordar parejas. Encontrar parejas(juego de a dos tambien)
         Torre de Hanoi. acertijo, deslizar piezas para encajar una cuadricula. 
   - [ ] Ver sonidos, sonidos todo el tiempo puede hartar
+## Textos / internacionalización
+
+- [ ] **Migrar los textos ya existentes a `strings.xml`.** El catálogo de recursos
+      ya está montado (`shared/src/commonMain/composeResources/values/strings.xml`)
+      y la regla para código nuevo está en CLAUDE.md §10, pero de momento **solo lo
+      usan el módulo de notificaciones y la sección de notificaciones de Ajustes**.
+      El resto de pantallas siguen con sus literales embebidos (~90 `text = "..."`
+      en 16 archivos de `commonMain`, más los de cada juego). Migrar por pantallas,
+      no de golpe: Home → Perfil → Ajustes → catálogo de juegos → overlays comunes
+      (`GameOverOverlay`, `GameIntroScreen`, `GameHelp`) → juego a juego.
+- [ ] **Añadir el primer idioma extra (`values-en/strings.xml`).** No se ha creado
+      todavía a propósito: con la UI aún mayormente en literales españoles, un
+      dispositivo en inglés vería la app medio traducida, que es peor que verla
+      entera en español. Tiene sentido en cuanto la migración anterior cubra las
+      pantallas principales.
+
+## Notificaciones
+
+- [ ] **Push: "otro jugador superó tu récord".** El tipo
+      `NotificationKind.RECORD_BROKEN` y su copy ya existen, pero **nadie lo emite**:
+      hace falta FCM (Android) + APNs (iOS), una tabla de device tokens en Supabase
+      con RLS, y un trigger/Edge Function que detecte la marca superada y envíe el
+      mensaje. El seam está documentado en el KDoc de `NotificationScheduler`: se
+      añade un emisor que produce el mismo `ReadyNotification`, sin tocar planner ni
+      copy. Ojo: requiere cuenta de Apple Push y proyecto Firebase.
+- [ ] **Android — reprogramar las alarmas tras un reinicio.** `AlarmManager` pierde
+      todo lo pendiente al reiniciar el móvil. Hoy se recupera solo cuando el usuario
+      vuelve a abrir la app (el `NotificationsManager` replanifica al observar el
+      estado). Lo correcto es un receiver de `BOOT_COMPLETED` (+ permiso
+      `RECEIVE_BOOT_COMPLETED`) que dispare la replanificación sin esperar a esa
+      apertura — que es justo la que el aviso pretende provocar.
+- [ ] **Deep links desde la notificación.** Al tocar un aviso se abre la Home.
+      Debería llevar a la pantalla que corresponde (el juego del récord, la misión
+      diaria). Requiere rutas externas en el `NavHost`; el punto único a tocar es
+      `NotificationAlarmReceiver.openAppIntent` en Android y el `userInfo` de la
+      `UNNotificationRequest` en iOS.
+- [ ] **Medir la conversión de la antesala de permiso.** Los umbrales de
+      `NotificationPrimingPolicy` (1ª oferta tras 1 partida, 2ª tras 5, máximo dos)
+      son una apuesta razonada, no un dato. Con telemetría de "antesala mostrada →
+      aceptada → permiso concedido" se pueden mover con criterio; en particular, la
+      2ª oferta a las 5 partidas es la más discutible.
+- [ ] **Medir antes de subir la frecuencia.** La cadena actual es conservadora (un
+      aviso por tarde como mucho, y nada más allá de 14 días de inactividad). Antes
+      de añadir tipos nuevos conviene tener datos de apertura: notificar de más es la
+      vía rápida a que el usuario silencie la app entera.

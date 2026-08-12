@@ -1,10 +1,12 @@
 package com.kortexgames.app
 
+import android.Manifest
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import com.kortexgames.app.core.ads.AdConsentManager
+import androidx.activity.result.contract.ActivityResultContracts
+import com.kortexgames.app.core.notifications.NotificationPermissionRequester
 import com.kortexgames.app.data.remote.auth.CurrentActivityHolder
 import com.kortexgames.app.di.AppGraph
 import com.kortexgames.app.ui.App
@@ -17,14 +19,28 @@ class MainActivity : ComponentActivity() {
 
     private val graph: AppGraph by lazy { (application as LogicGamesApp).graph }
 
+    /**
+     * Diálogo del permiso de notificaciones (Android 13+). Se registra aquí porque
+     * `registerForActivityResult` exige hacerlo antes de que la Activity arranque; el
+     * código común lo dispara a través de [NotificationPermissionRequester] cuando el
+     * usuario activa los recordatorios en Ajustes.
+     */
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            NotificationPermissionRequester.onResult(granted)
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        // Consentimiento GDPR/UMP: se pide aquí (hay Activity para el formulario) y, al
-        // resolverse, inicializa el SDK de anuncios. Debe ocurrir antes del primer
-        // anuncio; el primer intersticial recién puede darse a los 3 min, así que hay
-        // tiempo de sobra. Idempotente: no re-inicializa en recreaciones de la Activity.
-        AdConsentManager.gatherConsentAndInitialize(this)
+        // El consentimiento GDPR/UMP ya NO se pide aquí: lo dispara el código común
+        // (`beginAdConsentFlow`, desde el `AppGraph`) cuando termina la primera
+        // apertura, que es cuando pueden empezar a hacer falta anuncios. La Activity
+        // que el formulario necesita la toma de `CurrentActivityHolder`, publicada
+        // abajo en `onResume`.
+        NotificationPermissionRequester.register {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
         setContent { App(graph) }
     }
 
@@ -52,6 +68,7 @@ class MainActivity : ComponentActivity() {
     /** Suelta la referencia a esta Activity para no filtrarla tras destruirse. */
     override fun onDestroy() {
         CurrentActivityHolder.clear(this)
+        NotificationPermissionRequester.unregister()
         super.onDestroy()
     }
 }

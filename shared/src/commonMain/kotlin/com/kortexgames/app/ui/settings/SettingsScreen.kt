@@ -30,6 +30,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -54,7 +56,16 @@ import com.kortexgames.app.ui.components.KortexIcons
 import com.kortexgames.app.ui.components.LegalLinksSection
 import com.kortexgames.app.ui.components.NeonIcon
 import com.kortexgames.app.ui.components.bounceClick
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.settings_notifications_blocked
+import kortexgames.shared.generated.resources.settings_notifications_debug_failed
+import kortexgames.shared.generated.resources.settings_notifications_debug_scheduled
+import kortexgames.shared.generated.resources.settings_notifications_debug_test
+import kortexgames.shared.generated.resources.settings_notifications_section
+import kortexgames.shared.generated.resources.settings_notifications_toggle_subtitle
+import kortexgames.shared.generated.resources.settings_notifications_toggle_title
 import kotlinx.coroutines.flow.collectLatest
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Pantalla de **Ajustes**: gestión de la cuenta (nombre de usuario, borrado),
@@ -79,7 +90,11 @@ fun SettingsScreen(
     val accountVm: AccountViewModel = viewModel {
         AccountViewModel(graph.authRepository, graph.audio, deleteAccount = graph::deleteAccount)
     }
+    val settingsVm: SettingsViewModel = viewModel {
+        SettingsViewModel(graph.settingsRepository, graph.audio, graph.notificationsManager)
+    }
     val account by accountVm.state.collectAsStateWithLifecycle()
+    val preferences by settingsVm.state.collectAsStateWithLifecycle()
     val session by graph.authRepository.sessionState.collectAsStateWithLifecycle()
 
     // Salida one-shot: la cuenta se borró y la sesión ya cerró, el host decide a
@@ -111,6 +126,30 @@ fun SettingsScreen(
                     DangerZoneCard(onDeleteClick = { accountVm.onIntent(AccountIntent.RequestDeleteAccount) })
                 }
                 AuthState.Guest -> GuestAccountPrompt(onSignIn = onOpenAuth)
+            }
+
+            // Notificaciones: igual que Legal, fuera del `when`. Los recordatorios son
+            // locales y funcionan también en modo invitado.
+            Text(
+                stringResource(Res.string.settings_notifications_section),
+                style = MaterialTheme.typography.titleLarge,
+                color = LogicColors.OnDark,
+            )
+
+            RemindersCard(
+                active = preferences.remindersActive,
+                blocked = preferences.notificationsBlocked,
+                onToggle = { settingsVm.onIntent(SettingsIntent.ToggleReminders) },
+            )
+
+            // Herramienta de diagnóstico: los avisos reales tardan horas o días en
+            // dispararse, así que sin esto no hay forma de comprobar la entrega en un
+            // dispositivo. `isDebugBuild` la deja fuera de las builds de tienda.
+            if (graph.isDebugBuild) {
+                TestNotificationRow(
+                    result = preferences.testNotificationResult,
+                    onSend = { settingsVm.onIntent(SettingsIntent.SendTestNotification) },
+                )
             }
 
             // Legal: fuera del `when` a propósito. Las condiciones y la privacidad
@@ -264,6 +303,118 @@ private fun DangerZoneCard(onDeleteClick: () -> Unit) {
                     color = LogicColors.OnDarkMuted,
                 )
             }
+        }
+    }
+}
+
+/**
+ * Interruptor de los recordatorios (notificaciones locales de racha, misión diaria y
+ * récords).
+ *
+ * Cuando el sistema los tiene bloqueados el interruptor se pinta apagado aunque la
+ * preferencia esté activada, y se explica por qué: mentirle al usuario con un
+ * interruptor encendido que no va a notificar nada es peor que no tenerlo.
+ *
+ * @param active estado real (preferencia activada Y sistema permitiendo notificar).
+ * @param blocked el sistema operativo no permite notificar (permiso denegado).
+ * @param onToggle alterna los recordatorios (y pide el permiso si procede).
+ */
+@Composable
+private fun RemindersCard(
+    active: Boolean,
+    blocked: Boolean,
+    onToggle: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(LogicColors.SurfaceDark)
+            .padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().bounceClick(onClick = onToggle),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            NeonIcon(
+                icon = if (active) KortexIcons.Notifications else KortexIcons.NotificationsOff,
+                tint = if (active) LogicColors.NeonCyan else LogicColors.OnDarkMuted,
+                size = 22.dp,
+                glow = active,
+            )
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    stringResource(Res.string.settings_notifications_toggle_title),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = LogicColors.OnDark,
+                )
+                Text(
+                    stringResource(Res.string.settings_notifications_toggle_subtitle),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = LogicColors.OnDarkMuted,
+                )
+            }
+            Switch(
+                checked = active,
+                onCheckedChange = { onToggle() },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = LogicColors.BackgroundDark,
+                    checkedTrackColor = LogicColors.NeonGreen,
+                    uncheckedThumbColor = LogicColors.OnDarkMuted,
+                    uncheckedTrackColor = LogicColors.SurfaceVariantDark,
+                    uncheckedBorderColor = LogicColors.OnDarkMuted.copy(alpha = 0.3f),
+                ),
+            )
+        }
+        if (blocked) {
+            Text(
+                stringResource(Res.string.settings_notifications_blocked),
+                style = MaterialTheme.typography.bodyMedium,
+                color = LogicColors.Error,
+            )
+        }
+    }
+}
+
+/**
+ * **Solo builds de depuración.** Programa el aviso de prueba a 15 segundos y muestra
+ * si el sistema lo aceptó.
+ *
+ * Se pinta deliberadamente sobrio (sin neón ni halo): es una herramienta de
+ * diagnóstico, no parte del producto, y no debe competir visualmente con los ajustes
+ * reales de la pantalla.
+ *
+ * @param result resultado del último intento (null si aún no se ha pulsado).
+ * @param onSend programa el aviso de prueba.
+ */
+@Composable
+private fun TestNotificationRow(result: Boolean?, onSend: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .border(1.dp, LogicColors.OnDarkMuted.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+            .bounceClick(onClick = onSend)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            stringResource(Res.string.settings_notifications_debug_test),
+            style = MaterialTheme.typography.bodyMedium,
+            color = LogicColors.OnDarkMuted,
+        )
+        if (result != null) {
+            Text(
+                if (result) {
+                    stringResource(Res.string.settings_notifications_debug_scheduled)
+                } else {
+                    stringResource(Res.string.settings_notifications_debug_failed)
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (result) LogicColors.NeonGreen else LogicColors.Error,
+            )
         }
     }
 }

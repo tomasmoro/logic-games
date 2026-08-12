@@ -71,7 +71,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun ProfileScreen(graph: AppGraph, onOpenAuth: () -> Unit, onOpenSettings: () -> Unit) {
     val settingsVm: SettingsViewModel = viewModel {
-        SettingsViewModel(graph.settingsRepository, graph.audio)
+        SettingsViewModel(graph.settingsRepository, graph.audio, graph.notificationsManager)
     }
     val settings by settingsVm.state.collectAsStateWithLifecycle()
     val history by graph.progressRepository.observeHistory(null)

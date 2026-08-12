@@ -116,6 +116,17 @@ class NeonPulseViewModel(
      *  de las vidas. Ver [loseAllLives]. */
     private var reviveOffered = false
 
+    init {
+        // Comparativa mundial para la antesala (ver KDoc de `NeonPulseUiState.rankingPreview`).
+        // Un único pedido basta: el juego no vuelve a IDLE tras jugar dentro de la
+        // misma visita (empezar de nuevo salta directo a RUNNING), así que no hay
+        // que refrescarlo.
+        viewModelScope.launch {
+            val ranking = progress.previewRanking(GameIds.NEON_PULSE)
+            setState { copy(rankingPreview = ranking, rankingPreviewLoading = false) }
+        }
+    }
+
     override fun onIntent(intent: NeonPulseIntent) {
         when (intent) {
             NeonPulseIntent.Start,

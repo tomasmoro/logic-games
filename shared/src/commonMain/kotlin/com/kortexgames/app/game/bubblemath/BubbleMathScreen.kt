@@ -62,9 +62,36 @@ import com.kortexgames.app.game.GameHelpContent
 import com.kortexgames.app.ui.components.GameOverOverlay
 import com.kortexgames.app.ui.components.GamePauseControls
 import com.kortexgames.app.ui.components.KortexIcons
+import com.kortexgames.app.ui.components.RankingPreviewUnavailable
 import com.kortexgames.app.ui.components.ReviveAdOverlay
+import com.kortexgames.app.ui.components.WorldRankingLoading
+import com.kortexgames.app.ui.components.WorldRankingPreviewPanel
 import com.kortexgames.app.ui.components.bounceClick
 import com.kortexgames.app.ui.components.drawNeonBubble
+import androidx.compose.animation.core.keyframes
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathOperation
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import com.kortexgames.app.ui.components.drawNeonTile
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.bubble_cloud_missing_numbers
+import kortexgames.shared.generated.resources.bubble_cloud_missing_symbols
+import kortexgames.shared.generated.resources.bubble_cloud_result_failed
+import kortexgames.shared.generated.resources.bubble_cloud_result_life
+import kortexgames.shared.generated.resources.bubble_cloud_result_points
+import kortexgames.shared.generated.resources.bubble_cloud_reward_life
+import kortexgames.shared.generated.resources.bubble_cloud_reward_points
+import kortexgames.shared.generated.resources.bubble_cloud_seconds
+import org.jetbrains.compose.resources.stringResource
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
@@ -88,6 +115,9 @@ private val BubbleSize = 74.dp
 
 /** 2π: círculo completo en radianes, para repartir las chispas en todas direcciones. */
 private const val TAU = 6.2831855f
+
+/** π: media vuelta. Da el impulso de ida y vuelta de un latido con un solo `sin`. */
+private const val PI_F = 3.1415927f
 
 /** Alto de la banda inferior donde vive el objetivo (el "suelo"). */
 private val FloorBand = 104.dp
@@ -131,6 +161,18 @@ fun BubbleMathScreen(graph: AppGraph, onExit: () -> Unit) {
                     accent = LogicColors.Violet,
                     intensity = 0.6f,
                 )
+            },
+            // Comparativa mundial del jugador, ANTES de jugar (mismo panel que el
+            // diálogo de fin de partida): pedido explícito para que la antesala
+            // también responda "¿cómo me va?". Sin selector de dificultad —el juego
+            // rankea en una tabla única—, así que solo hay que resolver el panel.
+            configContent = {
+                val preview = state.rankingPreview
+                when {
+                    state.rankingPreviewLoading -> WorldRankingLoading()
+                    preview != null -> WorldRankingPreviewPanel(ranking = preview)
+                    else -> RankingPreviewUnavailable(difficultyLabel = null)
+                }
             },
         )
         return
@@ -197,11 +239,41 @@ fun BubbleMathScreen(graph: AppGraph, onExit: () -> Unit) {
 
                 // Destello de feedback a pantalla completa (verde acierto / rojo fallo).
                 FeedbackFlash(eventId = game.eventId, result = game.lastResult)
+
+                // Nube de ecuación: reto relámpago para recuperar una vida. Ocupa el
+                // campo entero porque las fichas van abajo, justo donde vive el
+                // objetivo; el motor la hace entrar con el tablero ya limpio, entre
+                // una ronda y la siguiente.
+                game.cloud?.let { cloud ->
+                    EquationCloudOverlay(
+                        cloud = cloud,
+                        livesFull = game.lives >= BubbleMathState.MAX_LIVES,
+                        onToken = { vm.onIntent(BubbleMathIntent.TapCloudToken(it)) },
+                        onBlank = { vm.onIntent(BubbleMathIntent.TapCloudBlank(it)) },
+                    )
+                }
             }
         }
 
         // Vidas como corazones, ancladas arriba y centradas: el estado más crítico
         // del jugador (cuánto le queda) va en el punto de mayor foco de la pantalla.
+        //
+        // Recuperar una vida (nube de ecuación resuelta, o revivir por anuncio) es de
+        // las cosas más celebrables del juego, así que el corazón que vuelve se marca
+        // aquí para que se anuncie a lo grande y no aparezca sin más. Se recuerda el
+        // valor anterior porque el estado solo trae "cuántas vidas hay", no "acabas de
+        // ganar una".
+        var previousLives by remember { mutableStateOf(game.lives) }
+        var celebratedHeart by remember { mutableStateOf(-1) }
+        LaunchedEffect(game.lives) {
+            val gained = game.lives > previousLives
+            previousLives = game.lives
+            if (!gained) return@LaunchedEffect
+            celebratedHeart = game.lives - 1
+            delay(LifeGainDurationMs.toLong())
+            celebratedHeart = -1
+        }
+
         Row(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -209,7 +281,7 @@ fun BubbleMathScreen(graph: AppGraph, onExit: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             repeat(BubbleMathState.MAX_LIVES) { i ->
-                LifeHeart(alive = i < game.lives)
+                LifeHeart(alive = i < game.lives, celebrate = i == celebratedHeart)
             }
         }
     }
@@ -310,15 +382,22 @@ private val HeartSlot = 40.dp
 /** Tamaño del glifo del corazón dentro de su slot. */
 private val HeartGlyph = 22.dp
 
+/** Duración de la celebración de vida recuperada (ms). */
+private const val LifeGainDurationMs = 950
+
 /**
  * Un corazón de vida con **posición estable** y transición animada. El contorno
  * (vida perdida) está siempre presente y ocupa el mismo hueco; encima, el corazón
  * relleno + su halo se **desvanecen dando un pequeño "estallido"** (escala hacia
  * arriba mientras baja la opacidad) al perder la vida, en lugar de desaparecer de
  * golpe. Feedback visual inmediato, CLAUDE.md §9.4.
+ *
+ * @param celebrate true justo cuando ESTE corazón es el que se acaba de recuperar:
+ *   dispara una vez la animación de premio (latido + onda expansiva + "+1"). Perder
+ *   una vida se nota solo, pero recuperarla es raro y hay que **anunciarlo**.
  */
 @Composable
-private fun LifeHeart(alive: Boolean) {
+private fun LifeHeart(alive: Boolean, celebrate: Boolean = false) {
     // Opacidad y escala del corazón relleno: al morir se apaga (0) y crece (1.4)
     // → efecto de "reventar". Al revivir (reintentar) vuelve con rebote.
     val fillAlpha by animateFloatAsState(
@@ -332,7 +411,25 @@ private fun LifeHeart(alive: Boolean) {
         label = "heartScale",
     )
 
+    // Progreso 0→1 de la celebración. En reposo vale 0 (recién compuesto) o 1 (ya
+    // terminada) y en ambos extremos no se dibuja nada: solo "vive" mientras corre.
+    val gain = remember { Animatable(0f) }
+    LaunchedEffect(celebrate) {
+        if (!celebrate) return@LaunchedEffect
+        gain.snapTo(0f)
+        gain.animateTo(1f, tween(durationMillis = LifeGainDurationMs))
+    }
+    val gainAmt = gain.value
+    val celebrating = gainAmt > 0f && gainAmt < 1f
+
+    // Latido del corazón premiado: un golpe fuerte que se asienta (sin(π·t) da el
+    // impulso de ida y vuelta en un solo valor, sin encadenar animaciones).
+    val gainPulse = if (celebrating) 1f + 0.55f * sin(gainAmt * PI_F) * (1f - gainAmt) else 1f
+
     Box(modifier = Modifier.size(HeartSlot), contentAlignment = Alignment.Center) {
+        // Onda expansiva + fogonazo del premio, por debajo del glifo.
+        if (celebrating) LifeGainBurst(progress = gainAmt)
+
         // Contorno base: marca el hueco de la vida (siempre visible, no se mueve).
         Icon(
             imageVector = KortexIcons.HeartOutline,
@@ -359,11 +456,68 @@ private fun LifeHeart(alive: Boolean) {
                 tint = LogicColors.Error,
                 modifier = Modifier
                     .size(HeartGlyph)
-                    .scale(fillScale)
+                    .scale(fillScale * gainPulse)
                     .alpha(fillAlpha),
             )
         }
+        // "+1" que sube y se desvanece: dice en un golpe de vista QUÉ se ha ganado.
+        if (celebrating) LifeGainLabel(progress = gainAmt)
     }
+}
+
+/**
+ * Onda expansiva de una vida recuperada: un anillo que crece desde el corazón y un
+ * fogonazo cálido que lo envuelve, ambos desvaneciéndose. Sigue la receta de neón de
+ * la app (halo → anillo nítido) y se apaga con `1 − progreso`, así que nunca queda
+ * nada dibujado al terminar.
+ */
+@Composable
+private fun LifeGainBurst(progress: Float) {
+    // Desaceleración (ease-out): sale rápido y frena, como el estallido de las burbujas.
+    val ease = 1f - (1f - progress) * (1f - progress)
+    val fade = 1f - progress
+    Canvas(modifier = Modifier.size(HeartSlot)) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val radius = (HeartGlyph / 2).toPx() + ease * (HeartSlot / 2).toPx()
+        // Fogonazo interior que se apaga rápido (cuadrático) para no ensuciar el HUD.
+        drawCircle(
+            color = LogicColors.Error.copy(alpha = 0.40f * fade * fade),
+            radius = radius * 0.9f,
+            center = center,
+        )
+        // Halo ancho + anillo nítido del frente de onda.
+        drawCircle(
+            color = LogicColors.Error.copy(alpha = 0.30f * fade),
+            radius = radius,
+            center = center,
+            style = Stroke(width = 5.dp.toPx()),
+        )
+        drawCircle(
+            color = Color.White.copy(alpha = 0.85f * fade),
+            radius = radius,
+            center = center,
+            style = Stroke(width = 1.5.dp.toPx()),
+        )
+    }
+}
+
+/** El "+1" del premio: asciende sobre el corazón mientras se desvanece. */
+@Composable
+private fun LifeGainLabel(progress: Float) {
+    // Frenada al subir (ease-out) y desvanecido en el último tercio: el texto se lee
+    // entero antes de empezar a irse.
+    val rise = 1f - (1f - progress) * (1f - progress)
+    val fade = ((1f - progress) / 0.35f).coerceIn(0f, 1f)
+    Text(
+        text = "+1",
+        style = MaterialTheme.typography.titleMedium,
+        color = LogicColors.Error,
+        fontWeight = FontWeight.Black,
+        modifier = Modifier
+            .offset(y = (-14 - 18 * rise).dp)
+            .alpha(fade)
+            .scale(0.8f + 0.4f * rise),
+    )
 }
 
 /**
@@ -621,4 +775,419 @@ private fun FeedbackFlash(eventId: Int, result: TapResult?) {
             .fillMaxSize()
             .background(color.copy(alpha = alpha.value)),
     )
+}
+
+// ---------------------------------------------------------------------------
+// Nube de ecuación
+// ---------------------------------------------------------------------------
+
+/**
+ * Color de neón de la nube. Cian eléctrico a propósito: el objetivo del juego ya es
+ * verde y el suelo de peligro rojo, así que la nube necesitaba un tercer color para
+ * leerse de inmediato como "esto es otra cosa, algo nuevo que ha entrado".
+ */
+private val CloudAccent = LogicColors.NeonCyan
+
+/** Alto de la nube (el panel con la ecuación). */
+private val CloudHeight = 168.dp
+
+/** Tamaño de un hueco de la ecuación. */
+private val SlotWidth = 48.dp
+private val SlotHeight = 54.dp
+
+/** Tamaño de una ficha de la bandeja inferior (mayor: es lo que se pulsa). */
+private val TokenWidth = 62.dp
+private val TokenHeight = 58.dp
+
+/**
+ * Nube de ecuación: el reto relámpago que entra entre dos rondas y devuelve una
+ * vida. Cubre el campo entero —que el motor deja vacío antes de abrirla, nunca a
+ * mitad de una caída— con la ecuación incompleta arriba, dentro de una nube de neón,
+ * y las fichas abajo, al alcance del pulgar y justo donde estaba el objetivo.
+ *
+ * @param livesFull si el jugador ya tiene todas las vidas; cambia la promesa de la
+ *   recompensa (puntos en vez de vida) para no prometer algo que no va a recibir.
+ */
+@Composable
+private fun EquationCloudOverlay(
+    cloud: EquationCloudUi,
+    livesFull: Boolean,
+    onToken: (Int) -> Unit,
+    onBlank: (Int) -> Unit,
+) {
+    // Entrada: la nube "baja" del cielo con resorte mientras aparece. Una sola vez.
+    val enter = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        enter.animateTo(
+            targetValue = 1f,
+            animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow),
+        )
+    }
+
+    // Temblor del panel al fallar una combinación: se dispara UNA vez por intento
+    // fallido (mismo patrón de `eventId` que el resto del juego).
+    val shake = remember { Animatable(0f) }
+    LaunchedEffect(cloud.wrongTick) {
+        if (cloud.wrongTick == 0) return@LaunchedEffect
+        shake.snapTo(0f)
+        shake.animateTo(
+            targetValue = 0f,
+            animationSpec = keyframes {
+                durationMillis = 360
+                1f at 60
+                -1f at 130
+                0.6f at 200
+                -0.3f at 270
+            },
+        )
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            // Oscurece el fondo del campo para que la nube sea lo único que se lee:
+            // el tablero ya está vacío, pero el skyline y el objetivo siguen detrás.
+            .background(LogicColors.BackgroundDark.copy(alpha = 0.82f * enter.value)),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Spacer(Modifier.height(8.dp))
+            CloudPanel(
+                cloud = cloud,
+                livesFull = livesFull,
+                enter = enter.value,
+                shake = shake.value,
+                onBlank = onBlank,
+            )
+            Spacer(Modifier.weight(1f))
+            TokenTray(cloud = cloud, enabled = cloud.outcome == null, onToken = onToken)
+            Spacer(Modifier.height(28.dp))
+        }
+    }
+}
+
+/**
+ * La nube en sí: silueta de neón con la ecuación incompleta, la cuenta atrás y el
+ * mensaje de recompensa (o el desenlace, una vez resuelta).
+ *
+ * @param enter 0..1 de la animación de entrada (opacidad + caída desde arriba).
+ * @param shake −1..1 del temblor tras un intento fallido.
+ */
+@Composable
+private fun CloudPanel(
+    cloud: EquationCloudUi,
+    livesFull: Boolean,
+    enter: Float,
+    shake: Float,
+    onBlank: (Int) -> Unit,
+) {
+    // Balanceo ambiental lento y de poca amplitud: la nube "flota" (§9.4).
+    val transition = rememberInfiniteTransition(label = "cloudFloat")
+    val bob by transition.animateFloat(
+        initialValue = -1f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2200),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "bob",
+    )
+
+    // Al fallar, todo el tubo de neón se tiñe de rojo mientras dura el temblor.
+    val wrong = shake != 0f
+    val accent = if (wrong) LogicColors.Error else CloudAccent
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(CloudHeight)
+            .offset(
+                x = (shake * 8).dp,
+                y = ((1f - enter) * -60f + bob * 4f).dp,
+            )
+            .alpha(enter)
+            .drawBehind { drawCloudShape(accent) },
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+        ) {
+            CloudCaption(cloud = cloud, livesFull = livesFull)
+            EquationRow(cloud = cloud, wrong = wrong, onBlank = onBlank)
+            // La cuenta atrás desaparece en cuanto hay desenlace: ya no hay prisa.
+            if (cloud.outcome == null) {
+                CloudTimerBar(fraction = cloud.timeFraction, remainingMs = cloud.remainingMs)
+            }
+        }
+    }
+}
+
+/**
+ * Texto superior de la nube: qué falta y qué se gana. Al resolverse (o agotarse el
+ * tiempo) lo sustituye el desenlace, con su color.
+ */
+@Composable
+private fun CloudCaption(cloud: EquationCloudUi, livesFull: Boolean) {
+    val text: String
+    val color: Color
+    when (cloud.outcome) {
+        CloudOutcome.LIFE_GAINED -> {
+            text = stringResource(Res.string.bubble_cloud_result_life)
+            color = LogicColors.Success
+        }
+
+        CloudOutcome.BONUS_POINTS -> {
+            text = stringResource(Res.string.bubble_cloud_result_points, cloud.bonusPoints.toString())
+            color = LogicColors.Amber
+        }
+
+        CloudOutcome.FAILED -> {
+            text = stringResource(Res.string.bubble_cloud_result_failed)
+            color = LogicColors.OnDarkMuted
+        }
+
+        null -> {
+            val missing = when (cloud.puzzle.kind) {
+                EquationBlankKind.SYMBOL -> stringResource(Res.string.bubble_cloud_missing_symbols)
+                EquationBlankKind.NUMBER -> stringResource(Res.string.bubble_cloud_missing_numbers)
+            }
+            val reward = if (livesFull) {
+                stringResource(Res.string.bubble_cloud_reward_points)
+            } else {
+                stringResource(Res.string.bubble_cloud_reward_life)
+            }
+            text = "$missing · $reward"
+            color = LogicColors.OnDarkMuted
+        }
+    }
+
+    // El desenlace entra con rebote: es el momento de recompensa del reto.
+    val resolved = cloud.outcome != null
+    val scale by animateFloatAsState(
+        targetValue = 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "captionScale",
+    )
+    Text(
+        text = text,
+        style = if (resolved) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelLarge,
+        color = color,
+        fontWeight = if (resolved) FontWeight.Black else FontWeight.SemiBold,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.scale(if (resolved) scale else 1f),
+    )
+}
+
+/**
+ * La ecuación, pieza a pieza. Los trozos fijos se pintan como texto y los huecos como
+ * casillas de neón pulsables (pulsar una llena devuelve su ficha a la bandeja).
+ */
+@Composable
+private fun EquationRow(cloud: EquationCloudUi, wrong: Boolean, onBlank: (Int) -> Unit) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        cloud.puzzle.slots.forEach { slot ->
+            when (slot) {
+                is EquationSlot.Fixed -> Text(
+                    text = slot.text,
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = LogicColors.OnDark,
+                    fontWeight = FontWeight.Black,
+                )
+
+                is EquationSlot.Blank -> BlankSlot(
+                    label = cloud.tokenAt(slot.index)?.label,
+                    wrong = wrong,
+                    enabled = cloud.outcome == null,
+                    onClick = { onBlank(slot.index) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Un hueco de la ecuación. Apagado mientras está vacío y **encendido** al recibir su
+ * ficha: el mismo lenguaje de "tubo de neón que se enciende" que las teclas de Memoria
+ * (CLAUDE.md §9.7, fuente única [drawNeonTile]).
+ */
+@Composable
+private fun BlankSlot(label: String?, wrong: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val activeAmt by animateFloatAsState(
+        targetValue = if (label != null) 1f else 0.12f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "blankActive",
+    )
+    val color = if (wrong) LogicColors.Error else CloudAccent
+    Box(
+        modifier = Modifier
+            .size(width = SlotWidth, height = SlotHeight)
+            .drawBehind {
+                drawNeonTile(
+                    baseColor = color,
+                    activeAmt = activeAmt,
+                    cornerRadius = 12.dp,
+                    baseMargin = 5.dp,
+                    sparks = false,
+                )
+            }
+            .bounceClick(enabled = enabled && label != null, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (label != null) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.headlineMedium,
+                color = LogicColors.OnDark,
+                fontWeight = FontWeight.Black,
+            )
+        }
+    }
+}
+
+/**
+ * Bandeja inferior con las fichas a pulsar (los símbolos o los números que faltan,
+ * más distractores). Una ficha ya colocada se atenúa en vez de desaparecer: si el
+ * hueco de la bandeja se moviera, el jugador perdería la referencia a mitad de reto.
+ */
+@Composable
+private fun TokenTray(cloud: EquationCloudUi, enabled: Boolean, onToken: (Int) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        cloud.puzzle.options.forEach { token ->
+            val used = token.id in cloud.placed
+            val alpha by animateFloatAsState(
+                targetValue = if (used) 0.22f else 1f,
+                animationSpec = tween(durationMillis = 180),
+                label = "tokenAlpha",
+            )
+            Box(
+                modifier = Modifier
+                    .size(width = TokenWidth, height = TokenHeight)
+                    .alpha(alpha)
+                    .drawBehind {
+                        drawNeonTile(
+                            baseColor = CloudAccent,
+                            activeAmt = 0.85f,
+                            cornerRadius = 16.dp,
+                            baseMargin = 6.dp,
+                            sparks = false,
+                        )
+                    }
+                    .bounceClick(enabled = enabled && !used) { onToken(token.id) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = token.label,
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = LogicColors.OnDark,
+                    fontWeight = FontWeight.Black,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Cuenta atrás del reto: una barra que se vacía más los segundos en texto. Cambia de
+ * color al entrar en la zona crítica —cian → ámbar → rojo— para que la urgencia se
+ * perciba de reojo, sin tener que leer el número.
+ */
+@Composable
+private fun CloudTimerBar(fraction: Float, remainingMs: Long) {
+    val color = when {
+        fraction <= 0.2f -> LogicColors.Error
+        fraction <= 0.45f -> LogicColors.Amber
+        else -> CloudAccent
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .height(6.dp)
+                .width(150.dp)
+                .clip(CircleShape)
+                .background(LogicColors.SurfaceVariantDark),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(fraction)
+                    .clip(CircleShape)
+                    .background(color),
+            )
+        }
+        Text(
+            // Redondeo hacia arriba: mientras quede algo de tiempo debe verse "1 s",
+            // nunca un "0 s" con la barra todavía viva.
+            text = stringResource(Res.string.bubble_cloud_seconds, ((remainingMs + 999) / 1000).toString()),
+            style = MaterialTheme.typography.labelLarge,
+            color = color,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+/**
+ * Silueta de nube en neón: una base redondeada más tres lóbulos, **unidos en un solo
+ * [Path]** para poder trazar el contorno sin que se vean las costuras interiores.
+ *
+ * El resplandor sigue la receta de neón de la app (CLAUDE.md §9.7): halo ancho → halo
+ * intermedio → trazo nítido, sobre un relleno translúcido que despega la nube del
+ * fondo. No usa [drawNeonTile] porque este contorno no es un rectángulo de tile.
+ */
+private fun DrawScope.drawCloudShape(accent: Color) {
+    val w = size.width
+    val h = size.height
+    val base = Path().apply {
+        addRoundRect(
+            RoundRect(
+                left = w * 0.04f,
+                top = h * 0.44f,
+                right = w * 0.96f,
+                bottom = h * 0.92f,
+                cornerRadius = CornerRadius(h * 0.24f, h * 0.24f),
+            ),
+        )
+    }
+
+    // Lóbulos superiores (izquierda, centro y derecha): centro y radios, en píxeles.
+    val lobes = listOf(
+        Offset(w * 0.30f, h * 0.44f) to Offset(w * 0.16f, h * 0.26f),
+        Offset(w * 0.52f, h * 0.34f) to Offset(w * 0.20f, h * 0.30f),
+        Offset(w * 0.74f, h * 0.46f) to Offset(w * 0.15f, h * 0.24f),
+    )
+
+    // La unión se encadena creando un Path nuevo en cada paso: `op` escribe en el
+    // receptor, así que reutilizarlo como operando de sí mismo sería frágil.
+    var path = base
+    lobes.forEach { (center, radii) ->
+        val lobe = Path().apply {
+            addOval(
+                Rect(
+                    center.x - radii.x,
+                    center.y - radii.y,
+                    center.x + radii.x,
+                    center.y + radii.y,
+                ),
+            )
+        }
+        path = Path().apply { op(path, lobe, PathOperation.Union) }
+    }
+
+    // Relleno: azul noche translúcido con un velo del acento, para que el texto se lea.
+    drawPath(path, color = LogicColors.SurfaceDark.copy(alpha = 0.94f))
+    drawPath(path, color = accent.copy(alpha = 0.10f))
+
+    // Tubo de neón: halo ancho → intermedio → trazo nítido.
+    drawPath(path, color = accent.copy(alpha = 0.16f), style = Stroke(width = 10.dp.toPx()))
+    drawPath(path, color = accent.copy(alpha = 0.38f), style = Stroke(width = 5.dp.toPx()))
+    drawPath(path, color = accent, style = Stroke(width = 2.dp.toPx()))
 }

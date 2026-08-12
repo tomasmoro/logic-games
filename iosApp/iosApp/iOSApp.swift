@@ -9,8 +9,12 @@ struct iOSApp: App {
         // para que `installPlatformAdPresenters` ya encuentre el `IosAdBridge`
         // registrado en vez de caer a los presentadores simulados. Ver
         // `AdMobBridge.swift` / `IosAdBridge.kt`.
+        //
+        // El consentimiento (ATT + UMP) ya NO se pide aquí: lo dispara el código
+        // común (`beginAdConsentFlow`) cuando el jugador termina la bienvenida de la
+        // primera apertura. Estrenar la app con el diálogo de seguimiento de Apple,
+        // antes incluso de ver un juego, era la peor primera impresión posible.
         IosAdBridgeHolder.shared.register(bridge: AdMobBridge.shared)
-        AdMobBridge.shared.requestConsentAndStart()
     }
 
     var body: some Scene {

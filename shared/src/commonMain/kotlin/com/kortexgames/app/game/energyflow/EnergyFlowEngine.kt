@@ -162,14 +162,37 @@ class EnergyFlowEngine(
     }
 
     /**
-     * Puntaje: base proporcional al nivel menos una penalización por cada giro de
-     * más respecto al óptimo ([optimalRotations]). Premia resolver niveles altos con
-     * pocos giros; nunca baja de 0.
+     * Puntaje: base proporcional al nivel, con un castigo topado por giros de más
+     * (frente al óptimo, [currentRoundOptimalRotations]) y por tiempo activo.
+     *
+     * ```
+     * base    = nivel * BASE_PER_LEVEL
+     * castigo = giros de más      * PENALTY_PER_EXTRA_ROTATION
+     *         + segundos activos  * PENALTY_PER_SECOND
+     * score   = base - min(castigo, BASE_PER_LEVEL - 1)
+     * ```
+     *
+     * ## Por qué el castigo va topado
+     * Mismo criterio que en Water Sort: el tope mantiene el ranking **monótono en
+     * el nivel** — por mal (y lento) que se juegue el nivel N, su peor puntaje
+     * (`N*1000 - 999`) sigue por encima del mejor del nivel N-1 (`(N-1)*1000`).
+     *
+     * ## Por qué se añadió el tiempo
+     * Antes la fórmula solo restaba giros de más, así que el puntaje lo dominaba
+     * "cuántos niveles alcanzas" y no "qué tan bien los resuelves": dos partidas en
+     * el mismo nivel con los mismos giros quedaban indistinguibles aunque una
+     * tardara la mitad. El tiempo entra como desempate dentro del nivel (pesa poco
+     * a propósito: es un puzle de pensar, sin reloj en pantalla, y quedarse
+     * mirando el tablero para planear el giro no es "perder el tiempo"). El
+     * cronómetro ya descuenta las pausas, ver [elapsedActive].
      */
     override fun calculateScore(): Int {
-        val base = currentLevel * 1_000
-        val extra = (_state.value.rotations - currentRoundOptimalRotations).coerceAtLeast(0)
-        return (base - extra * PENALTY_PER_EXTRA_ROTATION).coerceAtLeast(0)
+        val s = _state.value
+        val base = currentLevel.toLong() * BASE_PER_LEVEL
+        val extraRotations = (s.rotations - currentRoundOptimalRotations).coerceAtLeast(0)
+        val penalty = extraRotations.toLong() * PENALTY_PER_EXTRA_ROTATION +
+            elapsedActive().inWholeSeconds * PENALTY_PER_SECOND
+        return (base - penalty.coerceIn(0L, BASE_PER_LEVEL - 1L)).toInt()
     }
 
     /** Precisión = eficiencia: giros óptimos / giros reales (tope 100 %). */
@@ -183,6 +206,21 @@ class EnergyFlowEngine(
     override fun reachedMetric(): Int = currentLevel
 
     private companion object {
-        const val PENALTY_PER_EXTRA_ROTATION = 25
+        /**
+         * Puntos que vale cada nivel. El castigo total se topa en
+         * `BASE_PER_LEVEL - 1` para no invadir el tramo del nivel anterior (ver
+         * [calculateScore]).
+         */
+        const val BASE_PER_LEVEL = 1_000L
+
+        /** Castigo por cada giro por encima del óptimo del nivel. */
+        const val PENALTY_PER_EXTRA_ROTATION = 25L
+
+        /**
+         * Castigo por segundo activo. Deliberadamente bajo (mismo valor que Water
+         * Sort): 60 s cuestan 120 puntos, lo justo para desempatar sin convertir un
+         * puzle de pensar en una carrera.
+         */
+        const val PENALTY_PER_SECOND = 2L
     }
 }

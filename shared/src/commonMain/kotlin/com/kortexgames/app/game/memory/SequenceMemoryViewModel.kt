@@ -7,7 +7,9 @@ import com.kortexgames.app.core.mvi.MviViewModel
 import com.kortexgames.app.core.mvi.UiEffect
 import com.kortexgames.app.core.mvi.UiIntent
 import com.kortexgames.app.core.mvi.UiState
+import com.kortexgames.app.domain.model.GameRanking
 import com.kortexgames.app.domain.repository.ProgressRepository
+import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.toGameOverInfo
@@ -15,11 +17,25 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
-/** Estado de UI de la pantalla de Memoria de Secuencias. */
+/**
+ * Estado de UI de la pantalla de Memoria de Secuencias.
+ *
+ * @property rankingPreview comparativa mundial del jugador, para pintar en la
+ *   antesala el mismo panel que el diálogo de fin de partida ANTES de jugar (ver
+ *   [com.kortexgames.app.domain.repository.ProgressRepository.previewRanking]).
+ *   Tabla única (el juego no separa por dificultad): `null` mientras se resuelve
+ *   ([rankingPreviewLoading]) o si no hay comparativa que mostrar (invitado, sin
+ *   red, o sin ninguna marca todavía).
+ * @property rankingPreviewLoading `true` mientras se pide [rankingPreview] tras
+ *   entrar en la antesala. Arranca en `true` (no en `false`) para no enseñar el
+ *   aviso de "sin comparativa" un instante antes de que llegue.
+ */
 data class SequenceMemoryUiState(
     val game: SequenceMemoryState = SequenceMemoryState(),
     val status: GameStatus = GameStatus.IDLE,
     val gameOver: GameOverInfo? = null,
+    val rankingPreview: GameRanking? = null,
+    val rankingPreviewLoading: Boolean = true,
 ) : UiState
 
 sealed interface SequenceMemoryIntent : UiIntent {
@@ -53,6 +69,14 @@ class SequenceMemoryViewModel(
         engine.outcome.onEach { result -> result?.let(::onFinished) }.launchIn(viewModelScope)
         // No arrancamos aquí: el juego queda en IDLE y muestra la antesala (intro). La
         // partida empieza al pulsar "Comenzar" (intent [SequenceMemoryIntent.Start]).
+
+        // Comparativa mundial para la antesala (ver KDoc de `rankingPreview`). Un único
+        // pedido basta: el juego no vuelve a IDLE tras jugar dentro de la misma visita
+        // (empezar de nuevo salta directo a RUNNING), así que no hay que refrescarlo.
+        viewModelScope.launch {
+            val ranking = progress.previewRanking(GameIds.SEQUENCE_MEMORY)
+            setState { copy(rankingPreview = ranking, rankingPreviewLoading = false) }
+        }
     }
 
     override fun onIntent(intent: SequenceMemoryIntent) {

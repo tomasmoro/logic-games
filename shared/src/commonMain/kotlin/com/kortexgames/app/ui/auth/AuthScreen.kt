@@ -111,6 +111,9 @@ fun AuthScreen(
     LaunchedEffect(vm) {
         vm.effect.collectLatest { effect ->
             when (effect) {
+                // Nota: aquí NO se pide el permiso de notificaciones. Se ofrece más
+                // tarde, tras la primera partida, con una antesala propia — ver
+                // `NotificationPrimingPolicy` para el porqué.
                 AuthEffect.Finished -> onFinished()
             }
         }

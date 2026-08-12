@@ -188,13 +188,21 @@ class WaterSortViewModel(
      * `saveResult` emite en 1 o 2 pasos: local primero (el cartel no espera a
      * Supabase) y, con sesión, el percentil real después (ver KDoc de
      * `ProgressRepository.saveResult`).
+     *
+     * Antes de persistir se corrige `difficultyLevel` al nivel jugado: el ranking
+     * mundial de Water Sort se separa por nivel (ver `GameRankingScopes`, mismo
+     * criterio que Hyper-Cube), así que solo compiten entre sí partidas del MISMO
+     * nivel. Se corrige aquí porque `BaseGameEngine.difficulty` queda fijo desde la
+     * construcción del motor (siempre 1) y el nivel real se elige partida a partida
+     * en el selector.
      */
     private fun onFinished(result: GameResult) {
+        val corrected = result.copy(difficultyLevel = currentState.currentLevel)
         viewModelScope.launch {
             audio.playSound(SoundEffect.LEVEL_UP)
             audio.hapticFeedback(HapticFeedback.SUCCESS)
-            progress.saveResult(result).collect { outcome ->
-                setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+            progress.saveResult(corrected).collect { outcome ->
+                setState { copy(gameOver = outcome.toGameOverInfo(corrected)) }
             }
         }
     }

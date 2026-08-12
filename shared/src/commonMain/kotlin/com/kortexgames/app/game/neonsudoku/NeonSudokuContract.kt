@@ -5,6 +5,7 @@ import com.kortexgames.app.core.audio.SoundEffect
 import com.kortexgames.app.core.mvi.UiEffect
 import com.kortexgames.app.core.mvi.UiIntent
 import com.kortexgames.app.core.mvi.UiState
+import com.kortexgames.app.domain.model.GameRanking
 import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
 import kotlinx.serialization.Serializable
@@ -80,6 +81,14 @@ import kotlinx.serialization.Serializable
  *   y no había ningún escalón por encima ya abierto), o `null` si no desbloqueó ninguna. Se
  *   fija junto a [gameOver] en `finish()` y el diálogo de fin de partida lo usa para ofrecer
  *   "Jugar en …" como CTA. Mismo patrón que Neon Defuser.
+ * @property rankingPreview comparativa mundial de [difficulty], para pintar en la
+ *   antesala el mismo panel que el diálogo de fin de partida ANTES de jugar (ver
+ *   [com.kortexgames.app.domain.repository.ProgressRepository.previewRanking]).
+ *   `null` mientras se resuelve ([rankingPreviewLoading]) o si no hay comparativa
+ *   que mostrar (invitado, sin red, o sin ninguna marca todavía en esa dificultad).
+ * @property rankingPreviewLoading `true` mientras se pide [rankingPreview] tras
+ *   entrar en la antesala o cambiar de dificultad. Arranca en `true` (no en `false`)
+ *   para no enseñar el aviso de "sin comparativa" un instante antes de que llegue.
  */
 data class NeonSudokuUiState(
     val board: Board = Board.empty(),
@@ -95,6 +104,8 @@ data class NeonSudokuUiState(
     val savedSummary: String? = null,
     val gameOver: GameOverInfo? = null,
     val justUnlockedDifficulty: SudokuDifficulty? = null,
+    val rankingPreview: GameRanking? = null,
+    val rankingPreviewLoading: Boolean = true,
 ) : UiState {
 
     /**

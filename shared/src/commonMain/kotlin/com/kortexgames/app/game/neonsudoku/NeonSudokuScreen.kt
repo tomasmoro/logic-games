@@ -61,9 +61,12 @@ import com.kortexgames.app.ui.components.GameOverOverlay
 import com.kortexgames.app.ui.components.GamePauseControls
 import com.kortexgames.app.ui.components.KortexIcons
 import com.kortexgames.app.ui.components.NeonIcon
+import com.kortexgames.app.ui.components.RankingPreviewUnavailable
 import com.kortexgames.app.ui.components.ResumeState
 import com.kortexgames.app.ui.components.ReviveAdOverlay
 import com.kortexgames.app.ui.components.SpaceBackdrop
+import com.kortexgames.app.ui.components.WorldRankingLoading
+import com.kortexgames.app.ui.components.WorldRankingPreviewPanel
 import com.kortexgames.app.ui.components.bounceClick
 import com.kortexgames.app.ui.components.collectPressGlow
 import com.kortexgames.app.ui.components.drawNeonTile
@@ -278,21 +281,32 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
                 )
             },
             configContent = {
-                DifficultyGateSelector(
-                    title = "DIFICULTAD",
-                    options = SUDOKU_DIFFICULTY_OPTIONS,
-                    selectedIndex = state.difficulty.ordinal,
-                    unlockedTiers = state.unlockedDifficulties,
-                    onSelect = { index ->
-                        vm.onIntent(NeonSudokuIntent.SelectDifficulty(SudokuDifficulty.entries[index]))
-                    },
-                    accent = CategoryPalette.Logic,
-                    hint = DifficultyUnlocks.nextUnlockHint(
-                        GameIds.NEON_SUDOKU_MATRIX,
-                        state.unlockedDifficulties,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    DifficultyGateSelector(
+                        title = "DIFICULTAD",
+                        options = SUDOKU_DIFFICULTY_OPTIONS,
+                        selectedIndex = state.difficulty.ordinal,
+                        unlockedTiers = state.unlockedDifficulties,
+                        onSelect = { index ->
+                            vm.onIntent(NeonSudokuIntent.SelectDifficulty(SudokuDifficulty.entries[index]))
+                        },
+                        accent = CategoryPalette.Logic,
+                        hint = DifficultyUnlocks.nextUnlockHint(
+                            GameIds.NEON_SUDOKU_MATRIX,
+                            state.unlockedDifficulties,
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    // Comparativa mundial de la dificultad elegida, ANTES de jugar (mismo
+                    // panel que el diálogo de fin de partida): pedido explícito para que
+                    // la antesala también responda "¿cómo me va ahí?".
+                    val preview = state.rankingPreview
+                    when {
+                        state.rankingPreviewLoading -> WorldRankingLoading()
+                        preview != null -> WorldRankingPreviewPanel(ranking = preview)
+                        else -> RankingPreviewUnavailable(difficultyLabel = state.difficulty.displayName)
+                    }
+                }
             },
             onExit = onExit,
             background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },

@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kortexgames.app.core.theme.LogicColors
@@ -344,6 +345,25 @@ fun WorldRankingPanel(
 }
 
 /**
+ * [WorldRankingPanel] pedido desde la **antesala**, antes de jugar: mismo panel que
+ * el diálogo de fin de partida (mensaje del tramo + vecinos del ranking), pero sin
+ * una partida recién terminada con la que comparar. Se usa la MEJOR MARCA propia
+ * ([GameRanking.myBestScore]) como `currentScore`: con ella, [WorldRankingPanel.recordStillHeld]
+ * siempre da `false` (la marca nunca es "peor que sí misma"), así que no aparece la
+ * nota "tu récord sigue en…" ni la rama "esta partida no lo ha superado" —ninguna de
+ * las dos tiene sentido antes de haber jugado— y el resto de la tarjeta (puesto,
+ * tramo, lista de vecinos) describe la situación actual del jugador tal cual.
+ *
+ * @param ranking comparativa ya resuelta (ver
+ *   [com.kortexgames.app.domain.repository.ProgressRepository.previewRanking]); el
+ *   llamador no pinta este panel si es null (ver [RankingPreviewUnavailable]).
+ */
+@Composable
+fun WorldRankingPreviewPanel(ranking: GameRanking, modifier: Modifier = Modifier) {
+    WorldRankingPanel(ranking = ranking, currentScore = ranking.myBestScore() ?: 0, modifier = modifier)
+}
+
+/**
  * Fila del ranking: puesto, nombre y mejor marca. La del propio jugador se resalta
  * (superficie elevada + borde de acento) para que la encuentre sin leer nombres.
  *
@@ -555,6 +575,42 @@ fun WorldRankingUnavailable(modifier: Modifier = Modifier) {
             "Guardado localmente · inicia sesión para comparar con el mundo",
             style = MaterialTheme.typography.bodyMedium,
             color = LogicColors.OnDarkMuted,
+        )
+    }
+}
+
+/**
+ * Hueco de [WorldRankingPreviewPanel] cuando `previewRanking` devuelve `null`: el
+ * jugador no tiene ninguna marca en la dificultad elegida (nunca la jugó, es
+ * invitado, o la consulta falló). Un único mensaje cubre los tres casos a propósito
+ * —distinguirlos exigiría enhebrar el estado de sesión hasta la antesala de cada
+ * juego para un matiz que el jugador resuelve igual en los tres: jugar una partida
+ * con la cuenta iniciada—, mismo criterio de "un aviso, no un error" que
+ * [WorldRankingUnavailable].
+ *
+ * @param difficultyLabel dificultad/tablero elegido ("Experto", "8×8"), o `null` en
+ *   juegos sin ranking por dificultad.
+ */
+@Composable
+fun RankingPreviewUnavailable(difficultyLabel: String?, modifier: Modifier = Modifier) {
+    val text = if (difficultyLabel != null) {
+        "Juega una partida en $difficultyLabel con tu cuenta iniciada para ver tu puesto en el ranking mundial."
+    } else {
+        "Juega una partida con tu cuenta iniciada para ver tu puesto en el ranking mundial."
+    }
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(LogicColors.SurfaceVariantDark)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = LogicColors.OnDarkMuted,
+            textAlign = TextAlign.Center,
         )
     }
 }

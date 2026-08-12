@@ -7,8 +7,10 @@ import com.kortexgames.app.core.mvi.MviViewModel
 import com.kortexgames.app.core.mvi.UiEffect
 import com.kortexgames.app.core.mvi.UiIntent
 import com.kortexgames.app.core.mvi.UiState
+import com.kortexgames.app.domain.model.GameRanking
 import com.kortexgames.app.domain.model.GameResult
 import com.kortexgames.app.domain.repository.ProgressRepository
+import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.toGameOverInfo
@@ -16,11 +18,25 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
-/** Estado de UI de la pantalla de Burbujas de Cálculo. */
+/**
+ * Estado de UI de la pantalla de Burbujas de Cálculo.
+ *
+ * @property rankingPreview comparativa mundial del jugador, para pintar en la
+ *   antesala el mismo panel que el diálogo de fin de partida ANTES de jugar (ver
+ *   [com.kortexgames.app.domain.repository.ProgressRepository.previewRanking]).
+ *   Tabla única (el juego no separa por dificultad): `null` mientras se resuelve
+ *   ([rankingPreviewLoading]) o si no hay comparativa que mostrar (invitado, sin
+ *   red, o sin ninguna marca todavía).
+ * @property rankingPreviewLoading `true` mientras se pide [rankingPreview] tras
+ *   entrar en la antesala. Arranca en `true` (no en `false`) para no enseñar el
+ *   aviso de "sin comparativa" un instante antes de que llegue.
+ */
 data class BubbleMathUiState(
     val game: BubbleMathState = BubbleMathState(),
     val status: GameStatus = GameStatus.IDLE,
     val gameOver: GameOverInfo? = null,
+    val rankingPreview: GameRanking? = null,
+    val rankingPreviewLoading: Boolean = true,
 ) : UiState
 
 sealed interface BubbleMathIntent : UiIntent {
@@ -29,6 +45,13 @@ sealed interface BubbleMathIntent : UiIntent {
 
     /** El jugador tocó una burbuja concreta. */
     data class TapBubble(val id: Int) : BubbleMathIntent
+
+    /** Ficha de la bandeja de la nube de ecuación: va al primer hueco libre. */
+    data class TapCloudToken(val id: Int) : BubbleMathIntent
+
+    /** Hueco ya relleno de la nube: devuelve su ficha a la bandeja. */
+    data class TapCloudBlank(val index: Int) : BubbleMathIntent
+
     data object Pause : BubbleMathIntent
     data object Resume : BubbleMathIntent
     data object PlayAgain : BubbleMathIntent
@@ -62,11 +85,21 @@ class BubbleMathViewModel(
         engine.outcome.onEach { result -> result?.let(::onFinished) }.launchIn(viewModelScope)
         // No arrancamos aquí: el juego queda en IDLE y muestra la antesala (intro). La
         // partida empieza al pulsar "Comenzar" (intent [BubbleMathIntent.Start]).
+
+        // Comparativa mundial para la antesala (ver KDoc de `rankingPreview`). Un único
+        // pedido basta: el juego no vuelve a IDLE tras jugar dentro de la misma visita
+        // (empezar de nuevo salta directo a RUNNING), así que no hay que refrescarlo.
+        viewModelScope.launch {
+            val ranking = progress.previewRanking(GameIds.BUBBLE_MATH)
+            setState { copy(rankingPreview = ranking, rankingPreviewLoading = false) }
+        }
     }
 
     override fun onIntent(intent: BubbleMathIntent) {
         when (intent) {
             is BubbleMathIntent.TapBubble -> engine.onBubbleTap(intent.id)
+            is BubbleMathIntent.TapCloudToken -> engine.onCloudTokenTap(intent.id)
+            is BubbleMathIntent.TapCloudBlank -> engine.onCloudBlankTap(intent.index)
             BubbleMathIntent.Pause -> engine.pause()
             BubbleMathIntent.Resume -> engine.resume()
             BubbleMathIntent.Revive -> engine.grantRevive()

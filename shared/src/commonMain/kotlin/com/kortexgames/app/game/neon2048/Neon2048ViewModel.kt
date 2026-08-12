@@ -5,7 +5,6 @@ import com.kortexgames.app.core.audio.AudioAndHapticManager
 import com.kortexgames.app.core.audio.SoundEffect
 import com.kortexgames.app.core.mvi.MviViewModel
 import com.kortexgames.app.domain.model.GameResult
-import com.kortexgames.app.domain.repository.PlayerProgressRepository
 import com.kortexgames.app.domain.repository.ProgressRepository
 import com.kortexgames.app.domain.repository.SavedGameStateRepository
 import com.kortexgames.app.game.DifficultyAttempt
@@ -13,6 +12,7 @@ import com.kortexgames.app.game.DifficultyUnlocks
 import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.toGameOverInfo
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -41,9 +41,12 @@ import kotlin.time.TimeSource
  *  - Persistir el [GameResult] al terminar, con estrategia local-first.
  *
  * @param progress repositorio local-first: guarda la partida y devuelve percentil
- *   (además actualiza la progresión/récord por dentro).
- * @param playerProgress progresión por juego; solo se **observa** para pintar el
- *   récord (`bestScore`) en la cabecera desde el primer frame.
+ *   (además actualiza la progresión/récord agregado por dentro). También es la
+ *   fuente del récord **por tamaño de tablero** que pinta la cabecera (ver
+ *   [bestScoreByBoardSize]): a diferencia de otros juegos ENDLESS, aquí no basta
+ *   con observar [com.kortexgames.app.domain.repository.PlayerProgressRepository]
+ *   porque esa progresión guarda un único mejor histórico por JUEGO, no por
+ *   tablero (ver [GameRankingScopes][com.kortexgames.app.game.GameRankingScopes]).
  * @param savedGameState partida en curso guardada al salir (back / "SALIR" del
  *   menú de pausa): [Neon2048Intent.StartGame] la reanuda si existe (ver
  *   [requestExit] y [Neon2048SavedState]). A diferencia de un juego LEVELED como
@@ -56,7 +59,6 @@ import kotlin.time.TimeSource
  */
 class Neon2048ViewModel(
     private val progress: ProgressRepository,
-    playerProgress: PlayerProgressRepository,
     private val savedGameState: SavedGameStateRepository,
     private val audio: AudioAndHapticManager,
     private val random: Random = Random.Default,
@@ -92,32 +94,92 @@ class Neon2048ViewModel(
      */
     private var reviveConsumed = false
 
+    /**
+     * Mejor puntuación **por tamaño de tablero** (clave = lado, 4/5/6/7/8), derivada del
+     * historial local ([progress.observeHistory]) y no de la progresión agregada del
+     * juego: [com.kortexgames.app.domain.model.PlayerGameProgress.bestMetric] es un único
+     * mejor histórico por JUEGO, y aquí eso mezclaría el mejor puntaje del 8×8 con el del
+     * 4×4 — justo el problema que separa [com.kortexgames.app.game.GameRankingScopes] en
+     * el ranking mundial, pero aplicado al récord que ve el propio jugador en su cabecera.
+     *
+     * No vive en [Neon2048UiState] (solo hace falta para RESOLVER `bestScore` al cambiar
+     * de tablero, no para pintar directamente); el estado ya expone el valor ya resuelto
+     * para el tamaño en juego.
+     */
+    private var bestScoreByBoardSize: Map<Int, Int> = emptyMap()
+
+    /** `true` en cuanto el jugador toca un chip del selector de tablero; a partir de
+     *  ahí el auto-select del `init` deja de tocar [Neon2048UiState.boardSize] (ver
+     *  KDoc de la suscripción al historial). */
+    private var userSelectedBoardSize = false
+
+    /** Pedido en vuelo de [refreshRankingPreview]; se cancela al lanzar uno nuevo para
+     *  que un cambio rápido de tablero no deje que una respuesta vieja pise a la
+     *  actual (condición de carrera de red). */
+    private var rankingPreviewJob: Job? = null
+
     init {
-        // Récord previo: se pinta en la cabecera antes incluso de la primera jugada.
-        // Se toma el máximo con lo que ya haya en el estado para que una emisión
-        // tardía del flow no "baje" un récord recién batido en esta misma partida.
-        playerProgress.observe(GameIds.NEON_2048)
-            .onEach { p -> setState { copy(bestScore = maxOf(bestScore, p?.bestMetric ?: 0)) } }
-            .launchIn(viewModelScope)
         // Corrida guardada al salir: la antesala la ofrece como "Continuar". Se
         // observa (en vez de leerla una vez) para que el botón desaparezca solo al
         // reanudarla o al terminar la partida, que es cuando se borra la fila.
         savedGameState.observe(GameIds.NEON_2048)
             .onEach { json -> setState { copy(savedScore = json?.let(::decodeSaved)?.score) } }
             .launchIn(viewModelScope)
-        // Tableros desbloqueados: se derivan del historial (cada tamaño se abre al llegar
-        // al puntaje mínimo del anterior, ver [DifficultyUnlocks]). Se OBSERVA para que el
-        // desbloqueo aparezca solo al volver a la antesala tras una buena corrida —la
-        // partida recién guardada entra por este mismo flow— y también cuando el historial
-        // de la nube baja al iniciar sesión.
+        // Tableros desbloqueados Y récord por tablero: ambos se derivan del MISMO
+        // historial (cada tamaño se abre al llegar al puntaje mínimo del anterior, ver
+        // [DifficultyUnlocks]; el récord por tablero, de [bestScoreByBoardSize]). Se
+        // OBSERVA para que se actualicen solos al volver a la antesala tras una buena
+        // corrida —la partida recién guardada entra por este mismo flow— y también
+        // cuando el historial de la nube baja al iniciar sesión.
         progress.observeHistory(GameIds.NEON_2048)
             .onEach { history ->
                 val unlocked = DifficultyUnlocks.unlockedTiers(GameIds.NEON_2048, history)
-                setState { copy(unlockedBoardSizes = unlocked) }
+                bestScoreByBoardSize = history
+                    .groupBy { it.difficultyLevel }
+                    .mapNotNull { (tier, runs) ->
+                        Neon2048Config.BOARD_SIZE_OPTIONS.getOrNull(tier - 1)
+                            ?.let { size -> size to (runs.maxOfOrNull { it.score } ?: 0) }
+                    }
+                    .toMap()
+                // El máximo con lo que ya haya en el estado evita que esta emisión (que
+                // puede llegar tarde, p. ej. tras sincronizar con la nube) "baje" un
+                // récord recién batido en la corrida que se está jugando ahora mismo.
+                setState {
+                    copy(
+                        unlockedBoardSizes = unlocked,
+                        bestScore = maxOf(bestScore, bestScoreByBoardSize[boardSize] ?: 0),
+                    )
+                }
+                // Por defecto se preselecciona el tablero MÁS GRANDE ya desbloqueado
+                // (pedido explícito): a alguien que vuelve a jugar le importa más "cómo
+                // le va en el tablero grande" que en el 4×4, que es donde arrancaba
+                // antes. Solo en la antesala (IDLE): a mitad de partida no hay a qué
+                // reengancharla.
+                if (!userSelectedBoardSize && currentState.status == GameStatus.IDLE) {
+                    val largest = Neon2048Config.BOARD_SIZE_OPTIONS[unlocked - 1]
+                    setState { copy(boardSize = largest, bestScore = bestScoreByBoardSize[largest] ?: 0) }
+                    refreshRankingPreview(unlocked)
+                }
             }
             .launchIn(viewModelScope)
         // No se arranca aquí: se queda en IDLE mostrando la antesala/intro y la
         // partida empieza con StartGame / ResumeSaved (patrón del resto de juegos).
+    }
+
+    /**
+     * Pide la comparativa mundial del tablero de dificultad [difficultyLevel]
+     * (1-based) para la antesala — mismo panel que el diálogo de fin de partida
+     * ([com.kortexgames.app.ui.components.WorldRankingPreviewPanel]), pero sin
+     * haber jugado esta partida (ver [ProgressRepository.previewRanking]). Cancela
+     * cualquier pedido anterior en vuelo (ver [rankingPreviewJob]).
+     */
+    private fun refreshRankingPreview(difficultyLevel: Int) {
+        rankingPreviewJob?.cancel()
+        setState { copy(rankingPreview = null, rankingPreviewLoading = true) }
+        rankingPreviewJob = viewModelScope.launch {
+            val ranking = progress.previewRanking(GameIds.NEON_2048, difficultyLevel)
+            setState { copy(rankingPreview = ranking, rankingPreviewLoading = false) }
+        }
     }
 
     override fun onIntent(intent: Neon2048Intent) {
@@ -173,12 +235,19 @@ class Neon2048ViewModel(
      * El candado se revalida aquí y no solo en la UI porque el desbloqueo es una regla del
      * juego, no una decoración: la pantalla ya no deja pulsar un chip cerrado, pero el
      * intent es público y esta es su única fuente de verdad.
+     *
+     * `bestScore` se resuelve aquí contra [bestScoreByBoardSize]: es el punto único por el
+     * que pasa cualquier cambio de tablero, así la cabecera nunca enseña el récord de un
+     * tamaño distinto al que se está a punto de jugar (0 si el tablero es nuevo y aún no
+     * tiene ninguna marca).
      */
     private fun selectBoardSize(size: Int) {
         if (currentState.status != GameStatus.IDLE) return
         val tier = boardSizeTier(size) ?: return
         if (tier > currentState.unlockedBoardSizes) return
-        setState { copy(boardSize = size) }
+        userSelectedBoardSize = true
+        setState { copy(boardSize = size, bestScore = bestScoreByBoardSize[size] ?: 0) }
+        refreshRankingPreview(tier)
     }
 
     /**
@@ -186,11 +255,15 @@ class Neon2048ViewModel(
      * saltándose la antesala. A diferencia de [selectBoardSize] no exige [GameStatus.IDLE]
      * —se dispara desde el diálogo de fin de partida, en [GameStatus.FINISHED]— pero sí
      * revalida el candado: el intent es público y esta es su única fuente de verdad.
+     *
+     * Mismo ajuste de `bestScore` que [selectBoardSize] (ver su KDoc): aquí el tablero
+     * siempre es uno que la corrida recién terminada acaba de desbloquear, así que su
+     * récord es 0 por definición (nadie lo jugó todavía).
      */
     private fun playBoardSize(size: Int) {
         val tier = boardSizeTier(size) ?: return
         if (tier > currentState.unlockedBoardSizes) return
-        setState { copy(boardSize = size) }
+        setState { copy(boardSize = size, bestScore = bestScoreByBoardSize[size] ?: 0) }
         startGame()
     }
 
@@ -482,11 +555,24 @@ class Neon2048ViewModel(
             // El tablero jugado viaja como `difficultyLevel` (4×4 = 1, 5×5 = 2…): es lo que
             // permite después saber, leyendo el historial, en qué tamaño se consiguió cada
             // marca y desbloquear el siguiente sin tocar el esquema de la BD (ver
-            // [DifficultyUnlocks]). No afecta al ranking mundial de 2048, que sigue siendo
-            // una tabla única (el juego no está en `GameRankingScopes`).
+            // [DifficultyUnlocks]). También es lo que separa el ranking mundial de 2048 por
+            // tablero (`GameIds.NEON_2048` en `GameRankingScopes`): sin él, el top mundial
+            // sería siempre quien tenga abierto el 8×8, por floja que fuera esa partida.
             difficultyLevel = boardSizeTier(currentState.boardSize) ?: 1,
             reachedMetric = currentState.score,  // ENDLESS por puntaje (ver GameProgressions)
         )
+
+        // Récord POR TABLERO, para el badge "¡NUEVO RÉCORD!": `SaveOutcome.isNewRecord` (más
+        // abajo) sale de comparar contra `PlayerGameProgress.bestMetric`, que es un único
+        // mejor histórico por JUEGO (los 5 tableros mezclados) — el mismo problema que ya
+        // resolvieron `bestScoreByBoardSize` (récord del HUD) y `GameRankingScopes` (ranking
+        // mundial), aplicado aquí al badge de fin de partida. Se calcula ANTES de guardar,
+        // con el `bestScoreByBoardSize` todavía SIN esta partida (la re-emisión del historial
+        // que la incorpora llega después, de forma asíncrona). Mismo criterio que
+        // `PlayerProgressRepositoryImpl.recordResult`: sin marca previa en este tablero (mapa
+        // sin esa clave) no cuenta como récord — la primera partida no tiene nada que batir.
+        val previousBestForBoard = bestScoreByBoardSize[currentState.boardSize]
+        val isNewRecordForBoard = previousBestForBoard != null && result.score > previousBestForBoard
         // ¿Esta corrida abre el tablero siguiente? Se evalúa AQUÍ, contra el resultado
         // recién calculado y `unlockedBoardSizes` tal como estaba ANTES de guardar —no hace
         // falta esperar a que `progress.saveResult` termine y el historial reactivo se
@@ -508,8 +594,15 @@ class Neon2048ViewModel(
             // Supabase) y, si hay sesión, el percentil/ranking real después (ver KDoc
             // de `ProgressRepository.saveResult`).
             progress.saveResult(result).collect { outcome ->
+                // `.copy(isNewRecord = ...)`: sobreescribe el campo global de `toGameOverInfo`
+                // por el que sí tiene en cuenta el tablero (ver `isNewRecordForBoard` arriba).
+                // El resto de campos (percentil, ranking, sincronización) sigue tal cual los
+                // resuelve el mapeo genérico.
                 setState {
-                    copy(gameOver = outcome.toGameOverInfo(result), justUnlockedBoardSize = unlockedBoardSize)
+                    copy(
+                        gameOver = outcome.toGameOverInfo(result).copy(isNewRecord = isNewRecordForBoard),
+                        justUnlockedBoardSize = unlockedBoardSize,
+                    )
                 }
             }
         }

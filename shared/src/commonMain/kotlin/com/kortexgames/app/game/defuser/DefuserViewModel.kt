@@ -88,6 +88,16 @@ class DefuserViewModel(
      *  terminar de exponer. */
     private var pendingMine: CellPosition? = null
 
+    /** `true` en cuanto el jugador toca un chip del selector de dificultad. A partir
+     *  de ahí el auto-select de [initDefaultDifficulty] deja de tocar [DefuserUiState.difficulty]:
+     *  una elección explícita no debe ser pisada por una emisión tardía del historial. */
+    private var userSelectedDifficulty = false
+
+    /** Pedido en vuelo de [refreshRankingPreview]; se cancela al lanzar uno nuevo para
+     *  que un cambio rápido de dificultad no deje que una respuesta vieja pise a la
+     *  actual (condición de carrera de red). */
+    private var rankingPreviewJob: Job? = null
+
     init {
         // La antesala ofrece "Continuar" si hay una partida guardada: se observa el
         // guardado (reactivo) para que el flag desaparezca solo al reanudar/terminar.
@@ -104,8 +114,35 @@ class DefuserViewModel(
             .onEach { history ->
                 val unlocked = DifficultyUnlocks.unlockedTiers(GameIds.NEON_DEFUSER, history)
                 setState { copy(unlockedDifficulties = unlocked) }
+                // Por defecto se preselecciona la dificultad MÁS DIFÍCIL ya desbloqueada
+                // (pedido explícito): a alguien que vuelve a jugar le importa más "cómo
+                // le va en lo difícil" que en Fácil, que es donde arrancaba antes. Solo
+                // en la antesala (IDLE): a mitad de partida no hay a qué reengancharla.
+                if (!userSelectedDifficulty && currentState.status == GameStatus.IDLE) {
+                    val hardest = MineDifficulty.entries[unlocked - 1]
+                    setState { copy(difficulty = hardest, board = MineBoard.blank(hardest)) }
+                    refreshRankingPreview(hardest.ordinal + 1)
+                }
             }
             .launchIn(viewModelScope)
+    }
+
+    /**
+     * Pide la comparativa mundial de la dificultad [difficultyLevel] (1-based) para
+     * la antesala — mismo panel que el diálogo de fin de partida
+     * ([com.kortexgames.app.ui.components.WorldRankingPreviewPanel]), pero sin haber
+     * jugado esta partida (ver [ProgressRepository.previewRanking]). Cancela
+     * cualquier pedido anterior en vuelo (ver [rankingPreviewJob]) y limpia el
+     * estado a "cargando" de inmediato para que la antesala nunca enseñe la
+     * comparativa de la dificultad que se acaba de abandonar.
+     */
+    private fun refreshRankingPreview(difficultyLevel: Int) {
+        rankingPreviewJob?.cancel()
+        setState { copy(rankingPreview = null, rankingPreviewLoading = true) }
+        rankingPreviewJob = viewModelScope.launch {
+            val ranking = progress.previewRanking(GameIds.NEON_DEFUSER, difficultyLevel)
+            setState { copy(rankingPreview = ranking, rankingPreviewLoading = false) }
+        }
     }
 
     override fun onIntent(intent: DefuserIntent) {
@@ -141,7 +178,9 @@ class DefuserViewModel(
     private fun onSelectDifficulty(difficulty: MineDifficulty) {
         if (currentState.status != GameStatus.IDLE) return
         if (difficulty.ordinal + 1 > currentState.unlockedDifficulties) return
+        userSelectedDifficulty = true
         setState { copy(difficulty = difficulty, board = MineBoard.blank(difficulty)) }
+        refreshRankingPreview(difficulty.ordinal + 1)
     }
 
     /**

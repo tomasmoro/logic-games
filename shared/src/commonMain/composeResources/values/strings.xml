@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Catálogo de textos de la app (Compose Multiplatform Resources).
+
+  POR QUÉ EXISTE: hasta ahora los textos vivían embebidos en los @Composable. Eso
+  funciona con un solo idioma, pero deja de escalar en cuanto la app se abre a más
+  público: no hay forma de traducir sin tocar código, ni de revisar la voz de la
+  marca en un solo sitio. Este archivo es el idioma por defecto (español); añadir
+  otro idioma es crear `values-<código>/strings.xml` con las MISMAS claves — ni una
+  línea de Kotlin cambia.
+
+  CÓMO SE USA:
+    - En Compose:      `stringResource(Res.string.clave)`
+    - Fuera de Compose: `getString(Res.string.clave)` (suspend) — es la vía que usa
+      el módulo de notificaciones, que compone sus textos sin UI delante.
+
+  CONVENCIÓN DE NOMBRES: `<área>_<pantalla/concepto>_<detalle>`. Las variantes de un
+  mismo mensaje terminan en `_1`, `_2`, `_3` (ver NotificationCopyProvider: se
+  elige una al azar para que un recordatorio recurrente no suene siempre igual).
+
+  MIGRACIÓN: los textos de las pantallas ya existentes se van moviendo aquí de
+  forma progresiva (ver BACKLOG.md). Toda feature NUEVA debe nacer con sus textos
+  en este archivo (CLAUDE.md §10).
+-->
+<resources>
+
+    <!-- ============================================================
+         Notificaciones — canales (Android los muestra en los ajustes
+         del sistema, así que su nombre lo lee el usuario).
+         ============================================================ -->
+    <string name="notif_channel_reminders_name">Recordatorios</string>
+    <string name="notif_channel_reminders_description">Avisos para no perder tu racha ni tu objetivo diario</string>
+    <string name="notif_channel_records_name">Récords</string>
+    <string name="notif_channel_records_description">Novedades sobre tus mejores marcas</string>
+
+    <!-- ============================================================
+         Notificaciones — récord personal batido.
+         %1$s = nombre del juego. Se entrega al día siguiente (ver
+         NotificationPlanner): felicitar mientras el jugador tiene el
+         cartel de fin de partida delante no aporta nada; recordarle
+         al día siguiente que tiene una marca que defender, sí.
+         ============================================================ -->
+    <string name="notif_record_beaten_title_1">Nuevo récord en %1$s</string>
+    <string name="notif_record_beaten_title_2">Tu mejor marca en %1$s</string>
+    <string name="notif_record_beaten_title_3">Récord batido en %1$s</string>
+    <string name="notif_record_beaten_body_1">Ayer superaste tu mejor marca. ¿Puedes repetirlo hoy?</string>
+    <string name="notif_record_beaten_body_2">Batiste tu récord: ahora el rival a superar eres tú.</string>
+    <string name="notif_record_beaten_body_3">Tienes una marca nueva que defender. Entra y súbela otro poco.</string>
+
+    <!-- ============================================================
+         Notificaciones — tu marca superada por otro jugador.
+         %1$s = nombre del juego. Este tipo NO se programa desde el
+         dispositivo (nadie sabe en local lo que hacen los demás):
+         llegará por push cuando exista el backend. La copy vive ya
+         aquí para que ese día solo haya que enchufar el emisor.
+         ============================================================ -->
+    <string name="notif_record_broken_title_1">Tu marca en %1$s ha caído</string>
+    <string name="notif_record_broken_title_2">Te han superado en %1$s</string>
+    <string name="notif_record_broken_body_1">Otro jugador acaba de superar tu récord. La revancha te espera.</string>
+    <string name="notif_record_broken_body_2">Ya no lideras esta marca. ¿La recuperas hoy?</string>
+
+    <!-- ============================================================
+         Notificaciones — racha en riesgo. %1$s = días de racha.
+         ============================================================ -->
+    <string name="notif_streak_risk_title_1">Tu racha de %1$s días está en juego</string>
+    <string name="notif_streak_risk_title_2">No pierdas tus %1$s días seguidos</string>
+    <string name="notif_streak_risk_title_3">Quedan horas para salvar tu racha</string>
+    <string name="notif_streak_risk_body_1">Una partida rápida y sigues sumando.</string>
+    <string name="notif_streak_risk_body_2">Tres minutos bastan para mantenerla viva.</string>
+    <string name="notif_streak_risk_body_3">Tu racha termina a medianoche si no juegas hoy.</string>
+
+    <!-- ============================================================
+         Notificaciones — misión diaria sin terminar.
+         %1$s = juegos que faltan.
+         ============================================================ -->
+    <string name="notif_daily_mission_title_1">Tu misión de hoy sigue abierta</string>
+    <string name="notif_daily_mission_title_2">Casi cierras el día</string>
+    <string name="notif_daily_mission_title_3">Te falta poco para el objetivo</string>
+    <string name="notif_daily_mission_body_1">Te quedan %1$s juegos para completar la misión de hoy.</string>
+    <string name="notif_daily_mission_body_2">Con %1$s juegos más te llevas la recompensa diaria.</string>
+    <string name="notif_daily_mission_body_3">%1$s juegos y el objetivo del día es tuyo.</string>
+
+    <!-- ============================================================
+         Notificaciones — inactividad. Tres escalones (3, 7 y 14 días)
+         con tonos distintos: recordatorio ligero, gancho por progreso
+         y, al final, tranquilizar (el progreso sigue ahí).
+         ============================================================ -->
+    <string name="notif_inactivity_3d_title_1">Tu cerebro te echa de menos</string>
+    <string name="notif_inactivity_3d_title_2">Tres días sin entrenar</string>
+    <string name="notif_inactivity_3d_title_3">¿Retomamos el entrenamiento?</string>
+    <string name="notif_inactivity_3d_body_1">Una partida corta y vuelves al ritmo.</string>
+    <string name="notif_inactivity_3d_body_2">Vuelve con un juego rápido: no lleva ni tres minutos.</string>
+    <string name="notif_inactivity_3d_body_3">Abre la app y deja que el dado elija juego por ti.</string>
+
+    <string name="notif_inactivity_7d_title_1">Una semana fuera</string>
+    <string name="notif_inactivity_7d_title_2">Tu entrenamiento está en pausa</string>
+    <string name="notif_inactivity_7d_title_3">Siete días sin partidas</string>
+    <string name="notif_inactivity_7d_body_1">Tu mejor marca sigue esperando a que la superes.</string>
+    <string name="notif_inactivity_7d_body_2">Retomar es fácil: un juego, tres minutos.</string>
+    <string name="notif_inactivity_7d_body_3">Vuelve hoy y arranca una racha nueva.</string>
+
+    <string name="notif_inactivity_14d_title_1">Dos semanas sin entrenar</string>
+    <string name="notif_inactivity_14d_title_2">Te guardamos el progreso</string>
+    <string name="notif_inactivity_14d_title_3">Tu perfil sigue aquí</string>
+    <string name="notif_inactivity_14d_body_1">Tus récords y tus logros siguen intactos. Retómalos cuando quieras.</string>
+    <string name="notif_inactivity_14d_body_2">Elige un juego y sigue donde lo dejaste.</string>
+    <string name="notif_inactivity_14d_body_3">Un par de partidas y vuelves a estar en forma.</string>
+
+    <!-- ============================================================
+         Notificaciones — aviso de prueba (solo builds de depuración).
+         ============================================================ -->
+    <string name="notif_debug_test_title">Prueba de notificación</string>
+    <string name="notif_debug_test_body">Si ves esto, la entrega funciona de punta a punta.</string>
+
+    <!-- ============================================================
+         Antesala de permiso: el paso propio de la app, previo al
+         diálogo del sistema. Habla de lo que el jugador YA tiene
+         (su racha, su misión, sus marcas), no de "notificaciones":
+         se ofrece un beneficio, no un permiso.
+         ============================================================ -->
+    <string name="notif_priming_title">No pierdas tu racha</string>
+    <string name="notif_priming_body">Podemos avisarte cuando tu racha esté en juego o te quede poco para el objetivo del día. Tú decides cuándo dejar de recibirlos.</string>
+    <string name="notif_priming_benefit_streak">Tu racha, a salvo</string>
+    <string name="notif_priming_benefit_mission">Tu misión diaria, a tiempo</string>
+    <string name="notif_priming_benefit_record">Tus récords, celebrados</string>
+    <string name="notif_priming_accept">Activar recordatorios</string>
+    <string name="notif_priming_decline">Ahora no</string>
+
+    <!-- ============================================================
+         Ajustes — sección de notificaciones.
+         ============================================================ -->
+    <string name="settings_notifications_section">Notificaciones</string>
+    <string name="settings_notifications_toggle_title">Recordatorios</string>
+    <string name="settings_notifications_toggle_subtitle">Avisos de racha, objetivo diario y récords</string>
+    <string name="settings_notifications_blocked">Las notificaciones están desactivadas en los ajustes del sistema.</string>
+
+    <!-- ============================================================
+         Bienvenida jugable de la primera apertura: los tres juegos que
+         se encadenan ANTES de ofrecer la cuenta. Los textos viven aquí
+         (y no en la antesala) porque son el primer contacto con la voz
+         de la app y lo primero que habrá que traducir.
+         ============================================================ -->
+    <string name="firstrun_progress">Juego %1$s de %2$s</string>
+    <string name="firstrun_age_notice">Recomendado para mayores de 13 años.</string>
+
+    <!-- Pantalla de bienvenida (hub): se enseña QUÉ se va a jugar antes de jugarlo,
+         y a ella se vuelve tras cada juego para celebrar el que se acaba de
+         terminar. La voz es directa y sin promesas de marketing: el gancho son
+         los juegos. Tres estados según cuántos quedan atrás. -->
+    <string name="firstrun_welcome_title">Empecemos jugando</string>
+    <string name="firstrun_welcome_subtitle">Entrena tu mente con partidas de tres minutos. Estos son los tres juegos con los que vas a empezar: sin cuenta y sin registro.</string>
+    <string name="firstrun_welcome_title_progress">¡Uno menos!</string>
+    <string name="firstrun_welcome_subtitle_progress">Sigue con el siguiente juego de tu primera sesión.</string>
+    <string name="firstrun_welcome_title_done">Sesión completa</string>
+    <string name="firstrun_welcome_subtitle_done">Has probado los tres juegos. Crea una cuenta para guardar tu progreso, o entra como invitado.</string>
+    <string name="firstrun_welcome_games_label">Tu primera sesión</string>
+    <string name="firstrun_welcome_cta">Empezar a jugar</string>
+    <string name="firstrun_welcome_cta_continue">Seguir jugando</string>
+    <string name="firstrun_welcome_cta_done">Continuar</string>
+    <string name="firstrun_welcome_skip">Prefiero iniciar sesión</string>
+
+    <!-- ============================================================
+         Atracción Geométrica (Visión Espacial). Partida infinita por
+         oleadas: cada 30 s entra una lluvia de meteoros que regala
+         puntos, una vida y un color nuevo. Los textos del juego nacen
+         aquí (CLAUDE.md §10); el NOMBRE del juego no, porque vive en
+         GameCatalog (contenido sincronizado con Supabase).
+         ============================================================ -->
+    <string name="polarity_title">Atracción Geométrica</string>
+    <string name="polarity_intro_description">Rota el círculo para capturar las piezas de tu color. Partida infinita: solo te frenan tus vidas.</string>
+    <string name="polarity_hint">Rota el círculo desde cualquier zona para capturar por color</string>
+    <string name="polarity_hud_score">Puntos</string>
+    <string name="polarity_hud_caught">Aciertos</string>
+    <string name="polarity_hud_wave">Oleada</string>
+    <!-- Cuenta atrás hasta la lluvia (fase normal) y de la lluvia en curso. -->
+    <string name="polarity_hud_shower_in">Meteoros</string>
+    <string name="polarity_hud_shower_now">Lluvia</string>
+    <!-- %1$s = segundos restantes. -->
+    <string name="polarity_hud_seconds">%1$ss</string>
+    <string name="polarity_life">Vida</string>
+    <string name="polarity_life_lost">Vida perdida</string>
+    <string name="polarity_banner_shower_title">¡LLUVIA DE METEOROS!</string>
+    <string name="polarity_banner_shower_subtitle">Solo suman los aciertos: aquí no pierdes vidas</string>
+    <!-- %1$s = oleada que empieza. -->
+    <string name="polarity_banner_wave_title">OLEADA %1$s</string>
+    <!-- %1$s = meteoros capturados en la lluvia recién terminada. -->
+    <string name="polarity_banner_wave_caught">%1$s meteoros cazados</string>
+    <!-- %1$s = colores del disco a partir de ahora. -->
+    <string name="polarity_banner_wave_reward">+1 vida · %1$s colores</string>
+    <!-- Variantes cuando ya se llegó al tope de vidas o de colores. -->
+    <string name="polarity_banner_wave_colors">%1$s colores</string>
+    <string name="polarity_banner_wave_life">+1 vida</string>
+
+    <!-- ============================================================
+         Burbujas de Cálculo — nube de ecuación.
+         Reto relámpago que entra cada 20 s de juego activo: una ecuación
+         incompleta que, resuelta a tiempo, devuelve una vida. El aviso de
+         recompensa cambia según si al jugador le falta alguna vida o no,
+         para no prometer algo que no va a recibir.
+         ============================================================ -->
+    <string name="bubble_cloud_missing_symbols">Faltan los símbolos</string>
+    <string name="bubble_cloud_missing_numbers">Faltan los números</string>
+    <string name="bubble_cloud_reward_life">Resuélvela y recuperas una vida</string>
+    <string name="bubble_cloud_reward_points">Resuélvela y ganas puntos extra</string>
+    <string name="bubble_cloud_result_life">¡Vida recuperada!</string>
+    <string name="bubble_cloud_result_points">¡Bien! +%1$s puntos</string>
+    <string name="bubble_cloud_result_failed">La nube se escapó</string>
+    <string name="bubble_cloud_seconds">%1$s s</string>
+
+    <!-- Herramienta de depuración: solo se muestra en builds de debug. -->
+    <string name="settings_notifications_debug_test">Enviar notificación de prueba (15 s)</string>
+    <string name="settings_notifications_debug_scheduled">Programada. Llegará en 15 segundos.</string>
+    <string name="settings_notifications_debug_failed">No se pudo programar: el sistema no permite notificar.</string>
+
+</resources>

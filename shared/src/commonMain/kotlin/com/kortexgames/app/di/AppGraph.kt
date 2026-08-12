@@ -1,10 +1,16 @@
 package com.kortexgames.app.di
 
 import com.kortexgames.app.core.ads.AdManager
+import com.kortexgames.app.core.ads.beginAdConsentFlow
 import com.kortexgames.app.core.ads.installPlatformAdPresenters
+import com.kortexgames.app.core.isDebugBuild
 import com.kortexgames.app.core.audio.AudioAndHapticManager
 import com.kortexgames.app.core.audio.PlatformContext
 import com.kortexgames.app.core.audio.createAudioAndHapticManager
+import com.kortexgames.app.core.notifications.NotificationCopyProvider
+import com.kortexgames.app.core.notifications.NotificationStore
+import com.kortexgames.app.core.notifications.NotificationsManager
+import com.kortexgames.app.core.notifications.createNotificationScheduler
 import com.kortexgames.app.core.startup.StartupPreloader
 import com.kortexgames.app.data.local.DatabaseDriverFactory
 import com.kortexgames.app.data.local.SqlDelightLocalAchievementsDataSource
@@ -14,6 +20,7 @@ import com.kortexgames.app.data.local.SqlDelightLocalProgressDataSource
 import com.kortexgames.app.data.local.SqlDelightLocalSavedGameStateDataSource
 import com.kortexgames.app.data.local.SqlDelightLocalSudokuPuzzleDataSource
 import com.kortexgames.app.data.local.createDatabase
+import com.kortexgames.app.data.local.db.LogicGamesDb
 import com.kortexgames.app.data.remote.RemoteAchievementsDataSource
 import com.kortexgames.app.data.remote.RemoteLevelTimeDataSource
 import com.kortexgames.app.data.remote.RemotePlayerProgressDataSource
@@ -41,11 +48,16 @@ import com.kortexgames.app.domain.repository.PlayerProgressRepository
 import com.kortexgames.app.domain.repository.ProgressRepository
 import com.kortexgames.app.domain.repository.SavedGameStateRepository
 import com.kortexgames.app.game.neonsudoku.SudokuPuzzleRepository
+import io.github.jan.supabase.SupabaseClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 /**
  * Contenedor de dependencias manual (sin framework de DI). Se instancia una vez
@@ -59,6 +71,13 @@ class AppGraph(context: PlatformContext) {
 
     /** Scope de aplicación (sobrevive a las pantallas). */
     val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /**
+     * ¿Build de depuración? Lo consulta la UI para mostrar herramientas de
+     * diagnóstico (p. ej. el aviso de notificación de prueba en Ajustes) que no deben
+     * existir en la app publicada. Se resuelve una vez al arrancar.
+     */
+    val isDebugBuild: Boolean = isDebugBuild(context)
 
     /**
      * Snapshot síncrono del estado de sesión. Lo consumen sin suspender
@@ -77,8 +96,30 @@ class AppGraph(context: PlatformContext) {
         scope = appScope,
     )
 
-    // --- Persistencia local (fuente de verdad, modo invitado/offline) -------
-    private val database = createDatabase(DatabaseDriverFactory(context))
+    // --- Persistencia local + backend Supabase (FASE 2), en PARALELO --------
+    // Abrir el SqlDriver (I/O de disco, y posible migración de esquema) y montar
+    // el cliente Ktor de Supabase (Auth + Postgrest + Functions) no dependen entre
+    // sí, pero antes se pagaban en SERIE en el constructor de AppGraph — que se
+    // ejecuta síncrono en el hilo principal (Application.onCreate en Android, la
+    // primera composición en iOS), antes del primer frame. Lanzarlos a la vez en
+    // Dispatchers.Default convierte T(db) + T(supabase) en max(T(db), T(supabase)):
+    // el hilo llamante sigue bloqueado (ningún repositorio de abajo puede montarse
+    // sin ambos), pero por el tiempo del más lento de los dos, no de la suma.
+    // Un `runBlocking` local aquí es aceptable —y no un antipatrón de coroutines—
+    // porque AppGraph ya es, por diseño, una construcción síncrona de arranque.
+    private val database: LogicGamesDb
+    val supabaseClient: SupabaseClient
+
+    init {
+        val (db, client) = runBlocking(Dispatchers.Default) {
+            val dbDeferred = async { createDatabase(DatabaseDriverFactory(context)) }
+            val clientDeferred = async { buildSupabaseClient() }
+            dbDeferred.await() to clientDeferred.await()
+        }
+        database = db
+        supabaseClient = client
+    }
+
     private val localProgress = SqlDelightLocalProgressDataSource(database, Dispatchers.Default)
     private val localPlayerProgress =
         SqlDelightLocalPlayerProgressDataSource(database, Dispatchers.Default)
@@ -91,8 +132,6 @@ class AppGraph(context: PlatformContext) {
     private val localSudokuPuzzle =
         SqlDelightLocalSudokuPuzzleDataSource(database, Dispatchers.Default)
 
-    // --- Backend Supabase (FASE 2) ------------------------------------------
-    val supabaseClient = buildSupabaseClient()
     private val remoteProgress = RemoteProgressDataSource(supabaseClient)
     private val remotePlayerProgress = RemotePlayerProgressDataSource(supabaseClient)
     private val remoteLevelTime = RemoteLevelTimeDataSource(supabaseClient)
@@ -131,6 +170,10 @@ class AppGraph(context: PlatformContext) {
         remote = remoteProgress,
         authState = { authState },
         playerProgress = playerProgressRepository,
+        // Seam hacia el módulo de notificaciones (ver KDoc del parámetro). La lambda
+        // se evalúa al terminar una partida, cuando `notificationsManager` —declarado
+        // más abajo, porque depende de este repositorio— ya está construido.
+        onNewRecord = { gameId -> notificationsManager.onRecordBeaten(gameId) },
     )
 
     /** Logros del jugador (progreso + desbloqueo), sincronizados con Supabase. */
@@ -161,6 +204,10 @@ class AppGraph(context: PlatformContext) {
     val adManager = AdManager(
         scope = appScope,
         isPremium = { (authState as? AuthState.Authenticated)?.plan == PlanType.PREMIUM },
+        // Ni un anuncio durante la bienvenida de la primera apertura: el
+        // consentimiento (UMP/ATT) aún no se ha resuelto —pedirlos incumpliría la
+        // política de AdMob— y además el primer minuto del jugador debe ser juego.
+        adsSuspended = { !onboardingGate.isFirstRunOver.value },
     ).also {
         it.start()
         // Presentadores de anuncios por plataforma: AdMob real en Android (con IDs de
@@ -176,6 +223,30 @@ class AppGraph(context: PlatformContext) {
         scope = appScope,
     )
 
+    // --- Notificaciones (recordatorios locales de retención) ----------------
+    /**
+     * Orquestador de notificaciones. Se declara después del objetivo diario porque
+     * depende de él (y del historial) para decidir qué avisos programar.
+     *
+     * `start()` solo abre observadores reactivos: no toca el sistema de
+     * notificaciones ni pide permisos hasta que hay algo que programar y el usuario
+     * ya lo ha autorizado, así que no añade coste al arranque.
+     */
+    private val notificationCopy = NotificationCopyProvider()
+
+    /** Persistencia del módulo de notificaciones (récord pendiente de revancha). */
+    private val notificationStore = NotificationStore(preferences)
+
+    val notificationsManager = NotificationsManager(
+        scheduler = createNotificationScheduler(context, notificationCopy),
+        copy = notificationCopy,
+        store = notificationStore,
+        progress = progressRepository,
+        dailyGoal = dailyGoalManager,
+        settings = settingsRepository,
+        scope = appScope,
+    ).also { it.start() }
+
     /**
      * Precarga de arranque: calienta durante la splash lo que la Home necesita
      * (historial, sesión, puerta de onboarding) y lo comparte para que la pantalla
@@ -190,6 +261,15 @@ class AppGraph(context: PlatformContext) {
     )
 
     init {
+        // Consentimiento de anuncios (UMP en ambas plataformas + ATT en iOS): se pide
+        // en cuanto la primera apertura queda atrás, que es justo antes de que pueda
+        // hacer falta el primer anuncio. Para un usuario que ya pasó la bienvenida el
+        // flag ya viene a true, así que ocurre en el arranque, como siempre.
+        appScope.launch {
+            onboardingGate.isFirstRunOver.first { it }
+            beginAdConsentFlow(context)
+        }
+
         // La sesión de Supabase manda: al iniciar sesión (o restaurarla al abrir
         // la app) refrescamos el snapshot y subimos lo que se jugó como invitado.
         authRepository.sessionState
@@ -227,5 +307,9 @@ class AppGraph(context: PlatformContext) {
             achievementsRepository.clearLocal()
             savedGameStateRepository.clearAll()
             dailyGoalManager.clearClaimedReward()
+            // Los avisos pendientes hablan de un progreso que ya no existe ("defiende
+            // tu récord de ayer"): se olvidan y se retiran del sistema.
+            notificationStore.clear()
+            notificationsManager.cancelAll()
         }
 }

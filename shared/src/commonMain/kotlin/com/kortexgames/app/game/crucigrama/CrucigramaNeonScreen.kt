@@ -302,6 +302,14 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
             help = GameHelpContent.crucigrama,
             accent = CategoryPalette.Language,
             exitKeepsProgress = true,
+            // Rejilla ya completa con extras pendientes (mismo disparador que el
+            // cartel de arriba): ofrece el atajo de avanzar directo también si el
+            // jugador pausó en vez de responderle al cartel.
+            onAdvanceLevel = if (game.gridComplete) {
+                { vm.onIntent(CrucigramaNeonIntent.SkipToNextLevel) }
+            } else {
+                null
+            },
         )
 
         // Feedback de "cargando anuncio" mientras se resuelve el rewarded de la

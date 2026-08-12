@@ -18,6 +18,7 @@ import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.LeveledGamePhase
 import com.kortexgames.app.game.toGameOverInfo
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -74,6 +75,15 @@ sealed interface CrucigramaNeonIntent : UiIntent {
      */
     data object FinishLevel : CrucigramaNeonIntent
 
+    /**
+     * Atajo desde el **menú de pausa**, disponible mientras la rejilla está
+     * completa y quedan extras sin descubrir (mismo momento que el cartel de
+     * [KeepSearchingExtras]/[FinishLevel], pero el jugador pausó en vez de
+     * responderle): cierra el nivel actual y avanza directo al siguiente, sin
+     * pasar por el cartel de fin de partida.
+     */
+    data object SkipToNextLevel : CrucigramaNeonIntent
+
     /** Desde la antesala: retomar la partida guardada al salir (ver [CrucigramaNeonUiState.savedLevel]). */
     data object ResumeSaved : CrucigramaNeonIntent
 
@@ -103,6 +113,14 @@ class CrucigramaNeonViewModel(
 ) : MviViewModel<CrucigramaNeonIntent, CrucigramaNeonUiState, CrucigramaNeonEffect>(CrucigramaNeonUiState()) {
 
     private val engine = CrucigramaNeonEngine(viewModelScope, audio)
+
+    /**
+     * Marca que [SkipToNextLevel] dejó pendiente: [onFinished] la consume para
+     * saltarse el cartel de resultado y encadenar directo el siguiente nivel. Vive
+     * fuera del [StateFlow] porque es un paso interno de una sola corrutina, no
+     * algo que la UI necesite observar (a diferencia de [CrucigramaNeonUiState.gameOver]).
+     */
+    private var pendingAutoAdvance = false
 
     init {
         engine.state.onEach { s -> setState { copy(game = s) } }.launchIn(viewModelScope)
@@ -146,6 +164,14 @@ class CrucigramaNeonViewModel(
             }
             CrucigramaNeonIntent.KeepSearchingExtras -> setState { copy(extrasPromptDismissed = true) }
             CrucigramaNeonIntent.FinishLevel -> engine.finish()
+            CrucigramaNeonIntent.SkipToNextLevel -> {
+                // No encadena engine.finish() + playLevel() en el sitio: onFinished
+                // guarda el resultado de forma asíncrona (suspend), y arrancar el
+                // siguiente nivel antes de que termine reiniciaría el motor a mitad
+                // de ese guardado. La bandera pospone el avance hasta que confirme.
+                pendingAutoAdvance = true
+                engine.finish()
+            }
         }
     }
 
@@ -229,8 +255,18 @@ class CrucigramaNeonViewModel(
             savedGameState.clear(GameIds.CRUCIGRAMA_NEON)
             audio.playSound(SoundEffect.LEVEL_UP)
             audio.hapticFeedback(HapticFeedback.SUCCESS)
-            progress.saveResult(result).collect { outcome ->
-                setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+            if (pendingAutoAdvance) {
+                // Atajo desde pausa (SkipToNextLevel): no hay cartel de resultado que
+                // pintar, así que no hace falta esperar el percentil remoto (2ª
+                // emisión); alcanza con que el guardado local ya esté confirmado.
+                pendingAutoAdvance = false
+                progress.saveResult(result).first()
+                adManager.onAdBreakpoint()
+                playLevel(currentState.currentLevel + 1)
+            } else {
+                progress.saveResult(result).collect { outcome ->
+                    setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+                }
             }
         }
     }

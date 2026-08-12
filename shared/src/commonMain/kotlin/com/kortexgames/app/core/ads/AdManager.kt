@@ -88,10 +88,17 @@ fun interface InterstitialAdPresenter {
  *
  * @param isPremium snapshot del plan del usuario (se evalúa en cada tick, así una
  *        compra premium a mitad de sesión detiene los anuncios al instante).
+ * @param adsSuspended snapshot de "aún no se puede monetizar". Hoy lo alimenta la
+ *        **bienvenida de primera apertura**: mientras el jugador juega sus primeros
+ *        juegos no se ha resuelto el consentimiento GDPR/UMP ni el ATT de iOS, así que
+ *        pedir un anuncio sería incumplir la política de AdMob además de estropear el
+ *        primer minuto de la app. Se trata igual que premium: ni cuenta, ni interrumpe,
+ *        y un recompensado se concede gratis (ver [showRewardedAd]).
  */
 class AdManager(
     private val scope: CoroutineScope,
     private val isPremium: () -> Boolean,
+    private val adsSuspended: () -> Boolean = { false },
     private val interval: Duration = 7.minutes,
     private val tick: Duration = 1.seconds,
 ) {
@@ -181,8 +188,9 @@ class AdManager(
                 continue
             }
 
-            // Premium: nunca acumula ni debe anuncios; se resetea por si cambió de plan.
-            if (isPremium()) {
+            // Premium (o monetización aún suspendida): nunca acumula ni debe anuncios;
+            // se resetea por si cambió de plan o terminó la bienvenida.
+            if (isPremium() || adsSuspended()) {
                 accumulated = Duration.ZERO
                 pendingInterstitial = false
                 continue
@@ -217,7 +225,7 @@ class AdManager(
      * central de navegación puede invocarlo en cada salida de juego sin condicionar.
      */
     fun onAdBreakpoint() {
-        if (isPremium()) { pendingInterstitial = false; return }
+        if (isPremium() || adsSuspended()) { pendingInterstitial = false; return }
         if (pendingInterstitial && !showingInterstitial) {
             // Marca "en curso" ya para que breakpoints seguidos no re-emitan; se libera
             // en showInterstitialAd() cuando el anuncio se cierra (o falla).
@@ -259,7 +267,7 @@ class AdManager(
      */
     suspend fun showInterstitialAd() {
         try {
-            if (!isPremium()) interstitialAdPresenter?.show()
+            if (!isPremium() && !adsSuspended()) interstitialAdPresenter?.show()
         } finally {
             pendingInterstitial = false
             showingInterstitial = false
@@ -275,6 +283,11 @@ class AdManager(
      *
      *  - **Premium**: concede la recompensa SIN mostrar anuncio ([RewardResult.EARNED]);
      *    forma parte del valor de premium (nunca ve anuncios) y evita el gasto de red.
+     *  - **Monetización suspendida** (bienvenida de primera apertura): también concede
+     *    la recompensa gratis. Devolver "no disponible" dejaría botones que no hacen
+     *    nada —"Tubo extra", "Revivir"— justo en la primera partida del jugador, que es
+     *    peor que regalar una pista; y pedir el anuncio no es opción, porque el
+     *    consentimiento todavía no se ha resuelto.
      *  - **Sin presentador** registrado: [RewardResult.UNAVAILABLE] (no se puede
      *    recompensar sin un anuncio real; quien llama debe tratarlo como "no disponible").
      *  - En el resto de casos delega en el [RewardedAdPresenter] de la plataforma.
@@ -282,7 +295,7 @@ class AdManager(
      * @return el [RewardResult]; solo [RewardResult.EARNED] debe conceder la ventaja.
      */
     suspend fun showRewardedAd(): RewardResult {
-        if (isPremium()) return RewardResult.EARNED
+        if (isPremium() || adsSuspended()) return RewardResult.EARNED
         return rewardedAdPresenter?.show() ?: RewardResult.UNAVAILABLE
     }
 
