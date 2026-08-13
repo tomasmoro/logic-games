@@ -351,6 +351,17 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
       hub. De paso se corrigió el hueco de 2dp (ahora `CardItemGap`, 14dp) entre el
       panel de ranking/"inicia sesión para comparar" y los botones de abajo, que
       quedaban pegados en todos los juegos, no solo en la bienvenida.
+      La misión diaria (`DailyGoalManager`) ya reconoce el "día 1": `OnboardingGate
+      .firstRunDate` guarda la fecha del primer juego de la bienvenida (una sola
+      vez, nunca se pisa); si "hoy" coincide, la misión del día pasa a ser
+      `firstRunMissionGames()` (= `FirstRunGames.sequence`, mismo orden) en vez del
+      sorteo habitual de `dailyMissionGames`. Así, terminar la bienvenida deja el
+      entrenamiento del día ya completo (los 3 juegos que se acaban de jugar quedan
+      marcados en "Tu misión de hoy" de la Home, con la recompensa lista para
+      reclamar) — antes el sorteo casi nunca coincidía con esos tres juegos y el
+      jugador se encontraba con que tenía que jugar tres MÁS justo después de haber
+      jugado tres. Escalable igual que el resto: un cuarto juego en `FirstRunGames
+      .sequence` entra solo, sin tocar `DailyGoalManager` ni `firstRunMissionGames`.
       Queda por decidir: (a) hoy se **avanza al salir** del juego, no al completar un
       nivel — si se quiere exigir partida jugada, el gancho es `FirstRunFlow
       .onGameStarted`; (b) enlazar la bienvenida con el **desafío semanal** cuando

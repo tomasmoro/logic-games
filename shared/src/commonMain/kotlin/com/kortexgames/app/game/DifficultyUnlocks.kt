@@ -4,6 +4,7 @@ import com.kortexgames.app.domain.model.GameProgress
 import com.kortexgames.app.game.defuser.MineDifficulty
 import com.kortexgames.app.game.neon2048.Neon2048Config
 import com.kortexgames.app.game.neonsudoku.SudokuDifficulty
+import com.kortexgames.app.game.quantummerge.QuantumDifficulty
 
 /**
  * # Dificultades que se DESBLOQUEAN jugando
@@ -51,6 +52,21 @@ object DifficultyUnlocks {
     private val NEON_2048_SCORE_GATES = listOf(1_000, 2_000, 3_500, 5_000)
 
     /**
+     * Umbrales de Quantum Merge, uno por escalón (Pequeño, Mediano; Grande no abre nada más).
+     *
+     * A diferencia de Neon Grid 2048, aquí el puntaje **baja** al subir de escalón —esferas más
+     * grandes llenan antes el contenedor, ver KDoc de [com.kortexgames.app.game.GameRankingScopes]—,
+     * así que una tabla creciente como la de 2048 no tendría sentido: el umbral de Mediano es más
+     * alto que el de Pequeño porque exige una partida más larga, no porque Mediano puntúe mejor.
+     * Calibrados simulando el motor con lanzamientos automáticos (mira aleatoria, suelta en cuanto
+     * puede) para conocer el rango real de puntajes por escalón sin adivinar a ciegas: esa
+     * simulación —el peor caso posible, sin ninguna estrategia— ya alcanza varios miles de puntos en
+     * Pequeño, así que un jugador real que agrupe con intención lo supera sin esfuerzo. El objetivo,
+     * como en 2048, es que el primer desbloqueo llegue en las primeras partidas y no a las cincuenta.
+     */
+    private val QUANTUM_MERGE_SCORE_GATES = listOf(3_000, 5_000)
+
+    /**
      * Juego → su puerta de dificultad. Los juegos ausentes ofrecen todo abierto.
      */
     private val gates: Map<String, DifficultyGate> = mapOf(
@@ -69,6 +85,13 @@ object DifficultyUnlocks {
         GameIds.NEON_2048 to DifficultyGate(
             tierNames = Neon2048Config.BOARD_SIZE_OPTIONS.map { "$it×$it" },
             requirement = DifficultyRequirement.MinScore(NEON_2048_SCORE_GATES),
+        ),
+        // Quantum Merge tampoco se gana ni se pierde (corrida ENDLESS hasta desbordar), mismo
+        // criterio que 2048: el puntaje mínimo es lo único que distingue una partida real de
+        // simplemente haber abierto el juego.
+        GameIds.QUANTUM_MERGE to DifficultyGate(
+            tierNames = QuantumDifficulty.entries.map { it.displayName },
+            requirement = DifficultyRequirement.MinScore(QUANTUM_MERGE_SCORE_GATES),
         ),
     )
 

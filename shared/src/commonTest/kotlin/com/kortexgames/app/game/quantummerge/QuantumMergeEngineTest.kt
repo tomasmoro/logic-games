@@ -43,7 +43,7 @@ class QuantumMergeEngineTest {
      * Simular a 60 fps (y no al paso interno de 120 Hz) es a propósito: así se ejercita también el
      * acumulador de sub-pasos, que es donde vive la parte delicada del bucle temporal.
      */
-    private class Sim(difficulty: QuantumDifficulty = QuantumDifficulty.FACIL, seed: Long = 7L) {
+    private class Sim(difficulty: QuantumDifficulty = QuantumDifficulty.PEQUENO, seed: Long = 7L) {
         val engine = QuantumMergeEngine(
             scope = CoroutineScope(Dispatchers.Unconfined),
             audio = FakeAudio,
@@ -185,7 +185,7 @@ class QuantumMergeEngineTest {
 
     @Test
     fun laFusionProduceTiersQueElDispensadorNoPuedeEntregar() {
-        val sim = Sim(difficulty = QuantumDifficulty.FACIL)
+        val sim = Sim(difficulty = QuantumDifficulty.PEQUENO)
         val spawnable = QuantumTier.SPAWN_POOL.take(3).toSet()
 
         // Todo al mismo carril: la torre se fusiona sola hacia arriba en la escala.
@@ -206,7 +206,7 @@ class QuantumMergeEngineTest {
 
     @Test
     fun elContenedorDesbordadoTerminaLaPartida() {
-        val sim = Sim(difficulty = QuantumDifficulty.DIFICIL)
+        val sim = Sim(difficulty = QuantumDifficulty.GRANDE)
 
         // Lanzamientos alternos a izquierda y derecha para que casi nada empareje: es la forma
         // más rápida de llenar el contenedor sin tocar el estado interno del motor.
@@ -240,19 +240,19 @@ class QuantumMergeEngineTest {
 
     @Test
     fun subirLaDificultadAgrandaLasEsferasYBajaElTecho() {
-        val facil = Sim(difficulty = QuantumDifficulty.FACIL)
-        val dificil = Sim(difficulty = QuantumDifficulty.DIFICIL)
+        val pequeno = Sim(difficulty = QuantumDifficulty.PEQUENO)
+        val grande = Sim(difficulty = QuantumDifficulty.GRANDE)
 
-        val radioFacil = facil.state.currentDropSphere!!.tier.radiusFor(QuantumDifficulty.FACIL.radiusScale)
-        val radioDificil = facil.state.currentDropSphere!!.tier.radiusFor(QuantumDifficulty.DIFICIL.radiusScale)
-        assertTrue(radioDificil > radioFacil, "las esferas no crecen con la dificultad")
+        val radioPequeno = pequeno.state.currentDropSphere!!.tier.radiusFor(QuantumDifficulty.PEQUENO.radiusScale)
+        val radioGrande = pequeno.state.currentDropSphere!!.tier.radiusFor(QuantumDifficulty.GRANDE.radiusScale)
+        assertTrue(radioGrande > radioPequeno, "las esferas no crecen con la dificultad")
         assertTrue(
-            dificil.state.difficulty.stackHeight < facil.state.difficulty.stackHeight,
+            grande.state.difficulty.stackHeight < pequeno.state.difficulty.stackHeight,
             "el techo no baja con la dificultad",
         )
         // Invariante que sostiene el juego: la última fusión debe seguir cabiendo incluso en el
         // nivel más duro, o el tier máximo sería inalcanzable por geometría.
-        val mayor = QuantumTier.SINGULARITY.radiusFor(QuantumDifficulty.DIFICIL.radiusScale)
+        val mayor = QuantumTier.SINGULARITY.radiusFor(QuantumDifficulty.GRANDE.radiusScale)
         assertTrue(2f * mayor < QuantumWorld.WIDTH, "dos singularidades no caben lado a lado")
     }
 

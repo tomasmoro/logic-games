@@ -3,6 +3,7 @@ package com.kortexgames.app.game.quantummerge
 import com.kortexgames.app.core.mvi.UiEffect
 import com.kortexgames.app.core.mvi.UiIntent
 import com.kortexgames.app.core.mvi.UiState
+import com.kortexgames.app.domain.model.GameRanking
 import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
 
@@ -39,11 +40,32 @@ import com.kortexgames.app.game.GameStatus
  * @property gameOver datos del resultado final (puntaje, percentil, récord); `null` mientras la
  *   partida no ha terminado. Es estado persistente (no un `Effect`) porque el overlay debe
  *   sobrevivir a las recomposiciones hasta que el jugador lo cierre.
+ * @property unlockedTiers cuántos escalones de [QuantumDifficulty] tiene abiertos el jugador
+ *   (1-based: `1` = solo Pequeño). Cada uno se gana llegando a cierto puntaje en el anterior; el
+ *   estado se **deriva del historial de partidas** —sin columna nueva en la BD—, así que viaja con
+ *   la cuenta al iniciar sesión. Ver [com.kortexgames.app.game.DifficultyUnlocks].
+ * @property justUnlockedDifficulty el escalón que ESTA partida acaba de desbloquear (llegar al
+ *   puntaje mínimo en [QuantumMergeState.difficulty] cumplía el requisito y no había ninguno por
+ *   encima ya abierto), o `null` si no desbloqueó ninguno. Se fija junto a [gameOver] al terminar
+ *   la partida y el diálogo de fin lo usa para ofrecer "Jugar en …" como CTA. Mismo patrón que
+ *   Neon Defuser, Neon Sudoku Matrix y Neon Grid 2048.
+ * @property rankingPreview comparativa mundial del escalón elegido, para pintar en la antesala el
+ *   mismo panel que el diálogo de fin de partida ANTES de jugar (ver
+ *   [com.kortexgames.app.domain.repository.ProgressRepository.previewRanking]). `null` mientras se
+ *   resuelve ([rankingPreviewLoading]) o si no hay comparativa que mostrar (invitado, sin red, o
+ *   sin ninguna marca todavía en ese escalón).
+ * @property rankingPreviewLoading `true` mientras se pide [rankingPreview] tras entrar en la
+ *   antesala o cambiar de escalón. Arranca en `true` (no en `false`) para no enseñar el aviso de
+ *   "sin comparativa" un instante antes de que llegue.
  */
 data class QuantumMergeUiState(
     val game: QuantumMergeState = QuantumMergeState(),
     val status: GameStatus = GameStatus.IDLE,
     val gameOver: GameOverInfo? = null,
+    val unlockedTiers: Int = 1,
+    val justUnlockedDifficulty: QuantumDifficulty? = null,
+    val rankingPreview: GameRanking? = null,
+    val rankingPreviewLoading: Boolean = true,
 ) : UiState
 
 /**
@@ -97,6 +119,17 @@ sealed interface QuantumMergeIntent : UiIntent {
      * construida y el récord de la tabla en la que se está compitiendo.
      */
     data class SelectDifficulty(val difficulty: QuantumDifficulty) : QuantumMergeIntent
+
+    /**
+     * Arranca una partida nueva directamente en [difficulty], saltándose la antesala. Lo dispara
+     * el CTA "JUGAR EN …" del diálogo de fin de partida cuando esa corrida acaba de desbloquear el
+     * escalón siguiente ([QuantumMergeUiState.justUnlockedDifficulty]): a diferencia de
+     * [SelectDifficulty] (solo cambia la preferencia en IDLE) esto SÍ arranca a jugar, y a
+     * diferencia de [RestartGame] (repite el escalón actual) usa el que se le indique. El
+     * ViewModel revalida igualmente que esté desbloqueado antes de arrancar — el intent es público
+     * y no debe fiarse de que la UI ya lo comprobó.
+     */
+    data class PlayDifficulty(val difficulty: QuantumDifficulty) : QuantumMergeIntent
 
     /** Arranca la partida desde la antesala (intro): botón "Comenzar". */
     data object Start : QuantumMergeIntent

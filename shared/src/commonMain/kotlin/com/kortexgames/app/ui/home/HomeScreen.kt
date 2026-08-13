@@ -79,7 +79,8 @@ import kotlin.math.roundToInt
  * entrenamiento ([TrainingCard]: racha + semana + progreso de hoy + misión, con el CTA
  * de jugar), el juego estrella del jugador y una fila de categorías con iconos neón.
  *
- * @param onQuickPlay abre una partida rápida (quick play).
+ * @param onQuickPlay abre una partida rápida cuando no hay ningún juego pendiente de la
+ *   misión de hoy al que mandar al jugador (ver el CTA de [TrainingCard]).
  * @param onSeeGames lleva al catálogo completo.
  * @param onOpenGame abre un juego concreto por su ruta de navegación.
  * @param onOpenAuth abre el login (mostrado como CTA solo a invitados).
@@ -148,7 +149,16 @@ fun HomeScreen(
                     goal = dailyGoal,
                     streakDays = streak,
                     week = week,
-                    onPlay = onQuickPlay,
+                    // El botón de jugar de la cabecera manda a uno de los juegos que
+                    // faltan de la misión de hoy (no a un juego fijo): así el CTA
+                    // principal empuja directamente a completar el entrenamiento del
+                    // día. Solo cae a la partida rápida genérica si, por lo que sea, no
+                    // queda ningún pendiente con ruta jugable.
+                    onPlay = {
+                        val pendingGame = dailyGoal.mission.firstOrNull { !it.isDone }?.game
+                        val pendingRoute = pendingGame?.let { Routes.gameRoute(it.id) }
+                        if (pendingRoute != null) onOpenGame(pendingRoute) else onQuickPlay()
+                    },
                     onOpenGame = { game ->
                         Routes.gameRoute(game.id)?.let(onOpenGame) ?: onSeeGames()
                     },
@@ -302,7 +312,8 @@ private val TrainingAccent = LogicColors.StreakOrange
  * @param goal estado del objetivo (progreso + misión del día).
  * @param streakDays días consecutivos entrenando ([calculateStreakDays]).
  * @param week los 7 días de la semana en curso ([weeklyTrainingDays]).
- * @param onPlay abre una partida rápida (botón circular).
+ * @param onPlay botón circular de la cabecera: abre uno de los juegos que faltan de la
+ *   misión de hoy (con partida rápida genérica como último recurso, ver [HomeScreen]).
  * @param onOpenGame abre un juego concreto de la misión al tocar su celda.
  */
 @Composable

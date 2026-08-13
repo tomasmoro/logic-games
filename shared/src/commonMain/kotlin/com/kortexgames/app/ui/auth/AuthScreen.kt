@@ -128,21 +128,6 @@ fun AuthScreen(
             .fillMaxSize()
             .background(authBackgroundBrush()),
     ) {
-        // Flecha de volver: solo cuando NO es la puerta de primera apertura (en
-        // onboarding no hay "atrás", la decisión es obligatoria).
-        if (!isOnboarding) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier.padding(8.dp).size(48.dp),
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = "Volver",
-                    tint = LogicColors.OnDark,
-                )
-            }
-        }
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -171,6 +156,26 @@ fun AuthScreen(
                     state = state,
                     isOnboarding = isOnboarding,
                     onIntent = vm::onIntent,
+                )
+            }
+        }
+
+        // Flecha de volver: solo cuando NO es la puerta de primera apertura (en
+        // onboarding no hay "atrás", la decisión es obligatoria). Se declara
+        // DESPUÉS del Column a propósito: aunque su contenido se vea centrado,
+        // el Column ocupa fillMaxSize() y lleva verticalScroll (que intercepta
+        // el toque en toda su superficie, incluida la zona "vacía" de arriba);
+        // si el botón fuera el primer hijo del Box quedaría por debajo en el
+        // z-order y el scroll se comería el tap antes de llegar al IconButton.
+        if (!isOnboarding) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.padding(8.dp).size(48.dp),
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Rounded.ArrowBack,
+                    contentDescription = "Volver",
+                    tint = LogicColors.OnDark,
                 )
             }
         }

@@ -7,9 +7,14 @@ import com.kortexgames.app.core.audio.SoundEffect
 import com.kortexgames.app.core.mvi.MviViewModel
 import com.kortexgames.app.domain.model.GameResult
 import com.kortexgames.app.domain.repository.ProgressRepository
+import com.kortexgames.app.game.DifficultyAttempt
+import com.kortexgames.app.game.DifficultyUnlocks
+import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.toGameOverInfo
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
 /**
@@ -37,7 +42,7 @@ import kotlinx.coroutines.launch
 class QuantumMergeViewModel(
     private val progress: ProgressRepository,
     private val audio: AudioAndHapticManager,
-    difficulty: QuantumDifficulty = QuantumDifficulty.FACIL,
+    difficulty: QuantumDifficulty = QuantumDifficulty.PEQUENO,
 ) : MviViewModel<QuantumMergeIntent, QuantumMergeUiState, QuantumMergeEffect>(
     QuantumMergeUiState(),
 ) {
@@ -45,8 +50,55 @@ class QuantumMergeViewModel(
     private var engine: QuantumMergeEngine = createEngine(difficulty)
     private var bindings: Job = bind(engine)
 
+    /** `true` en cuanto el jugador toca una ficha del selector de la antesala; a partir de ahí el
+     *  auto-select del `init` deja de tocar el escalón elegido (ver KDoc de la suscripción). */
+    private var userSelectedDifficulty = false
+
+    /** Pedido en vuelo de [refreshRankingPreview]; se cancela al lanzar uno nuevo para que un
+     *  cambio rápido de escalón no deje que una respuesta vieja pise a la actual (condición de
+     *  carrera de red). */
+    private var rankingPreviewJob: Job? = null
+
     // No arrancamos en `init`: el juego queda en IDLE y muestra la antesala (intro). La partida
     // empieza al pulsar "Comenzar" (intent [QuantumMergeIntent.Start]).
+
+    init {
+        // Escalones desbloqueados: se derivan del historial (un puntaje mínimo abre el siguiente,
+        // ver [DifficultyUnlocks]). Se OBSERVA en vez de leerse una vez para que el desbloqueo
+        // aparezca solo al volver a la antesala tras una buena corrida —la partida recién guardada
+        // entra por este mismo flow— y también cuando el historial de la nube baja al iniciar sesión.
+        progress.observeHistory(GameIds.QUANTUM_MERGE)
+            .onEach { history ->
+                val unlocked = DifficultyUnlocks.unlockedTiers(GameIds.QUANTUM_MERGE, history)
+                setState { copy(unlockedTiers = unlocked) }
+                // Por defecto se preselecciona el escalón MÁS GRANDE ya desbloqueado (mismo
+                // criterio que Neon Defuser): a alguien que vuelve a jugar le importa más "cómo le
+                // va en lo grande" que en Pequeño, que es donde arrancaba antes. Solo en la
+                // antesala (IDLE): a mitad de partida no hay a qué reengancharla.
+                if (!userSelectedDifficulty && currentState.status == GameStatus.IDLE) {
+                    val hardest = QuantumDifficulty.entries[unlocked - 1]
+                    if (hardest != currentState.game.difficulty) rebuildEngine(hardest)
+                    refreshRankingPreview(unlocked)
+                }
+            }
+            .launchIn(viewModelScope)
+    }
+
+    /**
+     * Pide la comparativa mundial del escalón [difficultyLevel] (1-based) para la antesala —mismo
+     * panel que el diálogo de fin de partida— pero sin haber jugado esta partida (ver
+     * [ProgressRepository.previewRanking]). Cancela cualquier pedido anterior en vuelo (ver
+     * [rankingPreviewJob]) y limpia el estado a "cargando" de inmediato para que la antesala nunca
+     * enseñe la comparativa del escalón que se acaba de abandonar.
+     */
+    private fun refreshRankingPreview(difficultyLevel: Int) {
+        rankingPreviewJob?.cancel()
+        setState { copy(rankingPreview = null, rankingPreviewLoading = true) }
+        rankingPreviewJob = viewModelScope.launch {
+            val ranking = progress.previewRanking(GameIds.QUANTUM_MERGE, difficultyLevel)
+            setState { copy(rankingPreview = ranking, rankingPreviewLoading = false) }
+        }
+    }
 
     override fun onIntent(intent: QuantumMergeIntent) {
         when (intent) {
@@ -56,6 +108,7 @@ class QuantumMergeViewModel(
             QuantumMergeIntent.Pause -> engine.pause()
             QuantumMergeIntent.Resume -> engine.resume()
             is QuantumMergeIntent.SelectDifficulty -> onSelectDifficulty(intent.difficulty)
+            is QuantumMergeIntent.PlayDifficulty -> onPlayDifficulty(intent.difficulty)
             QuantumMergeIntent.Start,
             QuantumMergeIntent.RestartGame -> {
                 setState { copy(gameOver = null) }
@@ -72,14 +125,41 @@ class QuantumMergeViewModel(
      * forma legítima de mutarla. Reemplazar el motor entero es más honesto que abrir esa puerta, y
      * es barato: solo ocurre en la antesala, con el tablero vacío.
      *
-     * Las suscripciones viejas se cancelan antes de crear las nuevas; si no, el motor descartado
-     * seguiría empujando su estado al `UiState` y la pantalla parpadearía entre dos partidas.
+     * El candado se revalida aquí y no solo en la UI porque el desbloqueo es una regla del juego,
+     * no una decoración: la pantalla ya no deja pulsar una ficha cerrada, pero el intent es público
+     * y esta es su única fuente de verdad.
      */
     private fun onSelectDifficulty(difficulty: QuantumDifficulty) {
         if (difficulty == currentState.game.difficulty) return
         // Fuera de la antesala el nivel es inmutable (ver [QuantumMergeIntent.SelectDifficulty]).
         if (currentState.status != GameStatus.IDLE) return
+        if (difficulty.ordinal + 1 > currentState.unlockedTiers) return
 
+        userSelectedDifficulty = true
+        rebuildEngine(difficulty)
+        refreshRankingPreview(difficulty.ordinal + 1)
+    }
+
+    /**
+     * Arranca directamente una partida en [difficulty] ([QuantumMergeIntent.PlayDifficulty]),
+     * saltándose la antesala. A diferencia de [onSelectDifficulty] no exige [GameStatus.IDLE] —se
+     * dispara desde el diálogo de fin de partida, en [GameStatus.FINISHED]— pero sí revalida el
+     * candado: el intent es público y esta es su única fuente de verdad.
+     */
+    private fun onPlayDifficulty(difficulty: QuantumDifficulty) {
+        if (difficulty.ordinal + 1 > currentState.unlockedTiers) return
+        if (difficulty != currentState.game.difficulty) rebuildEngine(difficulty)
+        setState { copy(gameOver = null) }
+        engine.start()
+    }
+
+    /**
+     * Descarta el motor actual y enchufa uno nuevo en [difficulty].
+     *
+     * Las suscripciones viejas se cancelan antes de crear las nuevas; si no, el motor descartado
+     * seguiría empujando su estado al `UiState` y la pantalla parpadearía entre dos partidas.
+     */
+    private fun rebuildEngine(difficulty: QuantumDifficulty) {
         bindings.cancel()
         engine = createEngine(difficulty)
         bindings = bind(engine)
@@ -146,11 +226,27 @@ class QuantumMergeViewModel(
      * la red responda (ver KDoc de `ProgressRepository.saveResult`).
      */
     private fun onFinished(result: GameResult) {
+        // ¿Esta corrida abre el escalón siguiente? Se evalúa AQUÍ, contra el resultado recién
+        // calculado y `unlockedTiers` tal como estaba ANTES de guardar —no hace falta esperar a
+        // que `progress.saveResult` termine y el historial reactivo se actualice (ver KDoc de
+        // `DifficultyUnlocks.justUnlockedLabel`).
+        val unlockedLabel = DifficultyUnlocks.justUnlockedLabel(
+            GameIds.QUANTUM_MERGE,
+            unlockedBefore = currentState.unlockedTiers,
+            attempt = DifficultyAttempt(result.difficultyLevel, result.score),
+        )
+        val unlockedDifficulty = unlockedLabel?.let { QuantumDifficulty.entries.getOrNull(result.difficultyLevel) }
+
         viewModelScope.launch {
             audio.playSound(SoundEffect.LEVEL_UP)
             audio.hapticFeedback(HapticFeedback.SUCCESS)
             progress.saveResult(result).collect { outcome ->
-                setState { copy(gameOver = outcome.toGameOverInfo(result)) }
+                setState {
+                    copy(
+                        gameOver = outcome.toGameOverInfo(result),
+                        justUnlockedDifficulty = unlockedDifficulty,
+                    )
+                }
             }
         }
     }

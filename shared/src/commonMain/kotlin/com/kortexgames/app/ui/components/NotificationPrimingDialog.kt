@@ -127,7 +127,8 @@ fun NotificationPrimingDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .bounceClick(onClick = onDecline)
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = 8.dp)
+                    .align(Alignment.CenterHorizontally),
             )
         }
     }

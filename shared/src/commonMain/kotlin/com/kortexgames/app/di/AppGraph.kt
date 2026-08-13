@@ -221,6 +221,11 @@ class AppGraph(context: PlatformContext) {
         progress = progressRepository,
         store = DailyGoalStore(preferences),
         scope = appScope,
+        // El día en que se jugó el primer juego de la bienvenida: si coincide con
+        // "hoy", la misión del día es la propia bienvenida (ver KDoc de
+        // DailyGoalManager y de OnboardingGate.firstRunDate) para que terminarla
+        // no obligue a jugar tres juegos más el mismo día.
+        firstRunDate = onboardingGate.firstRunDate,
     )
 
     // --- Notificaciones (recordatorios locales de retención) ----------------

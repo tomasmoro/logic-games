@@ -145,7 +145,7 @@ class QuantumMergeEngine(
      */
     private val spawnPool: List<QuantumTier> =
         // Se deriva de [level] y no del `difficulty` crudo para que un valor fuera de rango no
-        // produzca una mezcla imposible (geometría de Fácil con la variedad del nivel más alto).
+        // produzca una mezcla imposible (geometría de Pequeño con la variedad del nivel más alto).
         QuantumTier.SPAWN_POOL.take((3 + level.ordinal).coerceIn(3, QuantumTier.SPAWN_POOL.size))
 
     override fun onStart() {
@@ -934,22 +934,32 @@ class QuantumMergeEngine(
         const val GRAVITY = 320f
 
         /** Rozamiento con el aire (fracción de velocidad perdida por segundo). Muy suave. */
-        const val LINEAR_DAMPING = 0.12f
+        const val LINEAR_DAMPING = 0.05f
 
         /**
-         * Restitución entre esferas. Deliberadamente baja: son bolas de energía densas que se
-         * asientan, no pelotas de goma. Un valor alto haría la pila caótica e imposible de planear.
+         * Restitución entre esferas. Un pelín por encima de lo puramente "denso": el objetivo es que
+         * una esfera guarde algo de su energía de impacto en vez de morir en el contacto —la firma
+         * de un cuerpo blando/gelatinoso—, sin llegar a rebotar como una pelota de goma (seguiría
+         * siendo caótico e imposible de planear).
          */
-        const val RESTITUTION = 0.2f
+        const val RESTITUTION = 0.3f
 
         /** Restitución contra paredes y suelo, un pelín mayor para que el contenedor "suene" duro. */
-        const val WALL_RESTITUTION = 0.25f
+        const val WALL_RESTITUTION = 0.34f
 
-        /** Coeficiente de Coulomb entre esferas (acota el impulso tangencial). */
-        const val FRICTION = 0.35f
+        /**
+         * Coeficiente de Coulomb entre esferas (acota el impulso tangencial). Bajo a propósito: son
+         * esferas "resbaladizas" que se deslizan unas sobre otras al chocar de refilón en vez de
+         * frenarse en seco, aunque siguen asentándose porque el suelo aporta su propia fricción.
+         */
+        const val FRICTION = 0.12f
 
-        /** Frenado horizontal al tocar el suelo; compensa que las esferas no ruedan. */
-        const val FLOOR_FRICTION = 0.18f
+        /**
+         * Frenado horizontal al tocar el suelo; compensa que las esferas no ruedan. Bajo, a juego con
+         * [FRICTION]: si fuera alto anularía la sensación de deslizamiento apenas la esfera tocara la
+         * base, y la pila necesita algo de patinaje para acomodarse en vez de clavarse donde cae.
+         */
+        const val FLOOR_FRICTION = 0.06f
 
         /** Por debajo de esta velocidad de impacto no hay rebote: el contacto se considera reposo. */
         const val REST_SPEED_THRESHOLD = 14f

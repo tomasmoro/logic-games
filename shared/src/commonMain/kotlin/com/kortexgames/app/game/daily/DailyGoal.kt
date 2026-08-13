@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.kortexgames.app.domain.repository.ProgressRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -110,17 +111,28 @@ class DailyGoalStore(private val dataStore: DataStore<Preferences>) {
  * funciona offline) con la fecha de reclamación para emitir un [DailyGoalState]
  * reactivo: cada partida guardada actualiza el progreso automáticamente.
  *
+ * @param firstRunDate fecha del primer juego de la bienvenida jugado
+ *   ([com.kortexgames.app.data.settings.OnboardingGate.firstRunDate]), o un flujo
+ *   fijo en `null` si no aplica (juegos de dominio que no conocen la bienvenida,
+ *   p. ej. tests). Cuando "hoy" coincide, la misión del día es
+ *   [firstRunMissionGames] en vez del sorteo habitual — ver el porqué en su KDoc.
  * @param target juegos de la misión necesarios para la recompensa (3 por defecto).
  */
 class DailyGoalManager(
     progress: ProgressRepository,
     private val store: DailyGoalStore,
     private val scope: CoroutineScope,
+    firstRunDate: StateFlow<String?> = MutableStateFlow(null),
     private val clock: Clock = Clock.System,
     private val target: Int = DailyGoalState.DEFAULT_TARGET,
 ) {
     val state: StateFlow<DailyGoalState> =
-        combine(progress.observeHistory(null), store.claimedDate, store.playedToday) { history, claimedDate, playedToday ->
+        combine(
+            progress.observeHistory(null),
+            store.claimedDate,
+            store.playedToday,
+            firstRunDate,
+        ) { history, claimedDate, playedToday, firstRunDateValue ->
             val tz = TimeZone.currentSystemDefault()
             val today = clock.todayIn(tz)
             val dayStart = today.atStartOfDayIn(tz)
@@ -141,8 +153,15 @@ class DailyGoalManager(
             val startedTodayIds = if (playedToday.date == today.toString()) playedToday.gameIds else emptySet()
             val playedTodayIds = finishedTodayIds + startedTodayIds
 
-            // Misión del día (fija durante el día, ver [dailyMissionGames]) con su estado.
-            val mission = dailyMissionGames(today.toEpochDays()).map { game ->
+            // Misión del día: la de la bienvenida si HOY es el día 1 (ver KDoc de
+            // [firstRunMissionGames]); si no, el sorteo habitual (fijo durante el día,
+            // ver [dailyMissionGames]).
+            val missionGames = if (firstRunDateValue == today.toString()) {
+                firstRunMissionGames().ifEmpty { dailyMissionGames(today.toEpochDays()) }
+            } else {
+                dailyMissionGames(today.toEpochDays())
+            }
+            val mission = missionGames.map { game ->
                 DailyMissionGame(game = game, isDone = game.id in playedTodayIds)
             }
             val completed = mission.count { it.isDone }

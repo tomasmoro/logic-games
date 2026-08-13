@@ -1,5 +1,6 @@
 package com.kortexgames.app.game.daily
 
+import com.kortexgames.app.game.FirstRunGames
 import com.kortexgames.app.game.GameCatalog
 import com.kortexgames.app.game.GameInfo
 import kotlin.random.Random
@@ -47,3 +48,23 @@ fun dailyMissionGames(
     if (playable.size <= count) return playable
     return playable.shuffled(Random(epochDay)).take(count)
 }
+
+/**
+ * La misión del **día 1**: en vez del sorteo de [dailyMissionGames], son literalmente
+ * [FirstRunGames.sequence] —los mismos juegos de la bienvenida—, en el mismo orden.
+ *
+ * El porqué: sin esto, "hoy" se sortea igual que cualquier otro día y casi con toda
+ * seguridad NO coincide con los tres juegos que el jugador acaba de probar en la
+ * bienvenida (de 17 juegos jugables, la probabilidad de que el sorteo saque justo
+ * esos tres es prácticamente nula). El resultado sería pedirle jugar tres juegos
+ * MÁS justo después de haber jugado tres — la peor primera impresión posible. Al
+ * reutilizar [FirstRunGames.sequence] como fuente, la bienvenida y la misión del
+ * día 1 son **la misma lista**: un juego nuevo que se añada a la bienvenida entra
+ * aquí solo, sin tocar esta función.
+ *
+ * @param games catálogo del que resolver los ids a [GameInfo] (por defecto, el
+ *   catálogo completo). Si algún id de [FirstRunGames.sequence] no aparece en
+ *   [games] (no debería pasar: es el mismo catálogo), simplemente se omite.
+ */
+fun firstRunMissionGames(games: List<GameInfo> = GameCatalog.games): List<GameInfo> =
+    FirstRunGames.sequence.mapNotNull { id -> games.firstOrNull { it.id == id } }

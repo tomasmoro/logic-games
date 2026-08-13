@@ -100,6 +100,13 @@ object QuantumWorld {
  * radios, el tiempo de caída es idéntico en los tres niveles y lo único que cambia es el espacio,
  * que es lo que se quería.
  *
+ * Los tres escalones se nombran por el **tamaño de esfera**, no por un adjetivo de dificultad
+ * abstracto ("Fácil"/"Difícil"): en este juego la dificultad ES geometría —esferas más grandes
+ * llenan antes el contenedor—, así que el tamaño ya comunica el reto sin necesidad de traducirlo.
+ * El orden (pequeño → grande) coincide exactamente con [radiusScale] creciente, así que renombrar
+ * no altera el `ordinal` ni, por tanto, el `difficultyLevel` 1-based que ya viaja en las partidas
+ * guardadas ([GameResult.difficultyLevel][com.kortexgames.app.domain.model.GameResult.difficultyLevel]).
+ *
  * @property displayName rótulo visible (también lo usa `GameRankingScopes` para titular la tabla).
  * @property radiusScale factor que multiplica el [QuantumTier.baseRadius] de toda la escala.
  * @property dangerLineY altura de la **línea de peligro**: el borde superior "real" del juego. Una
@@ -114,19 +121,19 @@ enum class QuantumDifficulty(
     val dangerLineY: Float,
 ) {
     /** Tamaño de referencia de la escala de tiers y el techo más alto. */
-    FACIL("Fácil", radiusScale = 1.0f, dangerLineY = 28f),
+    PEQUENO("Pequeño", radiusScale = 1.0f, dangerLineY = 28f),
 
-    MEDIO("Medio", radiusScale = 1.1f, dangerLineY = 34f),
+    MEDIANO("Mediano", radiusScale = 1.1f, dangerLineY = 34f),
 
     /**
-     * Esferas un 20 % mayores que en [FACIL] y 12 unidades menos de altura útil.
+     * Esferas un 20 % mayores que en [PEQUENO] y 12 unidades menos de altura útil.
      *
      * Consecuencia asumida: con este factor, dos [QuantumTier.SINGULARITY] ocupan 95,5 de los 100
      * de ancho del contenedor. La última fusión sigue siendo **geométricamente posible**, pero
      * exige tenerlas casi pegadas a las paredes; en la práctica es una hazaña reservada a este
      * nivel, no una ruta habitual.
      */
-    DIFICIL("Difícil", radiusScale = 1.2f, dangerLineY = 40f);
+    GRANDE("Grande", radiusScale = 1.2f, dangerLineY = 40f);
 
     /**
      * Altura a la que el dispensador sostiene la esfera antes de soltarla.
@@ -143,10 +150,10 @@ enum class QuantumDifficulty(
     companion object {
         /**
          * Nivel a partir del `difficultyLevel` 1-based de `GameResult` (la convención del resto de
-         * juegos: `ordinal + 1`). Cae en [FACIL] ante un valor fuera de rango —partidas antiguas o
-         * datos corruptos— en vez de reventar.
+         * juegos: `ordinal + 1`). Cae en [PEQUENO] ante un valor fuera de rango —partidas antiguas
+         * o datos corruptos— en vez de reventar.
          */
-        fun fromLevel(level: Int): QuantumDifficulty = entries.getOrElse(level - 1) { FACIL }
+        fun fromLevel(level: Int): QuantumDifficulty = entries.getOrElse(level - 1) { PEQUENO }
     }
 }
 
@@ -161,7 +168,7 @@ enum class QuantumDifficulty(
  * inicial y la esfera mayor no cabría en el contenedor. Por eso la razón se **relaja** en los
  * últimos tiers (de ~1,24 a ~1,19): así los tiers pequeños —los que el jugador ve constantemente—
  * se distinguen bien, y aun así **dos [SINGULARITY] caben lado a lado** (2 × 39.8 = 79.6 < 100 en
- * [QuantumDifficulty.FACIL]), que es el requisito para que la última fusión sea físicamente
+ * [QuantumDifficulty.PEQUENO]), que es el requisito para que la última fusión sea físicamente
  * alcanzable y no un imposible.
  *
  * ## Sobre la escala global
@@ -495,5 +502,5 @@ data class QuantumMergeState(
     val drops: Int = 0,
     val bestTier: QuantumTier = QuantumTier.QUARK,
     val dangerProgress: Float = 0f,
-    val difficulty: QuantumDifficulty = QuantumDifficulty.FACIL,
+    val difficulty: QuantumDifficulty = QuantumDifficulty.PEQUENO,
 )

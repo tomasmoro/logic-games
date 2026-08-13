@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import com.kortexgames.app.game.FirstRunGames
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
@@ -12,6 +13,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.todayIn
+import kotlin.time.Clock
 
 /**
  * Recuerda en qué punto de la **primera apertura** está el jugador. Son dos etapas
@@ -36,9 +40,11 @@ import kotlinx.coroutines.flow.stateIn
 class OnboardingGate(
     private val dataStore: DataStore<Preferences>,
     scope: CoroutineScope,
+    private val clock: Clock = Clock.System,
 ) {
     private val decidedKey = booleanPreferencesKey("has_completed_auth_gate")
     private val introStepKey = intPreferencesKey("first_run_intro_games_played")
+    private val firstRunDateKey = stringPreferencesKey("first_run_date")
 
     /**
      * `null` mientras DataStore aún no ha emitido (arranque): la UI muestra un
@@ -76,16 +82,40 @@ class OnboardingGate(
         }.stateIn(scope, SharingStarted.Eagerly, false)
 
     /**
+     * Fecha (ISO `yyyy-MM-dd`, huso del dispositivo) del **primer** juego de
+     * bienvenida jugado, o `null` si aún no jugó ninguno. Se fija una única vez —es
+     * "el día 1"— y nunca se sobrescribe.
+     *
+     * La consume [com.kortexgames.app.game.daily.DailyGoalManager]: cuando "hoy"
+     * coincide con esta fecha, la misión del día pasa a ser directamente
+     * [FirstRunGames.sequence] en vez del sorteo habitual
+     * ([com.kortexgames.app.game.daily.dailyMissionGames]). Así, terminar la
+     * bienvenida deja el entrenamiento del día ya completo: nadie debería jugar tres
+     * juegos y que le pidan otros tres distintos acto seguido (petición del usuario).
+     */
+    val firstRunDate: StateFlow<String?> =
+        dataStore.data
+            .map { it[firstRunDateKey] }
+            .stateIn(scope, SharingStarted.Eagerly, null)
+
+    /**
      * Marca que el juego de bienvenida número [step] (0-based) quedó atrás.
      *
      * Guarda el **máximo** y no `step + 1` a secas para que una llamada tardía o
      * repetida (una recomposición, una vuelta atrás) no pueda hacer retroceder la
-     * bienvenida a un juego que el jugador ya vio.
+     * bienvenida a un juego que el jugador ya vio. De paso fija [firstRunDate] la
+     * primera vez que se llama (nunca después): es el único punto de la bienvenida
+     * por el que pasa cada partida despachada, así que es el sitio natural para
+     * anotar "el día 1" sin depender de un segundo `markX` que alguien podría
+     * olvidar cablear.
      */
     suspend fun markIntroGamePlayed(step: Int) {
         dataStore.edit { prefs ->
             val current = prefs[introStepKey] ?: 0
             prefs[introStepKey] = maxOf(current, step + 1).coerceAtMost(FirstRunGames.size)
+            if (prefs[firstRunDateKey] == null) {
+                prefs[firstRunDateKey] = clock.todayIn(TimeZone.currentSystemDefault()).toString()
+            }
         }
     }
 

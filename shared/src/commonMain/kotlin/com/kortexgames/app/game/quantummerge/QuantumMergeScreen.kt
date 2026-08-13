@@ -9,10 +9,8 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -25,7 +23,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BubbleChart
 import androidx.compose.material3.MaterialTheme
@@ -37,7 +34,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -47,6 +43,8 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
@@ -58,14 +56,22 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.di.AppGraph
+import com.kortexgames.app.game.DifficultyUnlocks
 import com.kortexgames.app.game.GameHelpContent
 import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameStatus
+import com.kortexgames.app.ui.components.DifficultyGateSelector
+import com.kortexgames.app.ui.components.DifficultyOption
 import com.kortexgames.app.ui.components.GameIntroScreen
 import com.kortexgames.app.ui.components.GameOverOverlay
 import com.kortexgames.app.ui.components.GamePauseControls
+import com.kortexgames.app.ui.components.RankingPreviewUnavailable
 import com.kortexgames.app.ui.components.SpaceBackdrop
-import com.kortexgames.app.ui.components.bounceClick
+import com.kortexgames.app.ui.components.WorldRankingLoading
+import com.kortexgames.app.ui.components.WorldRankingPreviewPanel
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.hypot
 import kotlin.math.min
 
 /**
@@ -135,11 +141,30 @@ fun QuantumMergeScreen(graph: AppGraph, onExit: () -> Unit) {
             // superpuesto por fuera: overlayarlo lo dejaría por encima de la hoja de ayuda, que es
             // la última capa de la propia intro, y taparía el diálogo de "¿Cómo se juega?".
             configContent = {
-                DifficultySelector(
-                    selected = game.difficulty,
-                    onSelect = { vm.onIntent(QuantumMergeIntent.SelectDifficulty(it)) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    DifficultyGateSelector(
+                        title = "TAMAÑO",
+                        options = DIFFICULTY_OPTIONS_UI,
+                        selectedIndex = game.difficulty.ordinal,
+                        unlockedTiers = state.unlockedTiers,
+                        onSelect = { index ->
+                            vm.onIntent(QuantumMergeIntent.SelectDifficulty(QuantumDifficulty.entries[index]))
+                        },
+                        accent = CategoryPalette.SpatialVision,
+                        hint = DifficultyUnlocks.nextUnlockHint(GameIds.QUANTUM_MERGE, state.unlockedTiers),
+                        equalWidth = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    // Comparativa mundial del escalón elegido, ANTES de jugar (mismo panel que el
+                    // diálogo de fin de partida): pedido explícito para que la antesala también
+                    // responda "¿cómo me va ahí?".
+                    val preview = state.rankingPreview
+                    when {
+                        state.rankingPreviewLoading -> WorldRankingLoading()
+                        preview != null -> WorldRankingPreviewPanel(ranking = preview)
+                        else -> RankingPreviewUnavailable(difficultyLabel = game.difficulty.displayName)
+                    }
+                }
             },
         )
         return
@@ -263,6 +288,8 @@ fun QuantumMergeScreen(graph: AppGraph, onExit: () -> Unit) {
                                 radius = sphere.radius * scale,
                                 color = sphere.tier.accent.color(),
                                 glowPulse = glowPulse,
+                                vx = sphere.vx,
+                                vy = sphere.vy,
                             )
                         }
 
@@ -296,6 +323,10 @@ fun QuantumMergeScreen(graph: AppGraph, onExit: () -> Unit) {
                 audio = graph.audio,
                 onPlayAgain = { vm.onIntent(QuantumMergeIntent.RestartGame) },
                 onExit = onExit,
+                unlockedDifficultyLabel = state.justUnlockedDifficulty?.displayName,
+                onPlayUnlockedDifficulty = state.justUnlockedDifficulty?.let { difficulty ->
+                    { vm.onIntent(QuantumMergeIntent.PlayDifficulty(difficulty)) }
+                },
             )
         }
 
@@ -315,107 +346,21 @@ fun QuantumMergeScreen(graph: AppGraph, onExit: () -> Unit) {
 }
 
 /**
- * Selector de nivel de la antesala: los tres [QuantumDifficulty] como fichas de igual ancho.
- *
- * Cada ficha enseña **las dos consecuencias reales** de elegirla —cuánto crecen las esferas y
- * cuánta altura de apilado queda— en vez de un adjetivo suelto. En un juego donde la dificultad es
- * geometría, "Difícil" no dice nada; "+20 % · 92 de alto" sí, y el jugador puede anticipar en qué
- * se está metiendo antes de gastar una partida.
+ * Opciones del [DifficultyGateSelector] de la antesala: los tres [QuantumDifficulty], con **las
+ * dos consecuencias reales** de elegir cada uno —cuánto crecen las esferas y cuánta altura de
+ * apilado queda— en vez de fiarlo todo al nombre. En un juego donde la dificultad es geometría,
+ * "Grande" ya dice bastante, pero "+20 % · 92 de alto" es lo que de verdad permite anticipar en
+ * qué se está metiendo el jugador antes de gastar una partida.
  */
-@Composable
-private fun DifficultySelector(
-    selected: QuantumDifficulty,
-    onSelect: (QuantumDifficulty) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier
-            .background(LogicColors.SurfaceDark.copy(alpha = 0.92f), RoundedCornerShape(20.dp))
-            .border(
-                BorderStroke(1.dp, LogicColors.SurfaceVariantDark),
-                RoundedCornerShape(20.dp),
-            )
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = "DIFICULTAD",
-            style = MaterialTheme.typography.labelLarge,
-            color = LogicColors.OnDarkMuted,
-            fontWeight = FontWeight.Bold,
-        )
-        // `weight(1f)` por ficha: todas ocupan el mismo ancho exacto en vez de ajustarse a su
-        // contenido, así los rótulos más largos no descuadran la fila.
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            QuantumDifficulty.entries.forEach { difficulty ->
-                DifficultyChip(
-                    difficulty = difficulty,
-                    selected = difficulty == selected,
-                    onClick = { onSelect(difficulty) },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-    }
-}
-
-/**
- * Una ficha del [DifficultySelector], resaltada en acento cuando está elegida.
- *
- * El `bounceClick` va **antes** de `clip`/`background`/`border` en la cadena de modificadores, como
- * en `AnimatedGameButton`: si el escalado quedara detrás de esos modificadores de dibujo, su capa
- * los dejaría fuera y el borde podría quedarse pintado con el valor viejo al cambiar la selección.
- */
-@Composable
-private fun DifficultyChip(
-    difficulty: QuantumDifficulty,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val accent = CategoryPalette.SpatialVision
-    val shape = RoundedCornerShape(12.dp)
-    Column(
-        modifier = modifier
-            .bounceClick(onClick = onClick)
-            .clip(shape)
-            .background(if (selected) accent.copy(alpha = 0.22f) else LogicColors.SurfaceVariantDark)
-            .border(
-                BorderStroke(
-                    width = if (selected) 1.5.dp else 1.dp,
-                    color = if (selected) accent else LogicColors.OnDarkMuted.copy(alpha = 0.2f),
-                ),
-                shape,
-            )
-            .padding(horizontal = 6.dp, vertical = 10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = difficulty.displayName,
-            style = MaterialTheme.typography.labelLarge,
-            color = if (selected) accent else LogicColors.OnDarkMuted,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-            maxLines = 1,
-        )
-        // Dos líneas cortas fijas en vez de una larga con separador: una línea larga se parte donde
-        // el layout decida y desiguala la altura de las fichas.
-        Text(
-            text = if (difficulty.radiusScale == 1f) "esferas base"
+private val DIFFICULTY_OPTIONS_UI: List<DifficultyOption> = QuantumDifficulty.entries.map { difficulty ->
+    DifficultyOption(
+        label = difficulty.displayName,
+        details = listOf(
+            if (difficulty.radiusScale == 1f) "esferas base"
             else "+${((difficulty.radiusScale - 1f) * 100f).toInt()} % tamaño",
-            style = MaterialTheme.typography.labelMedium,
-            color = LogicColors.OnDarkMuted,
-            maxLines = 1,
-        )
-        Text(
-            text = "${difficulty.stackHeight.toInt()} de alto",
-            style = MaterialTheme.typography.labelMedium,
-            color = LogicColors.OnDarkMuted,
-            maxLines = 1,
-        )
-    }
+            "${difficulty.stackHeight.toInt()} de alto",
+        ),
+    )
 }
 
 /**
@@ -676,49 +621,66 @@ private fun DrawScope.drawEnergySphere(
     radius: Float,
     color: Color,
     glowPulse: Float,
+    vx: Float = 0f,
+    vy: Float = 0f,
 ) {
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(color.copy(alpha = 0.26f * glowPulse), Color.Transparent),
-            center = center,
-            radius = radius * 2.1f,
-        ),
-        radius = radius * 2.1f,
-        center = center,
-    )
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(color.copy(alpha = 0.38f * glowPulse), Color.Transparent),
-            center = center,
-            radius = radius * 1.4f,
-        ),
-        radius = radius * 1.4f,
-        center = center,
-    )
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(
-                lerp(color, Color.White, 0.55f).copy(alpha = 0.95f),
-                color.copy(alpha = 0.72f),
-                color.copy(alpha = 0.28f),
-            ),
-            center = center,
-            radius = radius,
-        ),
-        radius = radius,
-        center = center,
-    )
-    drawCircle(
-        color = color.copy(alpha = 0.92f),
-        radius = radius * 0.93f,
-        center = center,
-        style = Stroke(width = radius * 0.15f),
-    )
-    drawCircle(
-        color = Color.White.copy(alpha = 0.4f),
-        radius = radius * 0.17f,
-        center = Offset(center.x - radius * 0.32f, center.y - radius * 0.34f),
-    )
+    // Squash-stretch "gelatinoso": una esfera rápida se alarga en la dirección del movimiento y
+    // se aplana en la perpendicular, como un cuerpo blando que aún no ha absorbido su propia
+    // inercia. Deliberadamente sutil (tope [GEL_MAX_STRETCH] de solo 12 %): el pedido es "mínimamente
+    // gelatinosas", no bolas de gelatina, y un estiramiento agresivo competiría con el halo de
+    // energía en vez de leerse como física. Se normaliza contra [GEL_STRETCH_REF_SPEED] —muy por
+    // debajo del tope físico del motor (`MAX_SPEED`)— para que el efecto ya se note en una caída
+    // normal y no solo en el pico de velocidad, que casi nunca se alcanza.
+    val speed = hypot(vx, vy)
+    val stretch = (speed / GEL_STRETCH_REF_SPEED).coerceIn(0f, 1f) * GEL_MAX_STRETCH
+    val angleDeg = if (speed > GEL_MIN_SPEED_FOR_ANGLE) atan2(vy, vx) * (180f / PI.toFloat()) else 0f
+
+    rotate(degrees = angleDeg, pivot = center) {
+        scale(scaleX = 1f + stretch, scaleY = 1f - stretch, pivot = center) {
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(color.copy(alpha = 0.26f * glowPulse), Color.Transparent),
+                    center = center,
+                    radius = radius * 2.1f,
+                ),
+                radius = radius * 2.1f,
+                center = center,
+            )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(color.copy(alpha = 0.38f * glowPulse), Color.Transparent),
+                    center = center,
+                    radius = radius * 1.4f,
+                ),
+                radius = radius * 1.4f,
+                center = center,
+            )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        lerp(color, Color.White, 0.55f).copy(alpha = 0.95f),
+                        color.copy(alpha = 0.72f),
+                        color.copy(alpha = 0.28f),
+                    ),
+                    center = center,
+                    radius = radius,
+                ),
+                radius = radius,
+                center = center,
+            )
+            drawCircle(
+                color = color.copy(alpha = 0.92f),
+                radius = radius * 0.93f,
+                center = center,
+                style = Stroke(width = radius * 0.15f),
+            )
+            drawCircle(
+                color = Color.White.copy(alpha = 0.4f),
+                radius = radius * 0.17f,
+                center = Offset(center.x - radius * 0.32f, center.y - radius * 0.34f),
+            )
+        }
+    }
 }
 
 /**
@@ -770,3 +732,16 @@ private val SHAKE_TRAVEL = 5.dp
 
 /** Lado de la miniatura del previsor de la siguiente esfera. */
 private val PREVIEW_SIZE = 34.dp
+
+/**
+ * Velocidad (unidades de mundo/s) a la que el squash-stretch de [drawEnergySphere] satura.
+ * Deliberadamente moderada —muy por debajo del `MAX_SPEED` del motor— para que el efecto ya se
+ * note en una caída normal y no dependa de picos de velocidad raros de alcanzar.
+ */
+private const val GEL_STRETCH_REF_SPEED = 200f
+
+/** Tope del estiramiento gelatinoso: 12 % de alargamiento máximo, "mínimamente" gelatinoso. */
+private const val GEL_MAX_STRETCH = 0.12f
+
+/** Por debajo de esta velocidad no se orienta el estiramiento: evita que el ángulo tiemble en reposo. */
+private const val GEL_MIN_SPEED_FOR_ANGLE = 1f
