@@ -78,11 +78,13 @@ import com.kortexgames.app.ui.components.ArcadeBrickBackground
 import com.kortexgames.app.ui.components.GameIntroScreen
 import com.kortexgames.app.game.GameHelpContent
 import com.kortexgames.app.ui.components.GameActionButton
+import com.kortexgames.app.ui.components.GameExitGuard
 import com.kortexgames.app.ui.components.GameOverOverlay
 import com.kortexgames.app.ui.components.GamePauseControls
 import com.kortexgames.app.ui.components.KortexIcons
 import com.kortexgames.app.ui.components.LevelStripState
 import com.kortexgames.app.ui.components.NeonIcon
+import com.kortexgames.app.ui.components.ResumeState
 import com.kortexgames.app.ui.components.bounceClick
 import kotlin.math.PI
 import kotlin.math.cos
@@ -168,9 +170,19 @@ private data class LiquidBand(val colorIndex: Int, val heightSlots: Float)
 @Composable
 fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
     val vm: WaterSortViewModel = viewModel {
-        WaterSortViewModel(graph.progressRepository, graph.playerProgressRepository, graph.audio, graph.adManager)
+        WaterSortViewModel(
+            graph.progressRepository,
+            graph.playerProgressRepository,
+            graph.savedGameStateRepository,
+            graph.audio,
+            graph.adManager,
+        )
     }
     val state by vm.state.collectAsStateWithLifecycle()
+
+    // Único punto de salida "en juego" (back del sistema y "SALIR" del menú de
+    // pausa): guarda la partida en curso antes de navegar atrás.
+    val exitWithSave: () -> Unit = { vm.requestExit(onExit) }
 
     // Fase de intro: antesala del juego (icono, descripción y carril de niveles). El
     // nivel elegido arranca por defecto en la frontera (récord + 1) y se reinicia si el
@@ -193,6 +205,14 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
                 // la partida (ver DailyGoalManager.markPlayed).
                 graph.dailyGoalManager.markPlayed(GameIds.WATER_SORT)
                 vm.onIntent(WaterSortIntent.PlayLevel(selectedLevel))
+            },
+            // Partida a medias guardada al salir: la antesala la ofrece como CTA
+            // principal, con su nivel para que el jugador sepa qué retoma.
+            resume = state.savedLevel?.let { level ->
+                ResumeState(
+                    onResume = { vm.onIntent(WaterSortIntent.ResumeSaved) },
+                    detail = "Nivel $level en curso",
+                )
             },
             onExit = onExit,
             background = {
@@ -469,15 +489,25 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
             audio = graph.audio,
             onPause = { vm.onIntent(WaterSortIntent.Pause) },
             onResume = { vm.onIntent(WaterSortIntent.Resume) },
-            onExit = onExit,
+            onExit = exitWithSave,
             gameTitle = "Ordena las Pociones",
             help = GameHelpContent.waterSort,
             accent = CategoryPalette.Logic,
+            exitKeepsProgress = true,
         )
 
         // Feedback de "cargando anuncio" mientras se resuelve el rewarded del tubo
         // extra o el deshacer de pago (ver el LaunchedEffect de `awaitingAd` más arriba).
         AdLoadingOverlay(visible = awaitingAd, accent = CategoryPalette.Logic)
+
+        // Atrás del sistema: reanuda si estaba en pausa, o pregunta antes de salir
+        // mientras se juega (la partida se guarda al confirmar, ver exitWithSave).
+        GameExitGuard(
+            status = state.status,
+            onResume = { vm.onIntent(WaterSortIntent.Resume) },
+            onConfirmExit = exitWithSave,
+            accent = CategoryPalette.Logic,
+        )
     }
 }
 

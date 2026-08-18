@@ -12,6 +12,7 @@ import com.kortexgames.app.core.mvi.UiState
 import com.kortexgames.app.domain.model.GameResult
 import com.kortexgames.app.domain.repository.PlayerProgressRepository
 import com.kortexgames.app.domain.repository.ProgressRepository
+import com.kortexgames.app.domain.repository.SavedGameStateRepository
 import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
@@ -20,6 +21,9 @@ import com.kortexgames.app.game.toGameOverInfo
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 /**
  * Estado de UI de la pantalla de "Ordena las Pociones".
@@ -27,6 +31,9 @@ import kotlinx.coroutines.launch
  * @property phase selección de nivel o partida en curso.
  * @property maxUnlocked nivel máximo ya superado (récord); define lo desbloqueado.
  * @property currentLevel nivel que se está jugando (para "Siguiente nivel").
+ * @property savedLevel nivel de la partida guardada al salir, o null si no hay
+ *   ninguna pendiente. Lo pinta la antesala como "Continuar" (ver
+ *   [com.kortexgames.app.ui.components.ResumeState]).
  */
 data class WaterSortUiState(
     val phase: LeveledGamePhase = LeveledGamePhase.LEVEL_SELECT,
@@ -35,6 +42,7 @@ data class WaterSortUiState(
     val game: WaterSortState = WaterSortState(),
     val status: GameStatus = GameStatus.IDLE,
     val gameOver: GameOverInfo? = null,
+    val savedLevel: Int? = null,
 ) : UiState
 
 /** Intents (único punto de entrada de la UI, patrón MVI). */
@@ -79,6 +87,9 @@ sealed interface WaterSortIntent : UiIntent {
 
     /** Volver al selector de niveles (desde el game-over). */
     data object ChooseLevel : WaterSortIntent
+
+    /** Desde la antesala: retomar la partida guardada al salir (ver [WaterSortUiState.savedLevel]). */
+    data object ResumeSaved : WaterSortIntent
 }
 
 sealed interface WaterSortEffect : UiEffect {
@@ -108,10 +119,16 @@ sealed interface WaterSortEffect : UiEffect {
  * El nivel máximo desbloqueado ([WaterSortUiState.maxUnlocked]) se observa desde
  * [PlayerProgressRepository] (fuente de verdad local-first), así que sube en cuanto
  * se completa un nivel nuevo.
+ *
+ * También activa el **guardado de partida al salir** (back / "SALIR" del menú de
+ * pausa, ver [requestExit]): al volver a jugar el mismo nivel, reanuda desde donde se
+ * dejó en vez de regenerar el tablero (mismo mecanismo que Crucigrama Neón y Neon
+ * Hyper-Cube; ver [WaterSortSavedState]).
  */
 class WaterSortViewModel(
     private val progress: ProgressRepository,
     private val playerProgress: PlayerProgressRepository,
+    private val savedGameState: SavedGameStateRepository,
     private val audio: AudioAndHapticManager,
     private val adManager: AdManager,
 ) : MviViewModel<WaterSortIntent, WaterSortUiState, WaterSortEffect>(WaterSortUiState()) {
@@ -126,6 +143,12 @@ class WaterSortViewModel(
         // selector y el jugador elige el nivel.
         playerProgress.observe(GameIds.WATER_SORT)
             .onEach { p -> setState { copy(maxUnlocked = p?.bestMetric ?: 0) } }
+            .launchIn(viewModelScope)
+        // Partida guardada al salir: la antesala la ofrece como "Continuar". Se
+        // observa (en vez de leerla una vez) para que el botón desaparezca solo al
+        // reanudarla o al completar el nivel, que es cuando se borra la fila.
+        savedGameState.observe(GameIds.WATER_SORT)
+            .onEach { json -> setState { copy(savedLevel = json?.let(::decodeSaved)?.game?.round) } }
             .launchIn(viewModelScope)
     }
 
@@ -150,6 +173,7 @@ class WaterSortViewModel(
             WaterSortIntent.ChooseLevel -> setState {
                 copy(phase = LeveledGamePhase.LEVEL_SELECT, gameOver = null)
             }
+            WaterSortIntent.ResumeSaved -> resumeSaved()
         }
     }
 
@@ -178,11 +202,61 @@ class WaterSortViewModel(
         sendEffect(WaterSortEffect.ShowRewardedAd)
     }
 
-    /** Empieza (o reempieza) un nivel concreto: limpia el game-over y arranca el motor. */
+    /**
+     * Empieza (o reempieza) [level] **desde cero**: limpia el game-over y arranca el
+     * motor. Descarta cualquier partida guardada: llegar aquí siempre es una decisión
+     * explícita del jugador (elegir nivel, "Reiniciar" desde el selector, rejugar o
+     * pasar de nivel tras el resultado), y dejar el guardado vivo haría que
+     * reapareciese como "Continuar" una partida que ya abandonó. Para retomarla está
+     * [resumeSaved].
+     */
     private fun playLevel(level: Int) {
         setState { copy(phase = LeveledGamePhase.PLAYING, currentLevel = level, gameOver = null) }
+        viewModelScope.launch { savedGameState.clear(GameIds.WATER_SORT) }
         engine.startAtLevel(level)
     }
+
+    /**
+     * Retoma la partida guardada al salir, en su nivel original. El guardado se
+     * consume (se borra) al reanudar: a partir de ahí la partida vuelve a estar viva
+     * y el próximo guardado será el de esta sesión. No-op si no hay ninguna.
+     */
+    private fun resumeSaved() {
+        viewModelScope.launch {
+            val saved = savedGameState.load(GameIds.WATER_SORT)?.let(::decodeSaved) ?: return@launch
+            savedGameState.clear(GameIds.WATER_SORT)
+            setState {
+                copy(phase = LeveledGamePhase.PLAYING, currentLevel = saved.game.round, gameOver = null)
+            }
+            engine.resumeFrom(saved)
+        }
+    }
+
+    /**
+     * Punto único de salida "en juego" (back del sistema vía
+     * [com.kortexgames.app.ui.components.GameExitGuard] o "SALIR" del menú de
+     * pausa): si hay partida en curso la guarda antes de navegar atrás. Fuera de
+     * [LeveledGamePhase.PLAYING] (antesala, fin de nivel) no hay progreso que perder,
+     * así que [onExit] se llama directo.
+     */
+    fun requestExit(onExit: () -> Unit) {
+        if (currentState.phase != LeveledGamePhase.PLAYING) {
+            onExit()
+            return
+        }
+        viewModelScope.launch {
+            savedGameState.save(GameIds.WATER_SORT, Json.encodeToString(engine.captureSavedState()))
+            onExit()
+        }
+    }
+
+    /**
+     * Decodifica un guardado. Tolerante a fallos a propósito: si el JSON quedó de una
+     * versión anterior del estado, se trata como "no hay partida" en vez de romper la
+     * pantalla — el jugador solo pierde ese guardado.
+     */
+    private fun decodeSaved(json: String): WaterSortSavedState? =
+        runCatching { Json.decodeFromString<WaterSortSavedState>(json) }.getOrNull()
 
     /**
      * `saveResult` emite en 1 o 2 pasos: local primero (el cartel no espera a
@@ -199,6 +273,9 @@ class WaterSortViewModel(
     private fun onFinished(result: GameResult) {
         val corrected = result.copy(difficultyLevel = currentState.currentLevel)
         viewModelScope.launch {
+            // Nivel completado: un guardado de esta partida (si quedó alguno) es
+            // "fantasma" a partir de aquí, ya se registró el resultado final.
+            savedGameState.clear(GameIds.WATER_SORT)
             audio.playSound(SoundEffect.LEVEL_UP)
             audio.hapticFeedback(HapticFeedback.SUCCESS)
             progress.saveResult(corrected).collect { outcome ->

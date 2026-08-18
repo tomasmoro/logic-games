@@ -2,6 +2,7 @@ package com.kortexgames.app.game
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BubbleChart
+import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.RocketLaunch
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.ui.components.GameHelp
@@ -566,6 +567,75 @@ object GameHelpContent {
                 "pequeñas.",
             "Mira siempre la esfera del previsor antes de soltar la actual; media jugada de " +
                 "ventaja lo cambia todo.",
+        ),
+    )
+
+    /** Neon Legion / runner de carriles con puertas matemáticas (Velocidad Mental). */
+    val legion = GameHelp(
+        title = "Neon Legion",
+        summary = "Haz crecer tu legión eligiendo la mejor puerta de cada fila y aplasta al " +
+            "ejército enemigo del final de la ronda.",
+        accent = CategoryPalette.MentalSpeed,
+        art = iconHelpArt(Icons.Rounded.Groups),
+        steps = listOf(
+            HelpStep(
+                icon = KortexIcons.Play,
+                title = "Guía tu legión",
+                text = "Arrastra el dedo por la pista: la legión te sigue. Llévala a la puerta " +
+                    "que más tropas te deje.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Warning,
+                title = "Esquiva los láseres",
+                text = "Las naves cargan su disparo sobre un carril: sal de ahí antes de que " +
+                    "disparen. Si una barre toda la pista, resuelve su cuenta para destruirla.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Check,
+                title = "Gana el choque final",
+                text = "Al final de cada ronda chocas contra el ejército enemigo: si llegas " +
+                    "con más tropas que él, avanzas de ronda.",
+            ),
+        ),
+        tips = listOf(
+            "×2 no siempre es la mejor puerta: con pocas tropas, una suma grande multiplica más.",
+            "En el examen del láser, los primeros 5 segundos no drenan tropas: úsalos para " +
+                "calcular con calma.",
+        ),
+    )
+
+    /** Hexa Orbit: tablero hexagonal giratorio con un puntero de luz en movimiento continuo. */
+    val hexaOrbit = GameHelp(
+        title = "Hexa Orbit",
+        summary = "Gira los hexágonos para encaminar el puntero de luz, recoge orbes y evita " +
+            "que se escape por el borde del tablero.",
+        accent = CategoryPalette.SpatialVision,
+        art = motifHelpArt(GameMotif.HEXA_ORBIT),
+        steps = listOf(
+            HelpStep(
+                icon = KortexIcons.Refresh,
+                title = "Toca para girar",
+                text = "Cada hexágono guarda tres caminos curvos. Al tocarlo gira 60°, y sus " +
+                    "caminos giran con él.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Play,
+                title = "Sigue el haz",
+                text = "El trazado iluminado te enseña los cuatro hexágonos que el puntero " +
+                    "recorrerá a continuación. Decide ahí, no cuando ya esté encima.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Warning,
+                title = "No lo pierdas",
+                text = "Si el haz se pone rojo, el puntero va camino del borde. Si sale del " +
+                    "tablero, la partida termina.",
+            ),
+        ),
+        tips = listOf(
+            "La pieza que el puntero está atravesando no se puede girar: por eso el haz te " +
+                "avisa con cuatro hexágonos de antelación.",
+            "Encadenar giros cerrados crea un circuito cerrado donde el puntero da vueltas: " +
+                "úsalo para ganar tiempo mientras preparas el camino hacia el siguiente orbe.",
         ),
     )
 }

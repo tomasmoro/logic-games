@@ -1,5 +1,6 @@
 package com.kortexgames.app.game.watersort
 
+import kotlinx.serialization.Serializable
 import kotlin.random.Random
 
 /**
@@ -28,6 +29,7 @@ const val TUBE_CAPACITY: Int = 4
  *
  * @property segments colores apilados; `last()` es el color superior vertible.
  */
+@Serializable
 data class Tube(val segments: List<Int> = emptyList()) {
 
     /** Color de la parte superior (lo próximo a verter), o null si está vacío. */

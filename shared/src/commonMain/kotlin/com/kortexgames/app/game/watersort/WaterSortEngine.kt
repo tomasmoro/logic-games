@@ -5,10 +5,12 @@ import com.kortexgames.app.core.audio.HapticFeedback
 import com.kortexgames.app.core.audio.SoundEffect
 import com.kortexgames.app.game.BaseGameEngine
 import com.kortexgames.app.game.GameIds
+import com.kortexgames.app.game.ResumableGameEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.Serializable
 import kotlin.random.Random
 
 /**
@@ -19,6 +21,7 @@ import kotlin.random.Random
  *
  * @property color índice de color vertido (la UI lo mapea a su tono neón).
  */
+@Serializable
 data class PourEvent(
     val id: Long,
     val from: Int,
@@ -62,6 +65,7 @@ const val FREE_UNDOS: Int = 1
  * @property undosUsed deshacer ya gastados en este intento de nivel (incluidos los
  *   pagados con anuncio). Solo se usa para saber si el próximo sale gratis.
  */
+@Serializable
 data class WaterSortState(
     val tubes: List<Tube> = emptyList(),
     val capacity: Int = TUBE_CAPACITY,
@@ -110,7 +114,8 @@ class WaterSortEngine(
     audio: AudioAndHapticManager,
     difficulty: Int = 1,
     private val random: Random = Random.Default,
-) : BaseGameEngine<WaterSortState>(GameIds.WATER_SORT, difficulty, scope, audio) {
+) : BaseGameEngine<WaterSortState>(GameIds.WATER_SORT, difficulty, scope, audio),
+    ResumableGameEngine<WaterSortSavedState> {
 
     private val _state = MutableStateFlow(WaterSortState())
     override val state: StateFlow<WaterSortState> = _state.asStateFlow()
@@ -127,6 +132,9 @@ class WaterSortEngine(
     private val history = ArrayDeque<List<Tube>>()
     private var currentRoundMinMoves = 0
     private var pourSeq = 0L
+
+    /** Partida guardada a restaurar en el próximo [onStart]; la consume y limpia. */
+    private var pendingResume: WaterSortSavedState? = null
 
     private fun tierOf(level: Int): Int = (level.coerceAtLeast(1) - 1) / LEVELS_PER_TIER
 
@@ -170,8 +178,44 @@ class WaterSortEngine(
         start() // BaseGameEngine.start() → onStart()
     }
 
+    /**
+     * Reanuda una partida guardada al salir en vez de generar el nivel de nuevo:
+     * restaura el tablero inicial (para que "Reiniciar" siga funcionando), el
+     * historial de vertidos (para que "Deshacer" no se quede mudo) y la longitud de
+     * la solución de referencia (para que el puntaje final salga igual que si no se
+     * hubiera salido). Delega en [start] para que el resto del ciclo de vida
+     * (cronómetro, `finish()`, etc.) sea idéntico al de una partida arrancada normal.
+     */
+    override fun resumeFrom(saved: WaterSortSavedState) {
+        pendingResume = saved
+        currentLevel = saved.game.round
+        start()
+    }
+
+    /**
+     * Vuelca la partida en curso a su forma serializable para guardarla al salir.
+     * [WaterSortState.lastPour] se descarta: es un disparador de animación de una
+     * sola vez (no hay dedo en pantalla esperando verlo al reanudar).
+     */
+    fun captureSavedState(): WaterSortSavedState = WaterSortSavedState(
+        game = _state.value.copy(lastPour = null),
+        initialTubes = initialTubes,
+        minMoves = currentRoundMinMoves,
+        history = history.toList(),
+    )
+
     override fun onStart() {
-        startCurrentLevel()
+        val resume = pendingResume
+        if (resume != null) {
+            initialTubes = resume.initialTubes
+            currentRoundMinMoves = resume.minMoves
+            history.clear()
+            history.addAll(resume.history)
+            _state.value = resume.game
+            pendingResume = null
+        } else {
+            startCurrentLevel()
+        }
     }
 
     private fun startCurrentLevel() {

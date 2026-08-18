@@ -65,6 +65,8 @@ object Routes {
     const val NEON_DEFUSER = "game/neon-defuser"
     const val HYPER_CUBE = "game/hyper-cube"
     const val QUANTUM_MERGE = "game/quantum-merge"
+    const val NEON_LEGION = "game/neon-legion"
+    const val HEXA_ORBIT = "game/hexa-orbit"
 
     /**
      * Ruta de juego para un [GameIds] concreto, o null si el juego aún no es
@@ -92,6 +94,8 @@ object Routes {
         GameIds.NEON_DEFUSER -> NEON_DEFUSER
         GameIds.HYPER_CUBE -> HYPER_CUBE
         GameIds.QUANTUM_MERGE -> QUANTUM_MERGE
+        GameIds.NEON_LEGION -> NEON_LEGION
+        GameIds.HEXA_ORBIT -> HEXA_ORBIT
         else -> null
     }
 

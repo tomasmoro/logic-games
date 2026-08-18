@@ -164,6 +164,21 @@ object GameProgressions {
         GameIds.QUANTUM_MERGE to GameProgression(
             ProgressionKind.ENDLESS, MetricDirection.HIGHER_IS_BETTER, "Mejor", MetricUnit.POINTS,
         ),
+        // Neon Legion es una corrida hasta perder el combate de fin de ronda: ENDLESS con la
+        // RONDA máxima como métrica (no el puntaje): "llegué a la ronda 12" es el hito que el
+        // jugador entiende y presume, y el puntaje ya es monótono en la ronda por construcción
+        // (ver LegionEngine.calculateScore), así que ambos ordenan igual — se elige el legible.
+        GameIds.NEON_LEGION to GameProgression(
+            ProgressionKind.ENDLESS, MetricDirection.HIGHER_IS_BETTER, "Mejor ronda", MetricUnit.COUNT,
+        ),
+        // Hexa Orbit es una corrida hasta que el puntero se escapa del tablero: ENDLESS con los
+        // ORBES recogidos como métrica. No se usa el puntaje porque este suma un bono por tiempo
+        // sobrevivido (ver HexaOrbitEngine.calculateScore) y entonces el récord premiaría también
+        // al que aguanta dando vueltas sin recoger; "orbes" es el hito limpio y además el que el
+        // jugador cuenta mientras juega.
+        GameIds.HEXA_ORBIT to GameProgression(
+            ProgressionKind.ENDLESS, MetricDirection.HIGHER_IS_BETTER, "Orbes", MetricUnit.COUNT,
+        ),
     )
 
     /** Progresión de un juego, o null si el id es null o no está registrado. */

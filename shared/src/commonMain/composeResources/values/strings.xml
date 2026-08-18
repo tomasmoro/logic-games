@@ -212,4 +212,42 @@
     <string name="settings_notifications_debug_scheduled">Programada. Llegará en 15 segundos.</string>
     <string name="settings_notifications_debug_failed">No se pudo programar: el sistema no permite notificar.</string>
 
+    <!-- ============================================================
+         Neon Legion — runner de carriles con puertas matemáticas.
+         Los rótulos de las operaciones ("+15", "×2") y las cuentas del
+         examen NO están aquí: son notación matemática, no texto de UI
+         (ver KDoc de GateOperation.label / LaserQuiz.prompt).
+         ============================================================ -->
+    <string name="legion_intro_description">Guía a tu legión de luz por los carriles: cruza las puertas que multiplican tus tropas, esquiva los láseres y aplasta al ejército enemigo al final de cada ronda.</string>
+    <!-- %1$s = número de ronda en curso. -->
+    <string name="legion_hud_round">Ronda %1$s</string>
+    <!-- Distintivo de las rondas 10, 20, 30… (enemigo Jefe). -->
+    <string name="legion_hud_boss">JEFE</string>
+    <!-- %1$s = filas de puertas cruzadas; %2$s = filas totales de la ronda. -->
+    <string name="legion_hud_gates">%1$s/%2$s puertas</string>
+    <!-- %1$s = tropas del ejército enemigo que espera al final de la ronda. -->
+    <string name="legion_hud_enemy">Enemigo %1$s</string>
+    <!-- Examen del láser horizontal (barrido): cabecera y aviso del drenaje. -->
+    <string name="legion_quiz_title">¡Destruye el láser!</string>
+    <string name="legion_quiz_subtitle">Resuelve la cuenta antes de que drene tu legión</string>
+    <!-- Oferta de revivir viendo un anuncio tras perder el combate. -->
+    <string name="legion_revive_title">¿Legión aniquilada?</string>
+    <string name="legion_revive_reward">tu ejército restaurado</string>
+    <!-- %1$s = ronda que se va a reintentar. -->
+    <string name="legion_revive_body">Mira un anuncio y repite la ronda %1$s con las tropas con las que entraste.</string>
+    <!-- %1$s = ronda en la que cayó la legión (titular del fin de partida). -->
+    <string name="legion_gameover_headline">Caíste en la ronda %1$s</string>
+
+    <!-- ===================== Hexa Orbit (Visión Espacial) ===================== -->
+    <!-- Antesala: qué se hace en el juego, antes de la primera partida. -->
+    <string name="hexa_orbit_intro_description">Un puntero de luz recorre sin parar los caminos del tablero hexagonal. Gira las piezas para encaminarlo, recoge los orbes de energía y evita que se escape por el borde: cada segundo va más rápido.</string>
+    <!-- Recordatorio del gesto, bajo el título, mientras se juega. -->
+    <string name="hexa_orbit_subtitle">Toca un hexágono para girarlo 60°</string>
+    <!-- Sustituye al recordatorio cuando el haz proyectado apunta fuera del tablero. -->
+    <string name="hexa_orbit_warning">¡El haz apunta fuera del tablero!</string>
+    <!-- Etiquetas del marcador. -->
+    <string name="hexa_orbit_hud_score">Puntos</string>
+    <string name="hexa_orbit_hud_orbs">Orbes</string>
+    <string name="hexa_orbit_hud_speed">Velocidad</string>
+
 </resources>

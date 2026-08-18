@@ -52,6 +52,7 @@ import kotlin.math.sin
  *  - [GameMotif.ENERGY_PIPES] → tablero de tuberías con nodos-objetivo conectados.
  *  - [GameMotif.POLARITY_SECTORS] → círculo de 4 sectores con partículas entrantes.
  *  - [GameMotif.QUANTUM_SPHERES] → esferas de luz de tamaños crecientes dentro del reactor.
+ *  - [GameMotif.HEXA_ORBIT] → panal de hexágonos con un trazo de luz curvo atravesándolos.
  *  - Memoria → red neuronal ([NeuralCornerTexture]).
  *  - Cálculo Mental → símbolos matemáticos de distintos tamaños.
  *  - Pensamiento Lógico → piezas de rompecabezas.
@@ -153,6 +154,8 @@ private fun MotifTexture(
         GameMotif.POLARITY_SECTORS -> PolaritySectorsTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
         GameMotif.QUANTUM_SPHERES -> QuantumSpheresTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
         GameMotif.SINGLE_LINE -> SingleLineTexture(accent = accent, modifier = modifier, intensity = intensity)
+        GameMotif.LEGION_SWARM -> LegionSwarmTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
+        GameMotif.HEXA_ORBIT -> HexaOrbitTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
     }
 }
 
@@ -1444,5 +1447,186 @@ private fun QuantumSpheresTexture(accent: Color, modifier: Modifier, intensity: 
                 style = Stroke(width = radius * 0.17f),
             )
         }
+    }
+}
+
+/**
+ * **Neon Legion**: dos carriles verticales, una fila de puertas (dos tubos redondeados, uno
+ * encendido y otro tenue: la ELECCIÓN es la mecánica) y el enjambre de puntos del ejército
+ * avanzando por el carril de la puerta encendida.
+ *
+ * El enjambre reutiliza la misma distribución de girasol de la pantalla (r = R·√(i/n),
+ * θ = i·ángulo áureo) para que la tarjeta y la partida compartan exactamente el mismo lenguaje
+ * visual, igual que hace la miniatura de Quantum Merge con sus esferas.
+ */
+@Composable
+private fun LegionSwarmTexture(accent: Color, modifier: Modifier, intensity: Float, centered: Boolean = false) {
+    Canvas(modifier = modifier) {
+        val minDim = size.minDimension
+        val boxSide = minDim * 0.80f
+        val left = size.width * (if (centered) 0.5f else 0.66f) - boxSide * 0.5f
+        val top = size.height * 0.5f - boxSide * 0.5f
+        val laneWidth = boxSide * 0.5f
+
+        // Divisores de la pista: tres líneas verticales tenues (borde, centro, borde).
+        for (i in 0..2) {
+            val x = left + i * laneWidth
+            drawLine(
+                color = accent.copy(alpha = 0.28f * intensity),
+                start = Offset(x, top),
+                end = Offset(x, top + boxSide),
+                strokeWidth = boxSide * 0.022f,
+                cap = StrokeCap.Round,
+            )
+        }
+
+        // Fila de puertas en el tercio superior: la del carril izquierdo encendida (la elegida),
+        // la del derecho apagada — sin rótulos: a este tamaño un "+15" sería ruido ilegible.
+        val gateH = boxSide * 0.16f
+        val gateY = top + boxSide * 0.22f
+        for (lane in 0..1) {
+            val litAmt = if (lane == 0) 1f else 0.38f
+            val gateW = laneWidth * 0.78f
+            val gateLeft = left + lane * laneWidth + (laneWidth - gateW) / 2f
+            drawRoundRect(
+                color = accent.copy(alpha = 0.55f * litAmt * intensity),
+                topLeft = Offset(gateLeft, gateY),
+                size = Size(gateW, gateH),
+                cornerRadius = CornerRadius(gateH * 0.4f, gateH * 0.4f),
+                style = Stroke(width = boxSide * 0.035f * litAmt),
+            )
+        }
+
+        // Enjambre del ejército bajo la puerta elegida: girasol determinista (ver KDoc).
+        val swarmCenter = Offset(left + laneWidth * 0.5f, top + boxSide * 0.74f)
+        val swarmRadius = laneWidth * 0.34f
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(accent.copy(alpha = 0.30f * intensity), Color.Transparent),
+                center = swarmCenter,
+                radius = swarmRadius * 1.7f,
+            ),
+            radius = swarmRadius * 1.7f,
+            center = swarmCenter,
+        )
+        val dots = 26
+        for (i in 0 until dots) {
+            val ring = swarmRadius * kotlin.math.sqrt((i + 0.5f) / dots)
+            val angle = i * 2.39996f
+            drawCircle(
+                color = accent.copy(alpha = 0.85f * intensity),
+                radius = boxSide * 0.016f,
+                center = swarmCenter + Offset(ring * cos(angle), ring * sin(angle)),
+            )
+        }
+    }
+}
+
+/**
+ * Miniatura de **Hexa Orbit**: un panal de siete hexágonos (centro + sus seis vecinos) con un
+ * trazo de luz curvo que lo recorre y el puntero brillando sobre él.
+ *
+ * Se dibuja con la misma geometría *pointy-top* que la partida —vértices a `30° + 60°·i`, centros
+ * de vecinos a `√3` de separación— para que la tarjeta y el tablero real hablen el mismo idioma
+ * visual, igual que hace la miniatura de Quantum Merge con sus esferas. Los caminos internos se
+ * insinúan con dos arcos y no con los tres de cada azulejo: a este tamaño, dieciocho curvas
+ * serían una mancha.
+ */
+@Composable
+private fun HexaOrbitTexture(accent: Color, modifier: Modifier, intensity: Float, centered: Boolean = false) {
+    Canvas(modifier = modifier) {
+        val minDim = size.minDimension
+        // Radio del hexágono: el panal mide 3 hexágonos de alto (1.5 + 1.5 radios por vecino).
+        val radius = minDim * 0.20f
+        val apothem = radius * 0.8660254f
+        val center = Offset(
+            x = size.width * (if (centered) 0.5f else 0.66f),
+            y = size.height * 0.5f,
+        )
+
+        // Centros del panal: el central más los seis vecinos, en las mismas direcciones axiales
+        // que usa el juego (E, SE, SW, W, NW, NE).
+        val centers = buildList {
+            add(center)
+            for (i in 0 until 6) {
+                val angle = (PI / 3.0 * i).toFloat()
+                add(Offset(center.x + 2f * apothem * cos(angle), center.y + 2f * apothem * sin(angle)))
+            }
+        }
+
+        for (hexCenter in centers) {
+            val path = Path()
+            for (i in 0 until 6) {
+                val angle = (PI / 3.0 * i + PI / 6.0).toFloat()
+                val x = hexCenter.x + radius * cos(angle)
+                val y = hexCenter.y + radius * sin(angle)
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            path.close()
+            drawPath(
+                path = path,
+                color = accent.copy(alpha = 0.32f * intensity),
+                style = Stroke(width = radius * 0.07f, join = StrokeJoin.Round),
+            )
+        }
+
+        /** Punto medio de la arista [edge] de un hexágono, en el marco de la miniatura. */
+        fun edgeMid(hexCenter: Offset, edge: Int): Offset {
+            val angle = (PI / 3.0 * edge).toFloat()
+            return Offset(hexCenter.x + apothem * cos(angle), hexCenter.y + apothem * sin(angle))
+        }
+
+        // Trazo de luz: entra por el vecino oeste, cruza el central y sale por el este. Los
+        // controles se acercan al centro de cada hexágono, que es la misma regla con la que el
+        // juego construye sus Bézier (ver HexGeometry.curveFor).
+        val west = centers[4]
+        val east = centers[1]
+        val beam = Path().apply {
+            val start = edgeMid(west, 3)
+            moveTo(start.x, start.y)
+            val westExit = edgeMid(west, 0)
+            cubicTo(
+                west.x + (start.x - west.x) * 0.33f, west.y + (start.y - west.y) * 0.33f,
+                west.x + (westExit.x - west.x) * 0.33f, west.y + (westExit.y - west.y) * 0.33f,
+                westExit.x, westExit.y,
+            )
+            val centerExit = edgeMid(center, 1)
+            cubicTo(
+                center.x + (westExit.x - center.x) * 0.5f, center.y + (westExit.y - center.y) * 0.5f,
+                center.x + (centerExit.x - center.x) * 0.5f, center.y + (centerExit.y - center.y) * 0.5f,
+                centerExit.x, centerExit.y,
+            )
+        }
+        // Halo ancho → trazo nítido: la escalera de capas del neón del proyecto (§9.7).
+        drawPath(
+            path = beam,
+            color = accent.copy(alpha = 0.22f * intensity),
+            style = Stroke(width = radius * 0.34f, cap = StrokeCap.Round),
+        )
+        drawPath(
+            path = beam,
+            color = accent.copy(alpha = 0.95f * intensity),
+            style = Stroke(width = radius * 0.11f, cap = StrokeCap.Round),
+        )
+
+        // Puntero sobre el trazo, a la salida del hexágono central.
+        val head = edgeMid(center, 1)
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(accent.copy(alpha = 0.45f * intensity), Color.Transparent),
+                center = head,
+                radius = radius * 0.7f,
+            ),
+            radius = radius * 0.7f,
+            center = head,
+        )
+        drawCircle(color = accent.copy(alpha = intensity), radius = radius * 0.15f, center = head)
+
+        // Orbe recolectable en el vecino inferior: el objetivo que da sentido al recorrido.
+        drawCircle(
+            color = accent.copy(alpha = 0.75f * intensity),
+            radius = radius * 0.12f,
+            center = centers[2],
+        )
     }
 }

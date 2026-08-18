@@ -132,6 +132,26 @@ object GameIds {
      * en la tabla de otro, y la FK no lo detectaría porque ambos existen).
      */
     const val QUANTUM_MERGE = "c17b40de-92a5-4f38-8b61-0d7e5a3c9142"
+
+    /**
+     * Neon Legion / runner de carriles con puertas matemáticas (categoría "mental_speed" /
+     * Velocidad Mental). UUID v4 aleatorio con prefijo deliberadamente distinto a todos los
+     * demás ids del catálogo (mismo criterio anti-transposición que [QUANTUM_MERGE]).
+     *
+     * Reservado desde la FASE 2 (motor); su [GameInfo], motif y seed en Supabase se dan de
+     * alta en la fase de integración del juego.
+     */
+    const val NEON_LEGION = "7b3e51f0-4d8a-4c26-9e17-f2a86c40d593"
+
+    /**
+     * Hexa Orbit / tablero hexagonal giratorio con puntero de luz (categoría "spatial" / Visión
+     * Espacial). UUID v4 aleatorio con prefijo deliberadamente distinto a todos los demás ids
+     * del catálogo (mismo criterio anti-transposición que [QUANTUM_MERGE]).
+     *
+     * Reservado desde la FASE 2 (motor); su [GameInfo], motif y seed en Supabase se dan de alta
+     * en la fase de integración del juego.
+     */
+    const val HEXA_ORBIT = "a9f2c86b-3e74-4d51-9c08-6b1d40e7a25f"
 }
 
 /**
@@ -238,6 +258,21 @@ enum class GameMotif {
      * todo — que es justo la diferencia entre ambos juegos.
      */
     SINGLE_LINE,
+
+    /**
+     * Neon Legion: la pista de carriles con una puerta matemática cruzándola y el enjambre de
+     * puntos de luz del ejército debajo — la pareja "elige puerta / masa que crece" que resume
+     * la mecánica.
+     */
+    LEGION_SWARM,
+
+    /**
+     * Hexa Orbit: panal de hexágonos con caminos curvos y un trazo de luz atravesándolos. Motivo
+     * propio (y no [CIRCUIT_FLOW]) porque comparten la idea de "camino", pero allí la rejilla es
+     * cuadrada y los cables son codos ortogonales; aquí lo que identifica al juego a primera
+     * vista es el panal y la curva continua que lo recorre.
+     */
+    HEXA_ORBIT,
 }
 
 /**
@@ -300,6 +335,9 @@ object GameCatalog {
         GameInfo(GameIds.NEON_LINE, "Línea Neón", GameCategory.PROBLEM_SOLVING, playable = true, motif = GameMotif.SINGLE_LINE),
         GameInfo(GameIds.HYPERGATE, "Hypergate", GameCategory.REFLEXES, playable = true, motif = GameMotif.HYPERGATE),
         GameInfo(GameIds.QUANTUM_MERGE, "Quantum Merge", GameCategory.SPATIAL, playable = true, motif = GameMotif.QUANTUM_SPHERES),
+        // Primer juego de Velocidad Mental del catálogo: la categoría deja de estar vacía.
+        GameInfo(GameIds.NEON_LEGION, "Neon Legion", GameCategory.MENTAL_SPEED, playable = true, motif = GameMotif.LEGION_SWARM),
+        GameInfo(GameIds.HEXA_ORBIT, "Hexa Orbit", GameCategory.SPATIAL, playable = true, motif = GameMotif.HEXA_ORBIT),
         GameInfo(null, "Parejas Relámpago", GameCategory.MEMORY, playable = false),
         GameInfo(null, "Cadena Lógica", GameCategory.LOGIC, playable = false),
         GameInfo(null, "Encuentra el Intruso", GameCategory.ATTENTION, playable = false),
