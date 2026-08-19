@@ -51,7 +51,19 @@ import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.core.theme.LogicGradients
 import com.kortexgames.app.data.settings.SettingsRepository
 import com.kortexgames.app.game.GameStatus
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.gamepause_audio_haptics
+import kortexgames.shared.generated.resources.gamepause_audio_music
+import kortexgames.shared.generated.resources.gamepause_audio_section
+import kortexgames.shared.generated.resources.gamepause_audio_sound
+import kortexgames.shared.generated.resources.gamepause_cta_exit
+import kortexgames.shared.generated.resources.gamepause_cta_next_level
+import kortexgames.shared.generated.resources.gamepause_cta_resume
+import kortexgames.shared.generated.resources.gamepause_exit_keeps_progress
+import kortexgames.shared.generated.resources.gamepause_help_title
+import kortexgames.shared.generated.resources.gamepause_title
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * # Control de pausa universal de los juegos
@@ -293,7 +305,7 @@ private fun BoxScope.PauseMenu(
             )
             NeonIcon(icon = KortexIcons.Pause, tint = accent, size = 42.dp)
             Text(
-                "En pausa",
+                stringResource(Res.string.gamepause_title),
                 style = MaterialTheme.typography.headlineMedium,
                 color = LogicColors.OnDark,
                 fontWeight = FontWeight.ExtraBold,
@@ -307,7 +319,7 @@ private fun BoxScope.PauseMenu(
             }
 
             // --- Opciones de audio -------------------------------------------------
-            SectionLabel("AUDIO", accent)
+            SectionLabel(stringResource(Res.string.gamepause_audio_section), accent)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -315,7 +327,7 @@ private fun BoxScope.PauseMenu(
                 AudioToggle(
                     iconOn = KortexIcons.SfxOn,
                     iconOff = KortexIcons.SfxOff,
-                    label = "Sonido",
+                    label = stringResource(Res.string.gamepause_audio_sound),
                     enabled = settingsState.isSfxEnabled,
                     accent = accent,
                     onToggle = {
@@ -327,7 +339,7 @@ private fun BoxScope.PauseMenu(
                 AudioToggle(
                     iconOn = KortexIcons.MusicOn,
                     iconOff = KortexIcons.MusicOff,
-                    label = "Música",
+                    label = stringResource(Res.string.gamepause_audio_music),
                     enabled = settingsState.isMusicEnabled,
                     accent = accent,
                     onToggle = {
@@ -339,7 +351,7 @@ private fun BoxScope.PauseMenu(
                 AudioToggle(
                     iconOn = KortexIcons.Haptics,
                     iconOff = KortexIcons.Haptics,
-                    label = "Vibración",
+                    label = stringResource(Res.string.gamepause_audio_haptics),
                     enabled = settingsState.isHapticsEnabled,
                     accent = accent,
                     onToggle = {
@@ -381,7 +393,7 @@ private fun BoxScope.PauseMenu(
                         glow = false,
                     )
                     Text(
-                        "REANUDAR",
+                        stringResource(Res.string.gamepause_cta_resume),
                         style = MaterialTheme.typography.titleMedium,
                         color = LogicColors.BackgroundDark,
                         fontWeight = FontWeight.ExtraBold,
@@ -408,7 +420,7 @@ private fun BoxScope.PauseMenu(
                             glow = false,
                         )
                         Text(
-                            "SIGUIENTE NIVEL",
+                            stringResource(Res.string.gamepause_cta_next_level),
                             style = MaterialTheme.typography.titleMedium,
                             color = LogicColors.BackgroundDark,
                             fontWeight = FontWeight.ExtraBold,
@@ -432,7 +444,7 @@ private fun BoxScope.PauseMenu(
                         glow = false,
                     )
                     Text(
-                        "SALIR",
+                        stringResource(Res.string.gamepause_cta_exit),
                         style = MaterialTheme.typography.titleMedium,
                         color = LogicColors.OnDark,
                         fontWeight = FontWeight.Bold,
@@ -443,7 +455,7 @@ private fun BoxScope.PauseMenu(
             // tranquiliza antes de que el jugador pulse "SALIR".
             if (exitKeepsProgress) {
                 Text(
-                    "No perderás tu progreso: podrás continuar donde lo dejaste.",
+                    stringResource(Res.string.gamepause_exit_keeps_progress),
                     style = MaterialTheme.typography.bodyMedium,
                     color = LogicColors.OnDarkMuted,
                     textAlign = TextAlign.Center,
@@ -536,7 +548,7 @@ private fun HelpOpenRow(onClick: () -> Unit, accent: Color) {
     ) {
         NeonIcon(icon = KortexIcons.Help, tint = accent, size = 22.dp, glow = false)
         Text(
-            "¿Cómo se juega?",
+            stringResource(Res.string.gamepause_help_title),
             style = MaterialTheme.typography.titleMedium,
             color = LogicColors.OnDark,
             modifier = Modifier.weight(1f),
@@ -577,7 +589,7 @@ private fun HelpSection(helpText: String, accent: Color) {
         ) {
             NeonIcon(icon = KortexIcons.Help, tint = accent, size = 22.dp, glow = false)
             Text(
-                "¿Cómo se juega?",
+                stringResource(Res.string.gamepause_help_title),
                 style = MaterialTheme.typography.titleMedium,
                 color = LogicColors.OnDark,
                 modifier = Modifier.weight(1f),

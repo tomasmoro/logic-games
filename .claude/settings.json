@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew :shared:compileKotlinIosSimulatorArm64 *)",
+      "Bash(./gradlew :shared:testAndroidHostTest *)",
+      "Bash(./gradlew :androidApp:assembleDebug *)",
+      "Bash(./gradlew :shared:compileCommonMainKotlinMetadata *)",
+      "Bash(./gradlew :shared:iosSimulatorArm64Test *)",
+      "Bash(./gradlew :shared:tasks *)",
+      "Bash(./gradlew :shared:compileDebugKotlinAndroid *)",
+      "Bash(./gradlew :shared:compileAndroidMain *)",
+      "Bash(./gradlew :shared:generateSecrets *)",
+      "Bash(./gradlew :shared:jvmTest *)",
+      "mcp__supabase__get_advisors",
+      "mcp__supabase__list_migrations",
+      "mcp__supabase__list_projects"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/check-hardcoded-ui.sh 2>/dev/null || true",
+            "statusMessage": "Revisando colores/strings hardcodeados (CLAUDE.md §9/§10)..."
+          }
+        ]
+      }
+    ]
+  }
+}

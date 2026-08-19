@@ -250,4 +250,95 @@
     <string name="hexa_orbit_hud_orbs">Orbes</string>
     <string name="hexa_orbit_hud_speed">Velocidad</string>
 
+    <!-- ============================================================
+         GameOverOverlay — capa modal de fin de partida compartida por
+         todos los juegos (ver KDoc de GameOverOverlay.kt). Los textos
+         viven aquí y no en cada juego porque el overlay es el mismo
+         componente para los 19: un cambio de copy se hace una vez.
+         ============================================================ -->
+    <string name="gameover_default_headline">¡Partida terminada!</string>
+    <string name="gameover_stat_points">PUNTOS</string>
+    <string name="gameover_stat_time">Tiempo</string>
+    <!-- Único CTA durante la bienvenida de primera apertura (ver duringFirstRun). -->
+    <string name="gameover_cta_back">VOLVER</string>
+    <!-- %1$s = rótulo del escalón de dificultad recién abierto, en mayúsculas. -->
+    <string name="gameover_cta_play_unlocked">JUGAR EN %1$s</string>
+    <string name="gameover_cta_play_again">JUGAR DE NUEVO</string>
+    <!-- Enlace de texto (no botón) para salir sin competir con el CTA principal. -->
+    <string name="gameover_cta_exit_link">Salir</string>
+    <string name="gameover_cta_next_level">SIGUIENTE NIVEL</string>
+    <string name="gameover_cta_retry_level">REPETIR NIVEL</string>
+    <string name="gameover_cta_exit">SALIR</string>
+    <string name="gameover_badge_new_record">¡NUEVO RÉCORD!</string>
+    <!-- %1$s = rótulo del escalón de dificultad recién abierto, en mayúsculas. -->
+    <string name="gameover_badge_unlocked">¡%1$s DESBLOQUEADO!</string>
+    <!-- %1$s = percentil redondeado (FASE 2, get_game_percentile). -->
+    <string name="gameover_percentile_better_than">Eres mejor que el %1$s% de los jugadores</string>
+
+    <!-- ============================================================
+         WorldRankingPanel — comparativa con el mundo (fin de partida y
+         antesala). Un texto por [WorldRankTier], más los huecos de carga
+         / no disponible / vista previa sin marca. Componente compartido
+         por los 19 juegos, igual criterio que gameover_* de arriba.
+         ============================================================ -->
+    <string name="worldranking_pioneer_title">¡Eres el primero!</string>
+    <string name="worldranking_pioneer_message">Todavía no hay con quién compararte: tu marca abre el ranking mundial.</string>
+    <!-- %1$s = puesto propio; %2$s = total de jugadores. -->
+    <string name="worldranking_learning_title">Puesto #%1$s de %2$s</string>
+    <string name="worldranking_learning_message">Cada partida te sube puestos. ¡Vuelve a intentarlo y alcanza al de arriba!</string>
+    <!-- Título común a RISING/STRONG/ELITE. %1$s = percentil ya topado en 99 (ver GameRanking.displayPct). -->
+    <string name="worldranking_better_than_title">Mejor que el %1$s% de los jugadores</string>
+    <string name="worldranking_rising_message">¡Buen ritmo! Ya dejas atrás a más de la mitad del mundo.</string>
+    <string name="worldranking_strong_message">¡Estás entre los mejores! El top mundial está a un paso.</string>
+    <string name="worldranking_elite_message">¡Élite mundial! Estás en el 5% mejor del planeta.</string>
+    <string name="worldranking_champion_held_title">Sigues siendo el nº1 del mundo</string>
+    <!-- %1$s = marca propia formateada (puntos o tiempo, ver GameRanking.formatMetric). -->
+    <string name="worldranking_champion_held_message">Tu récord de %1$s aguanta: esta partida no lo ha superado.</string>
+    <string name="worldranking_champion_new_title">¡Eres el nº1 del mundo!</string>
+    <!-- %1$s = total de jugadores a los que supera. -->
+    <string name="worldranking_champion_new_message">Nadie ha superado tu marca entre %1$s jugadores. Ahora toca defenderla.</string>
+    <!-- %1$s = marca propia formateada. Nota común a todos los tramos salvo CHAMPION (ver WorldRankTier.copyFor). -->
+    <string name="worldranking_record_note">Tu récord sigue en %1$s.</string>
+    <!-- %1$s = puntuación. Unidad de GameRanking.formatMetric cuando la tabla no ordena por tiempo. -->
+    <string name="worldranking_metric_points">%1$s puntos</string>
+    <!-- %1$s = etiqueta de dificultad/tablero, en mayúsculas. -->
+    <string name="worldranking_table_label">RANKING · %1$s</string>
+    <string name="worldranking_anonymous_player">Jugador anónimo</string>
+    <string name="worldranking_global_record_badge">¡NUEVO RÉCORD MUNDIAL!</string>
+    <string name="worldranking_loading">Comparando con el mundo…</string>
+    <string name="worldranking_unavailable">Guardado localmente · inicia sesión para comparar con el mundo</string>
+    <!-- Hueco de WorldRankingPreviewPanel sin marca propia (antesala). %1$s = dificultad/tablero elegido. -->
+    <string name="worldranking_preview_unavailable_with_difficulty">Juega una partida en %1$s con tu cuenta iniciada para ver tu puesto en el ranking mundial.</string>
+    <string name="worldranking_preview_unavailable">Juega una partida con tu cuenta iniciada para ver tu puesto en el ranking mundial.</string>
+
+    <!-- ============================================================
+         GamePauseControls — menú de pausa universal (ver KDoc de
+         GamePauseControls.kt). Mismo criterio que gameover_*: un solo
+         componente para los 19 juegos, un solo sitio para el copy.
+         ============================================================ -->
+    <string name="gamepause_title">En pausa</string>
+    <string name="gamepause_audio_section">AUDIO</string>
+    <string name="gamepause_audio_sound">Sonido</string>
+    <string name="gamepause_audio_music">Música</string>
+    <string name="gamepause_audio_haptics">Vibración</string>
+    <string name="gamepause_cta_resume">REANUDAR</string>
+    <string name="gamepause_cta_next_level">SIGUIENTE NIVEL</string>
+    <string name="gamepause_cta_exit">SALIR</string>
+    <string name="gamepause_exit_keeps_progress">No perderás tu progreso: podrás continuar donde lo dejaste.</string>
+    <!-- Cabecera de la ayuda: se usa tanto para la fila que abre GameHelpSheet como
+         para la sección plegable de legado ([HelpOpenRow]/[HelpSection]). -->
+    <string name="gamepause_help_title">¿Cómo se juega?</string>
+
+    <!-- ============================================================
+         GameHelpSheet — pantalla de ayuda genérica "¿Cómo se juega?"
+         (ver KDoc de GameHelp.kt). El contenido en sí (título, resumen,
+         pasos, consejos) lo inyecta cada juego desde GameHelpContent —
+         eso NO se migra aquí, solo el "marco" fijo del componente.
+         ============================================================ -->
+    <string name="gamehelp_cta_understood">¡Entendido!</string>
+    <!-- Etiquetas de HelpExampleCard: ejemplo correcto/incorrecto en un diagrama. -->
+    <string name="gamehelp_example_correct">BIEN</string>
+    <string name="gamehelp_example_incorrect">MAL</string>
+    <string name="gamehelp_tips_section">CONSEJOS</string>
+
 </resources>

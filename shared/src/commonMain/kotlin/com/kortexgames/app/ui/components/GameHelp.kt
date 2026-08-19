@@ -46,6 +46,12 @@ import androidx.compose.ui.unit.dp
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.core.theme.LogicGradients
 import com.kortexgames.app.game.GameMotif
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.gamehelp_cta_understood
+import kortexgames.shared.generated.resources.gamehelp_example_correct
+import kortexgames.shared.generated.resources.gamehelp_example_incorrect
+import kortexgames.shared.generated.resources.gamehelp_tips_section
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Un **paso** de la ayuda "cómo se juega": icono + título breve + explicación. Los pasos
@@ -267,7 +273,7 @@ fun BoxScope.GameHelpSheet(
                 contentPadding = PaddingValues(vertical = 16.dp),
             ) {
                 Text(
-                    "¡Entendido!",
+                    stringResource(Res.string.gamehelp_cta_understood),
                     style = MaterialTheme.typography.titleMedium,
                     color = LogicColors.BackgroundDark,
                     fontWeight = FontWeight.ExtraBold,
@@ -389,7 +395,11 @@ fun HelpExampleCard(
                 glow = false,
             )
             Text(
-                if (correct) "BIEN" else "MAL",
+                if (correct) {
+                    stringResource(Res.string.gamehelp_example_correct)
+                } else {
+                    stringResource(Res.string.gamehelp_example_incorrect)
+                },
                 style = MaterialTheme.typography.labelLarge,
                 color = color,
                 fontWeight = FontWeight.Black,
@@ -415,7 +425,7 @@ fun HelpExampleCard(
 private fun HelpTips(tips: List<String>, accent: Color) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
-            "CONSEJOS",
+            stringResource(Res.string.gamehelp_tips_section),
             style = MaterialTheme.typography.labelLarge,
             color = accent,
             fontWeight = FontWeight.Bold,

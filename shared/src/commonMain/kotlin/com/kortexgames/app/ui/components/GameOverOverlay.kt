@@ -51,7 +51,22 @@ import com.kortexgames.app.core.theme.LogicGradients
 import com.kortexgames.app.domain.model.PercentileResult
 import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.ui.onboarding.LocalFirstRunFlow
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.gameover_badge_new_record
+import kortexgames.shared.generated.resources.gameover_badge_unlocked
+import kortexgames.shared.generated.resources.gameover_cta_back
+import kortexgames.shared.generated.resources.gameover_cta_exit
+import kortexgames.shared.generated.resources.gameover_cta_exit_link
+import kortexgames.shared.generated.resources.gameover_cta_next_level
+import kortexgames.shared.generated.resources.gameover_cta_play_again
+import kortexgames.shared.generated.resources.gameover_cta_play_unlocked
+import kortexgames.shared.generated.resources.gameover_cta_retry_level
+import kortexgames.shared.generated.resources.gameover_default_headline
+import kortexgames.shared.generated.resources.gameover_percentile_better_than
+import kortexgames.shared.generated.resources.gameover_stat_points
+import kortexgames.shared.generated.resources.gameover_stat_time
 import kotlinx.coroutines.delay
+import org.jetbrains.compose.resources.stringResource
 import kotlin.math.roundToInt
 
 /**
@@ -238,7 +253,7 @@ fun GameOverOverlay(
             Spacer(Modifier.height(TrophyGap))
 
             Text(
-                headline ?: "¡Partida terminada!",
+                headline ?: stringResource(Res.string.gameover_default_headline),
                 style = MaterialTheme.typography.titleLarge,
                 color = LogicColors.OnDarkMuted,
             )
@@ -258,7 +273,7 @@ fun GameOverOverlay(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 StatChip(
-                    label = "PUNTOS",
+                    label = stringResource(Res.string.gameover_stat_points),
                     value = "$animatedScore",
                     accent = LogicColors.Electric,
                     valueStyle = MaterialTheme.typography.headlineMedium,
@@ -267,7 +282,7 @@ fun GameOverOverlay(
                         .fillMaxHeight(),
                 )
                 StatChip(
-                    label = "Tiempo",
+                    label = stringResource(Res.string.gameover_stat_time),
                     value = "${info.result.completionTimeMs / 1000}s",
                     accent = LogicColors.NeonCyan,
                     modifier = Modifier
@@ -318,7 +333,7 @@ fun GameOverOverlay(
                 // bienvenida (ver KDoc de esta función)—, así que ninguno de esos
                 // botones se muestra: solo "Volver".
                 AnimatedGameButton(
-                    text = "VOLVER",
+                    text = stringResource(Res.string.gameover_cta_back),
                     onClick = onExit,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -333,7 +348,7 @@ fun GameOverOverlay(
                 DifficultyUnlockedBadge(label = unlockedDifficultyLabel, visible = visible)
                 Spacer(Modifier.height(CardItemGap))
                 AnimatedGameButton(
-                    text = "JUGAR EN ${unlockedDifficultyLabel.uppercase()}",
+                    text = stringResource(Res.string.gameover_cta_play_unlocked, unlockedDifficultyLabel.uppercase()),
                     onClick = onPlayUnlockedDifficulty,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -342,14 +357,14 @@ fun GameOverOverlay(
                 )
                 Spacer(Modifier.height(CardItemGap))
                 AnimatedGameButton(
-                    text = "JUGAR DE NUEVO",
+                    text = stringResource(Res.string.gameover_cta_play_again),
                     onClick = onPlayAgain,
                     modifier = Modifier.fillMaxWidth(),
                     gradient = LogicGradients.energy,
                 )
                 Spacer(Modifier.height(CardItemGap))
                 Text(
-                    "Salir",
+                    stringResource(Res.string.gameover_cta_exit_link),
                     style = MaterialTheme.typography.labelLarge,
                     color = LogicColors.OnDarkMuted,
                     modifier = Modifier
@@ -363,7 +378,7 @@ fun GameOverOverlay(
                 // y volver al selector. El único bucle (pulse) va al CTA que guía (§9.4).
                 Spacer(Modifier.height(CardItemGap))
                 AnimatedGameButton(
-                    text = "SIGUIENTE NIVEL",
+                    text = stringResource(Res.string.gameover_cta_next_level),
                     onClick = onNextLevel,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -372,7 +387,7 @@ fun GameOverOverlay(
                 )
                 Spacer(Modifier.height(CardItemGap))
                 AnimatedGameButton(
-                    text = "REPETIR NIVEL",
+                    text = stringResource(Res.string.gameover_cta_retry_level),
                     onClick = onPlayAgain,
                     modifier = Modifier.fillMaxWidth(),
                     gradient = LogicGradients.energy,
@@ -380,7 +395,7 @@ fun GameOverOverlay(
                 if (onChooseLevel != null) {
                     Spacer(Modifier.height(CardItemGap))
                     Text(
-                        "Elegir nivel",
+                        stringResource(Res.string.gameover_cta_exit_link),
                         style = MaterialTheme.typography.labelLarge,
                         color = LogicColors.OnDarkMuted,
                         modifier = Modifier
@@ -392,7 +407,7 @@ fun GameOverOverlay(
                 }
             } else {
                 AnimatedGameButton(
-                    text = "JUGAR DE NUEVO",
+                    text = stringResource(Res.string.gameover_cta_play_again),
                     onClick = onPlayAgain,
                     // Único bucle de la pantalla (pulse) reservado al CTA principal,
                     // como manda §9.4: guía la acción sin competir con otros elementos.
@@ -403,7 +418,7 @@ fun GameOverOverlay(
                 )
                 Spacer(Modifier.height(CardItemGap))
                 AnimatedGameButton(
-                    text = "SALIR",
+                    text = stringResource(Res.string.gameover_cta_exit),
                     onClick = onExit,
                     modifier = Modifier.fillMaxWidth(),
                     gradient = LogicGradients.energy,
@@ -466,7 +481,7 @@ private fun NewRecordBadge(visible: Boolean) {
     ) {
         NeonIcon(icon = KortexIcons.Star, tint = LogicColors.BackgroundDark, size = 20.dp, glow = false)
         Text(
-            "¡NUEVO RÉCORD!",
+            stringResource(Res.string.gameover_badge_new_record),
             style = MaterialTheme.typography.labelLarge,
             color = LogicColors.BackgroundDark,
             fontWeight = FontWeight.Black,
@@ -510,7 +525,7 @@ private fun DifficultyUnlockedBadge(label: String, visible: Boolean) {
     ) {
         NeonIcon(icon = KortexIcons.LockOpen, tint = LogicColors.BackgroundDark, size = 20.dp, glow = false)
         Text(
-            "¡${label.uppercase()} DESBLOQUEADO!",
+            stringResource(Res.string.gameover_badge_unlocked, label.uppercase()),
             style = MaterialTheme.typography.labelLarge,
             color = LogicColors.BackgroundDark,
             fontWeight = FontWeight.Black,
@@ -586,7 +601,7 @@ private fun PercentileBanner(percentile: PercentileResult) {
     ) {
         NeonIcon(icon = KortexIcons.Trophy, tint = LogicColors.Amber, size = 22.dp)
         Text(
-            "Eres mejor que el ${percentile.betterThanPct.roundToInt()}% de los jugadores",
+            stringResource(Res.string.gameover_percentile_better_than, percentile.betterThanPct.roundToInt().toString()),
             style = MaterialTheme.typography.titleMedium,
             color = LogicColors.Amber,
             textAlign = TextAlign.Start,

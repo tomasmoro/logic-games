@@ -48,6 +48,29 @@ import com.kortexgames.app.core.theme.LogicGradients
 import com.kortexgames.app.domain.model.GameRanking
 import com.kortexgames.app.domain.model.formatDurationShort
 import com.kortexgames.app.domain.model.LeaderboardEntry
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.worldranking_anonymous_player
+import kortexgames.shared.generated.resources.worldranking_better_than_title
+import kortexgames.shared.generated.resources.worldranking_champion_held_message
+import kortexgames.shared.generated.resources.worldranking_champion_held_title
+import kortexgames.shared.generated.resources.worldranking_champion_new_message
+import kortexgames.shared.generated.resources.worldranking_champion_new_title
+import kortexgames.shared.generated.resources.worldranking_elite_message
+import kortexgames.shared.generated.resources.worldranking_global_record_badge
+import kortexgames.shared.generated.resources.worldranking_learning_message
+import kortexgames.shared.generated.resources.worldranking_learning_title
+import kortexgames.shared.generated.resources.worldranking_loading
+import kortexgames.shared.generated.resources.worldranking_metric_points
+import kortexgames.shared.generated.resources.worldranking_pioneer_message
+import kortexgames.shared.generated.resources.worldranking_pioneer_title
+import kortexgames.shared.generated.resources.worldranking_preview_unavailable
+import kortexgames.shared.generated.resources.worldranking_preview_unavailable_with_difficulty
+import kortexgames.shared.generated.resources.worldranking_record_note
+import kortexgames.shared.generated.resources.worldranking_rising_message
+import kortexgames.shared.generated.resources.worldranking_strong_message
+import kortexgames.shared.generated.resources.worldranking_table_label
+import kortexgames.shared.generated.resources.worldranking_unavailable
+import org.jetbrains.compose.resources.stringResource
 import kotlin.math.roundToInt
 
 /**
@@ -161,9 +184,17 @@ private fun GameRanking.recordStillHeld(currentScore: Int): Boolean {
  * Formatea una marca del ranking en la unidad que le corresponde: tiempo cuando la tabla se ordena
  * por rapidez y puntos en el resto. Es el único sitio donde se decide, para que la lista, la nota
  * del récord y el mensaje del campeón no puedan contarlo de dos formas distintas.
+ *
+ * `@Composable`: la rama de puntos lee su sufijo ("puntos") de `strings.xml` (CLAUDE.md §10); la de
+ * tiempo no lo necesita ([formatDurationShort] solo produce dígitos y separadores, sin palabras).
  */
+@Composable
 private fun GameRanking.formatMetric(value: Int): String =
-    if (rankedByTime) formatDurationShort(value.toLong()) else "$value puntos"
+    if (rankedByTime) {
+        formatDurationShort(value.toLong())
+    } else {
+        stringResource(Res.string.worldranking_metric_points, value.toString())
+    }
 
 /**
  * Textos del bloque. Se resuelven de una pieza —y no en tres funciones sueltas—
@@ -185,52 +216,62 @@ private data class RankingCopy(
  * Resuelve los textos del tramo. El eje que manda, además del tramo, es si la partida
  * **ha superado algo** ([GameRanking.recordStillHeld]): celebrar una hazaña que ocurrió
  * hace tres partidas cansa y, peor, hace que la celebración de verdad no signifique nada.
+ *
+ * `@Composable`: cada rama lee su copy de `strings.xml` (CLAUDE.md §10). Se llama directo
+ * en el cuerpo de [WorldRankingPanel] —sin `remember`, porque `stringResource` no se puede
+ * invocar dentro del lambda de cálculo de `remember` (`@DisallowComposableCalls`)— y el
+ * recálculo en cada recomposición es barato: son un puñado de lookups ya cacheados por el
+ * propio sistema de recursos.
  */
+@Composable
 private fun WorldRankTier.copyFor(ranking: GameRanking, currentScore: Int): RankingCopy {
     val best = ranking.myBestScore()
     val held = ranking.recordStillHeld(currentScore)
     // Nota común a todos los tramos salvo CHAMPION, que la integra en su mensaje.
-    val note = if (held && best != null) "Tu récord sigue en ${ranking.formatMetric(best)}." else null
+    val note = if (held && best != null) {
+        stringResource(Res.string.worldranking_record_note, ranking.formatMetric(best))
+    } else {
+        null
+    }
 
     return when (this) {
         WorldRankTier.PIONEER -> RankingCopy(
-            title = "¡Eres el primero!",
-            message = "Todavía no hay con quién compararte: tu marca abre el ranking mundial.",
+            title = stringResource(Res.string.worldranking_pioneer_title),
+            message = stringResource(Res.string.worldranking_pioneer_message),
             note = note,
         )
         WorldRankTier.LEARNING -> RankingCopy(
-            title = "Puesto #${ranking.rank} de ${ranking.totalPlayers}",
-            message = "Cada partida te sube puestos. ¡Vuelve a intentarlo y alcanza al de arriba!",
+            title = stringResource(Res.string.worldranking_learning_title, ranking.rank.toString(), ranking.totalPlayers.toString()),
+            message = stringResource(Res.string.worldranking_learning_message),
             note = note,
         )
         WorldRankTier.RISING -> RankingCopy(
-            title = "Mejor que el ${ranking.displayPct()}% de los jugadores",
-            message = "¡Buen ritmo! Ya dejas atrás a más de la mitad del mundo.",
+            title = stringResource(Res.string.worldranking_better_than_title, ranking.displayPct().toString()),
+            message = stringResource(Res.string.worldranking_rising_message),
             note = note,
         )
         WorldRankTier.STRONG -> RankingCopy(
-            title = "Mejor que el ${ranking.displayPct()}% de los jugadores",
-            message = "¡Estás entre los mejores! El top mundial está a un paso.",
+            title = stringResource(Res.string.worldranking_better_than_title, ranking.displayPct().toString()),
+            message = stringResource(Res.string.worldranking_strong_message),
             note = note,
         )
         WorldRankTier.ELITE -> RankingCopy(
-            title = "Mejor que el ${ranking.displayPct()}% de los jugadores",
-            message = "¡Élite mundial! Estás en el 5% mejor del planeta.",
+            title = stringResource(Res.string.worldranking_better_than_title, ranking.displayPct().toString()),
+            message = stringResource(Res.string.worldranking_elite_message),
             note = note,
         )
         // Es el único tramo que se celebra a lo grande, así que es también donde más
         // importa distinguir "acabas de conseguirlo" de "lo conseguiste y lo mantienes".
         WorldRankTier.CHAMPION -> if (held && best != null) {
             RankingCopy(
-                title = "Sigues siendo el nº1 del mundo",
-                message = "Tu récord de ${ranking.formatMetric(best)} aguanta: esta partida no lo ha superado.",
+                title = stringResource(Res.string.worldranking_champion_held_title),
+                message = stringResource(Res.string.worldranking_champion_held_message, ranking.formatMetric(best)),
                 note = null,
             )
         } else {
             RankingCopy(
-                title = "¡Eres el nº1 del mundo!",
-                message = "Nadie ha superado tu marca entre ${ranking.totalPlayers} jugadores. " +
-                    "Ahora toca defenderla.",
+                title = stringResource(Res.string.worldranking_champion_new_title),
+                message = stringResource(Res.string.worldranking_champion_new_message, ranking.totalPlayers.toString()),
                 note = null,
             )
         }
@@ -263,7 +304,9 @@ fun WorldRankingPanel(
     modifier: Modifier = Modifier,
 ) {
     val tier = remember(ranking) { WorldRankTier.of(ranking) }
-    val copy = remember(ranking, currentScore) { tier.copyFor(ranking, currentScore) }
+    // Sin `remember`: `copyFor` es @Composable (lee `strings.xml`) y ese lambda no admite
+    // llamadas composable. Ver KDoc de [WorldRankTier.copyFor].
+    val copy = tier.copyFor(ranking, currentScore)
     val accent = tier.accent
     val shape = RoundedCornerShape(16.dp)
 
@@ -324,7 +367,7 @@ fun WorldRankingPanel(
             // que es —tablas separadas, como el récord de Experto del Buscaminas—.
             ranking.difficultyLabel?.let { label ->
                 Text(
-                    "RANKING · ${label.uppercase()}",
+                    stringResource(Res.string.worldranking_table_label, label.uppercase()),
                     style = MaterialTheme.typography.bodyMedium,
                     color = accent.copy(alpha = 0.85f),
                     fontWeight = FontWeight.Bold,
@@ -336,7 +379,7 @@ fun WorldRankingPanel(
                         entry = entry,
                         accent = accent,
                         index = index,
-                        metricLabel = ranking::formatMetric,
+                        metricLabel = { ranking.formatMetric(it) },
                     )
                 }
             }
@@ -376,7 +419,8 @@ private fun LeaderboardRow(
     entry: LeaderboardEntry,
     accent: Color,
     index: Int,
-    metricLabel: (Int) -> String,
+    // @Composable: formatea vía GameRanking.formatMetric, que lee "puntos" de strings.xml.
+    metricLabel: @Composable (Int) -> String,
 ) {
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
@@ -424,7 +468,7 @@ private fun LeaderboardRow(
         Text(
             // Sin nombre elegido, un genérico: el backend manda `display_name` a null
             // antes que inventar nada, y aquí nunca hay id con el que identificar a nadie.
-            entry.displayName?.takeIf { it.isNotBlank() } ?: "Jugador anónimo",
+            entry.displayName?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.worldranking_anonymous_player),
             style = MaterialTheme.typography.bodyLarge,
             color = if (entry.isCurrentUser) LogicColors.OnDark else LogicColors.OnDarkMuted,
             fontWeight = if (entry.isCurrentUser) FontWeight.Bold else FontWeight.Normal,
@@ -516,7 +560,7 @@ private fun GlobalRecordBadge(modifier: Modifier = Modifier) {
             glow = false,
         )
         Text(
-            "¡NUEVO RÉCORD MUNDIAL!",
+            stringResource(Res.string.worldranking_global_record_badge),
             style = MaterialTheme.typography.labelLarge,
             color = LogicColors.BackgroundDark,
             fontWeight = FontWeight.Black,
@@ -549,7 +593,7 @@ fun WorldRankingLoading(modifier: Modifier = Modifier) {
             modifier = Modifier.size(16.dp),
         )
         Text(
-            "Comparando con el mundo…",
+            stringResource(Res.string.worldranking_loading),
             style = MaterialTheme.typography.bodyMedium,
             color = LogicColors.OnDarkMuted,
         )
@@ -572,7 +616,7 @@ fun WorldRankingUnavailable(modifier: Modifier = Modifier) {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            "Guardado localmente · inicia sesión para comparar con el mundo",
+            stringResource(Res.string.worldranking_unavailable),
             style = MaterialTheme.typography.bodyMedium,
             color = LogicColors.OnDarkMuted,
         )
@@ -594,9 +638,9 @@ fun WorldRankingUnavailable(modifier: Modifier = Modifier) {
 @Composable
 fun RankingPreviewUnavailable(difficultyLabel: String?, modifier: Modifier = Modifier) {
     val text = if (difficultyLabel != null) {
-        "Juega una partida en $difficultyLabel con tu cuenta iniciada para ver tu puesto en el ranking mundial."
+        stringResource(Res.string.worldranking_preview_unavailable_with_difficulty, difficultyLabel)
     } else {
-        "Juega una partida con tu cuenta iniciada para ver tu puesto en el ranking mundial."
+        stringResource(Res.string.worldranking_preview_unavailable)
     }
     Box(
         modifier = modifier
