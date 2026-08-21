@@ -115,8 +115,8 @@ class HexaOrbitEngineTest {
             HexaOrbitBalance.SPEED_RAMP_PER_SEC * game.elapsedSeconds
         assertTrue(abs(game.speed - expected) < 1e-4f, "Rampa no lineal: ${game.speed} vs $expected")
 
-        // El techo no se alcanza jugando (harían falta ~72 s de supervivencia y aquí nadie gira
-        // piezas), así que lo que se comprueba es la cota: la rapidez jamás lo rebasa.
+        // El techo no se alcanza jugando (harían falta más de 90 s de supervivencia y aquí nadie
+        // gira piezas), así que lo que se comprueba es la cota: la rapidez jamás lo rebasa.
         for (seed in 0 until 20) {
             val other = engineWith(seed)
             other.runFrames(frames = 600)
@@ -126,7 +126,7 @@ class HexaOrbitEngineTest {
 
     @Test
     fun `la partida termina cuando el puntero cruza la frontera`() {
-        // Un tablero de rectas sin girar nada: el puntero sale por el borde en pocos segundos.
+        // Semilla fija que, sin que se gire nada, hace escapar al puntero en pocos segundos.
         val engine = engineWith(seed = 5)
         engine.runFrames(frames = 600)
 
@@ -269,6 +269,67 @@ class HexaOrbitEngineTest {
         assertEquals(HexaOrbitBalance.MAX_ORBS, game.orbs.size)
         // Ids monotónicos: los orbes repuestos son objetos NUEVOS para la UI, no reposicionados.
         assertTrue(game.orbs.any { it.id > HexaOrbitBalance.MAX_ORBS })
+    }
+
+    @Test
+    fun `los orbes nacen sobre una arista del hexagono, nunca sobre un camino interior`() {
+        // Un punto está "sobre una arista" si cae, dentro de tolerancia, en el segmento recto
+        // entre dos vértices consecutivos del hexágono — nunca en el interior, que es donde
+        // viven las curvas.
+        fun liesOnAnEdge(local: HexPoint): Boolean = (0 until HEX_EDGES).any { edge ->
+            val a = HexGeometry.corner((edge - 1).mod(HEX_EDGES))
+            val b = HexGeometry.corner(edge)
+            val ab = b - a
+            val len = a.distanceTo(b)
+            val t = ((local.x - a.x) * ab.x + (local.y - a.y) * ab.y) / (len * len)
+            if (t < -1e-3f || t > 1f + 1e-3f) return@any false
+            val projected = a + ab * t
+            projected.distanceTo(local) < 1e-3f
+        }
+
+        for (seed in 0 until 40) {
+            val engine = engineWith(seed)
+            engine.runFrames(frames = 300)
+            for (orb in engine.state.value.orbs) {
+                assertTrue(
+                    liesOnAnEdge(orb.local),
+                    "Semilla $seed, orbe ${orb.id}: ${orb.local} no cae sobre ninguna arista",
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `los orbes nunca nacen sobre una arista de la frontera exterior`() {
+        // Cruzar la frontera exterior ES la condición de derrota: un orbe ahí solo sería
+        // "alcanzable" en el mismo frame en que la partida termina. Se identifica sobre qué
+        // arista cae cada orbe y se comprueba que el vecino de esa arista existe en el tablero.
+        fun edgeIndexOf(local: HexPoint): Int {
+            for (edge in 0 until HEX_EDGES) {
+                val a = HexGeometry.corner((edge - 1).mod(HEX_EDGES))
+                val b = HexGeometry.corner(edge)
+                val ab = b - a
+                val len = a.distanceTo(b)
+                val t = ((local.x - a.x) * ab.x + (local.y - a.y) * ab.y) / (len * len)
+                if (t < -1e-3f || t > 1f + 1e-3f) continue
+                if ((a + ab * t).distanceTo(local) < 1e-3f) return edge
+            }
+            error("El punto $local no cae sobre ninguna arista")
+        }
+
+        for (seed in 0 until 40) {
+            val engine = engineWith(seed)
+            engine.runFrames(frames = 300)
+            val board = engine.state.value.board
+            for (orb in engine.state.value.orbs) {
+                val edge = edgeIndexOf(orb.local)
+                val neighbour = orb.coord + HexDirection.ofEdge(edge)
+                assertTrue(
+                    neighbour in board,
+                    "Semilla $seed, orbe ${orb.id}: arista $edge de ${orb.coord} da a la frontera exterior",
+                )
+            }
+        }
     }
 
     @Test

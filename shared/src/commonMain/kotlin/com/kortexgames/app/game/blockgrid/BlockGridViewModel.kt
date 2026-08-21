@@ -57,6 +57,14 @@ class BlockGridViewModel(
             .launchIn(viewModelScope)
         // No se arranca aquí: se queda en IDLE mostrando la antesala y la
         // partida empieza con StartGame / ResumeSaved (patrón del resto de juegos).
+
+        // Comparativa mundial para la antesala (ver KDoc de `rankingPreview`). Un único
+        // pedido basta: el juego no vuelve a IDLE tras jugar dentro de la misma visita
+        // (empezar de nuevo salta directo a RUNNING), así que no hay que refrescarlo.
+        viewModelScope.launch {
+            val ranking = progress.previewRanking(GameIds.NEON_BLOCK_GRID)
+            setState { copy(rankingPreview = ranking, rankingPreviewLoading = false) }
+        }
     }
 
     override fun onIntent(intent: BlockGridIntent) {

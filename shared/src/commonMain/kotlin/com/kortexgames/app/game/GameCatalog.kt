@@ -152,6 +152,17 @@ object GameIds {
      * en la fase de integración del juego.
      */
     const val HEXA_ORBIT = "a9f2c86b-3e74-4d51-9c08-6b1d40e7a25f"
+
+    /**
+     * Neon Grid Switch / Lights Out con progresión de tamaño de matriz (categoría
+     * "patterns" / Reconocimiento de Patrones — primer juego de esta categoría en
+     * el catálogo). UUID v4 aleatorio con prefijo deliberadamente distinto a todos
+     * los demás ids del catálogo (mismo criterio anti-transposición que [QUANTUM_MERGE]).
+     *
+     * Reservado desde la FASE 2 (motor); su [GameInfo], motif y seed en Supabase se
+     * dan de alta en la fase de integración del juego.
+     */
+    const val NEON_GRID_SWITCH = "16c38bc2-a0e1-46ec-b3a0-3aa1ea0659d2"
 }
 
 /**
@@ -273,6 +284,13 @@ enum class GameMotif {
      * vista es el panal y la curva continua que lo recorre.
      */
     HEXA_ORBIT,
+
+    /**
+     * Neon Grid Switch: rejilla con la CRUZ de celdas que enciende un único toque
+     * (ella + sus cuatro vecinas ortogonales) — la propia mecánica del juego resumida
+     * en la miniatura, en vez de un patrón de luces arbitrario.
+     */
+    LIGHTS_GRID,
 }
 
 /**
@@ -336,8 +354,13 @@ object GameCatalog {
         GameInfo(GameIds.HYPERGATE, "Hypergate", GameCategory.REFLEXES, playable = true, motif = GameMotif.HYPERGATE),
         GameInfo(GameIds.QUANTUM_MERGE, "Quantum Merge", GameCategory.SPATIAL, playable = true, motif = GameMotif.QUANTUM_SPHERES),
         // Primer juego de Velocidad Mental del catálogo: la categoría deja de estar vacía.
-        GameInfo(GameIds.NEON_LEGION, "Neon Legion", GameCategory.MENTAL_SPEED, playable = true, motif = GameMotif.LEGION_SWARM),
+        // Desactivado temporalmente: se retira de publicación mientras se prepara el próximo
+        // release (queda jugable en código y con seed en Supabase, solo oculto del catálogo).
+        GameInfo(GameIds.NEON_LEGION, "Neon Legion", GameCategory.MENTAL_SPEED, playable = true, published = false, motif = GameMotif.LEGION_SWARM),
         GameInfo(GameIds.HEXA_ORBIT, "Hexa Orbit", GameCategory.SPATIAL, playable = true, motif = GameMotif.HEXA_ORBIT),
+        // Primer juego de Reconocimiento de Patrones del catálogo: la categoría deja de
+        // estar vacía.
+        GameInfo(GameIds.NEON_GRID_SWITCH, "Neon Grid Switch", GameCategory.PATTERNS, playable = true, motif = GameMotif.LIGHTS_GRID),
         GameInfo(null, "Parejas Relámpago", GameCategory.MEMORY, playable = false),
         GameInfo(null, "Cadena Lógica", GameCategory.LOGIC, playable = false),
         GameInfo(null, "Encuentra el Intruso", GameCategory.ATTENTION, playable = false),

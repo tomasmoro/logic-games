@@ -9,6 +9,7 @@ import com.kortexgames.app.core.mvi.MviViewModel
 import com.kortexgames.app.core.mvi.UiEffect
 import com.kortexgames.app.core.mvi.UiIntent
 import com.kortexgames.app.core.mvi.UiState
+import com.kortexgames.app.domain.model.GameRanking
 import com.kortexgames.app.domain.model.GameResult
 import com.kortexgames.app.domain.repository.PlayerProgressRepository
 import com.kortexgames.app.domain.repository.ProgressRepository
@@ -17,6 +18,7 @@ import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.LeveledGamePhase
 import com.kortexgames.app.game.toGameOverInfo
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -28,6 +30,11 @@ import kotlinx.coroutines.launch
  * @property maxUnlocked nivel máximo ya superado (récord); define lo desbloqueado.
  * @property currentLevel nivel que se está jugando (para "Siguiente nivel").
  * @property levelTimes mejor tiempo por nivel (nivel → ms); lo muestra el selector.
+ * @property rankingPreview comparativa mundial del nivel resaltado en el selector,
+ *   ANTES de jugarlo (ver [EnergyFlowIntent.PreviewLevel]); null mientras carga, si
+ *   falló, o si el jugador es invitado/offline (ver `ProgressRepository.previewRanking`).
+ * @property rankingPreviewLoading true mientras se resuelve el pedido de
+ *   [rankingPreview] en curso.
  */
 data class EnergyFlowUiState(
     val phase: LeveledGamePhase = LeveledGamePhase.LEVEL_SELECT,
@@ -37,6 +44,8 @@ data class EnergyFlowUiState(
     val status: GameStatus = GameStatus.IDLE,
     val gameOver: GameOverInfo? = null,
     val levelTimes: Map<Int, Long> = emptyMap(),
+    val rankingPreview: GameRanking? = null,
+    val rankingPreviewLoading: Boolean = false,
 ) : UiState
 
 /** Intents (único punto de entrada de la UI, patrón MVI). */
@@ -62,6 +71,13 @@ sealed interface EnergyFlowIntent : UiIntent {
 
     /** Volver al selector de niveles (desde el game-over). */
     data object ChooseLevel : EnergyFlowIntent
+
+    /**
+     * El jugador cambió el nivel resaltado en el carril de la antesala (o esta se
+     * acaba de abrir): pide la comparativa mundial de ESE nivel para
+     * [EnergyFlowUiState.rankingPreview], sin haberlo jugado todavía.
+     */
+    data class PreviewLevel(val level: Int) : EnergyFlowIntent
 }
 
 sealed interface EnergyFlowEffect : UiEffect
@@ -73,6 +89,11 @@ sealed interface EnergyFlowEffect : UiEffect
  * el resultado (local-first) y el récord de nivel; el jugador puede repetir, avanzar
  * al siguiente o volver al selector. El nivel máx desbloqueado se observa desde
  * [PlayerProgressRepository].
+ *
+ * El ranking mundial se separa por nivel (ver `GameRankingScopes`), así que la
+ * antesala puede mostrar "cómo le va" al jugador en el nivel resaltado del carril
+ * ANTES de jugarlo (ver [EnergyFlowUiState.rankingPreview] y
+ * [EnergyFlowIntent.PreviewLevel]; mismo mecanismo que Water Sort).
  */
 class EnergyFlowViewModel(
     private val progress: ProgressRepository,
@@ -82,6 +103,11 @@ class EnergyFlowViewModel(
 ) : MviViewModel<EnergyFlowIntent, EnergyFlowUiState, EnergyFlowEffect>(EnergyFlowUiState()) {
 
     private val engine = EnergyFlowEngine(viewModelScope, audio)
+
+    /** Pedido en vuelo de [refreshRankingPreview]; se cancela al lanzar uno nuevo para
+     *  que un cambio rápido de nivel en el carril no deje que una respuesta vieja pise
+     *  a la actual (condición de carrera de red). */
+    private var rankingPreviewJob: Job? = null
 
     init {
         engine.state.onEach { s -> setState { copy(game = s) } }.launchIn(viewModelScope)
@@ -112,6 +138,7 @@ class EnergyFlowViewModel(
             EnergyFlowIntent.ChooseLevel -> setState {
                 copy(phase = LeveledGamePhase.LEVEL_SELECT, gameOver = null)
             }
+            is EnergyFlowIntent.PreviewLevel -> refreshRankingPreview(intent.level)
         }
     }
 
@@ -119,6 +146,22 @@ class EnergyFlowViewModel(
     private fun playLevel(level: Int) {
         setState { copy(phase = LeveledGamePhase.PLAYING, currentLevel = level, gameOver = null) }
         engine.startAtLevel(level)
+    }
+
+    /**
+     * Pide la comparativa mundial del nivel [level] (1-based) para la antesala —
+     * mismo panel que el diálogo de fin de nivel
+     * ([com.kortexgames.app.ui.components.WorldRankingPreviewPanel]), pero sin haber
+     * jugado esta partida (ver [ProgressRepository.previewRanking]). Cancela
+     * cualquier pedido anterior en vuelo (ver [rankingPreviewJob]).
+     */
+    private fun refreshRankingPreview(level: Int) {
+        rankingPreviewJob?.cancel()
+        setState { copy(rankingPreview = null, rankingPreviewLoading = true) }
+        rankingPreviewJob = viewModelScope.launch {
+            val ranking = progress.previewRanking(GameIds.ENERGY_FLOW, level)
+            setState { copy(rankingPreview = ranking, rankingPreviewLoading = false) }
+        }
     }
 
     /**

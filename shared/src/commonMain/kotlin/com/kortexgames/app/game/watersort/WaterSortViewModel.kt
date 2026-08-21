@@ -9,6 +9,7 @@ import com.kortexgames.app.core.mvi.MviViewModel
 import com.kortexgames.app.core.mvi.UiEffect
 import com.kortexgames.app.core.mvi.UiIntent
 import com.kortexgames.app.core.mvi.UiState
+import com.kortexgames.app.domain.model.GameRanking
 import com.kortexgames.app.domain.model.GameResult
 import com.kortexgames.app.domain.repository.PlayerProgressRepository
 import com.kortexgames.app.domain.repository.ProgressRepository
@@ -18,6 +19,7 @@ import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.LeveledGamePhase
 import com.kortexgames.app.game.toGameOverInfo
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -34,6 +36,11 @@ import kotlinx.serialization.json.Json
  * @property savedLevel nivel de la partida guardada al salir, o null si no hay
  *   ninguna pendiente. Lo pinta la antesala como "Continuar" (ver
  *   [com.kortexgames.app.ui.components.ResumeState]).
+ * @property rankingPreview comparativa mundial del nivel elegido en el selector,
+ *   ANTES de jugarlo (ver [WaterSortIntent.PreviewLevel]); null mientras carga, si
+ *   falló, o si el jugador es invitado/offline (ver `ProgressRepository.previewRanking`).
+ * @property rankingPreviewLoading true mientras se resuelve el pedido de
+ *   [rankingPreview] en curso.
  */
 data class WaterSortUiState(
     val phase: LeveledGamePhase = LeveledGamePhase.LEVEL_SELECT,
@@ -43,6 +50,8 @@ data class WaterSortUiState(
     val status: GameStatus = GameStatus.IDLE,
     val gameOver: GameOverInfo? = null,
     val savedLevel: Int? = null,
+    val rankingPreview: GameRanking? = null,
+    val rankingPreviewLoading: Boolean = false,
 ) : UiState
 
 /** Intents (único punto de entrada de la UI, patrón MVI). */
@@ -90,6 +99,13 @@ sealed interface WaterSortIntent : UiIntent {
 
     /** Desde la antesala: retomar la partida guardada al salir (ver [WaterSortUiState.savedLevel]). */
     data object ResumeSaved : WaterSortIntent
+
+    /**
+     * El jugador cambió el nivel resaltado en el carril de la antesala (o esta se
+     * acaba de abrir): pide la comparativa mundial de ESE nivel para
+     * [WaterSortUiState.rankingPreview], sin haberlo jugado todavía.
+     */
+    data class PreviewLevel(val level: Int) : WaterSortIntent
 }
 
 sealed interface WaterSortEffect : UiEffect {
@@ -124,6 +140,11 @@ sealed interface WaterSortEffect : UiEffect {
  * pausa, ver [requestExit]): al volver a jugar el mismo nivel, reanuda desde donde se
  * dejó en vez de regenerar el tablero (mismo mecanismo que Crucigrama Neón y Neon
  * Hyper-Cube; ver [WaterSortSavedState]).
+ *
+ * El ranking mundial se separa por nivel (ver `GameRankingScopes`), así que la
+ * antesala puede mostrar "cómo le va" al jugador en el nivel resaltado del carril
+ * ANTES de jugarlo (ver [WaterSortUiState.rankingPreview] y
+ * [WaterSortIntent.PreviewLevel]; mismo mecanismo que Neon Grid 2048).
  */
 class WaterSortViewModel(
     private val progress: ProgressRepository,
@@ -134,6 +155,11 @@ class WaterSortViewModel(
 ) : MviViewModel<WaterSortIntent, WaterSortUiState, WaterSortEffect>(WaterSortUiState()) {
 
     private val engine = WaterSortEngine(viewModelScope, audio)
+
+    /** Pedido en vuelo de [refreshRankingPreview]; se cancela al lanzar uno nuevo para
+     *  que un cambio rápido de nivel en el carril no deje que una respuesta vieja pise
+     *  a la actual (condición de carrera de red). */
+    private var rankingPreviewJob: Job? = null
 
     init {
         engine.state.onEach { s -> setState { copy(game = s) } }.launchIn(viewModelScope)
@@ -174,6 +200,23 @@ class WaterSortViewModel(
                 copy(phase = LeveledGamePhase.LEVEL_SELECT, gameOver = null)
             }
             WaterSortIntent.ResumeSaved -> resumeSaved()
+            is WaterSortIntent.PreviewLevel -> refreshRankingPreview(intent.level)
+        }
+    }
+
+    /**
+     * Pide la comparativa mundial del nivel [level] (1-based) para la antesala —
+     * mismo panel que el diálogo de fin de nivel
+     * ([com.kortexgames.app.ui.components.WorldRankingPreviewPanel]), pero sin haber
+     * jugado esta partida (ver [ProgressRepository.previewRanking]). Cancela
+     * cualquier pedido anterior en vuelo (ver [rankingPreviewJob]).
+     */
+    private fun refreshRankingPreview(level: Int) {
+        rankingPreviewJob?.cancel()
+        setState { copy(rankingPreview = null, rankingPreviewLoading = true) }
+        rankingPreviewJob = viewModelScope.launch {
+            val ranking = progress.previewRanking(GameIds.WATER_SORT, level)
+            setState { copy(rankingPreview = ranking, rankingPreviewLoading = false) }
         }
     }
 

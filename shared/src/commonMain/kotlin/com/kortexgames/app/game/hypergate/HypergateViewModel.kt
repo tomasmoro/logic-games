@@ -7,6 +7,7 @@ import com.kortexgames.app.core.audio.SoundEffect
 import com.kortexgames.app.core.mvi.MviViewModel
 import com.kortexgames.app.domain.model.GameResult
 import com.kortexgames.app.domain.repository.ProgressRepository
+import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.toGameOverInfo
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -43,6 +44,14 @@ class HypergateViewModel(
         engine.effects.onEach(::onImpactEffect).launchIn(viewModelScope)
         // No arrancamos aquí: el juego queda en IDLE y muestra la antesala (intro). La partida
         // empieza al pulsar "Comenzar" (intent [HypergateIntent.Start]).
+
+        // Comparativa mundial para la antesala (ver KDoc de `rankingPreview`). Un único
+        // pedido basta: el juego no vuelve a IDLE tras jugar dentro de la misma visita
+        // (empezar de nuevo salta directo a RUNNING), así que no hay que refrescarlo.
+        viewModelScope.launch {
+            val ranking = progress.previewRanking(GameIds.HYPERGATE)
+            setState { copy(rankingPreview = ranking, rankingPreviewLoading = false) }
+        }
     }
 
     override fun onIntent(intent: HypergateIntent) {

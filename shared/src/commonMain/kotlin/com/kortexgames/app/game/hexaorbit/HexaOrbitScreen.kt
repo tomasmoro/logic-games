@@ -80,12 +80,16 @@ import kotlin.math.sin
  *
  * ## El haz proyectado es la pantalla del juego
  *
- * Los cuatro azulejos que vienen se dibujan como un tubo de luz que **se apaga hacia el final**:
- * el tramo actual va a intensidad plena y el cuarto casi transparente. El desvanecido no es
- * decorativo — comunica *cuánto falta*, que es la información con la que el jugador decide qué
- * girar primero. Si la proyección apunta al vacío ([LookaheadPath.escapes]) el haz entero vira a
- * [LogicColors.Error]: la alarma llega con cuatro azulejos de antelación, que es exactamente el
- * margen de reacción que el juego promete.
+ * Los [HexaOrbitBalance.LOOKAHEAD_TILES] azulejos que vienen se dibujan como un tubo de luz que
+ * **se apaga hacia el final**: el tramo actual va a intensidad plena y la cola queda tenue pero
+ * legible. El desvanecido no es decorativo — comunica *cuánto falta*, que es la información con
+ * la que el jugador decide qué girar primero.
+ *
+ * La alarma roja NO se enciende con cualquier fuga dentro del haz, sino solo con las
+ * **inminentes** ([LookaheadPath.imminent], dentro de [HexaOrbitBalance.ESCAPE_ALERT_TILES]).
+ * Con un horizonte de nueve azulejos sobre un tablero de tres anillos, el haz toca la frontera
+ * casi siempre: una alarma atada a eso estaría encendida de forma permanente y dejaría de
+ * informar. Las fugas lejanas solo tiñen su último tramo.
  *
  * ## Borde de las celdas: contorno sutil, no `drawNeonTile`
  *
@@ -302,7 +306,10 @@ private data class BoardTransform(val radiusPx: Float, val center: Offset) {
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Contorno de cada celda: hexágono tenue que da la rejilla sin robar protagonismo (§9.7).
+ * Fondo y contorno de cada celda: un relleno translúcido de superficie elevada que separa el
+ * tablero del vacío exterior, más un borde algo más claro que ese relleno para que la rejilla
+ * se lea con nitidez incluso con los caminos y el haz encima (§9.7: el neón se reserva para lo
+ * que informa, no para el fondo).
  *
  * El contorno **no gira** con la pieza aunque sus caminos sí: un hexágono girado 60° ocupa el
  * mismo sitio, así que animar su borde solo produciría un parpadeo sin significado.
@@ -323,13 +330,17 @@ private fun DrawScope.drawBoardCells(
         }
         path.close()
 
+        // Relleno: SurfaceVariantDark es el escalón "elevado" del tema (§9.2), justo lo que pide
+        // separar la celda del BackgroundDark del fondo sin recurrir a un color ajeno al sistema.
+        drawPath(path = path, color = LogicColors.SurfaceVariantDark.copy(alpha = 0.55f))
+
         // La celda recién girada se ilumina un instante: confirma el tap incluso si el jugador
         // no está mirando ese punto exacto del tablero.
         val spin = spinProgress(coord, frameNanos, spinStart)
         val highlight = (1f - spin) * 0.5f
         drawPath(
             path = path,
-            color = lerp(LogicColors.SurfaceVariantDark, CategoryPalette.SpatialVision, highlight),
+            color = lerp(LogicColors.OnDarkMuted.copy(alpha = 0.55f), CategoryPalette.SpatialVision, highlight),
             style = Stroke(width = transform.radiusPx * 0.045f),
         )
     }
@@ -338,6 +349,11 @@ private fun DrawScope.drawBoardCells(
 /**
  * Los tres caminos de cada azulejo en tono apagado: el "circuito impreso" sobre el que después
  * se enciende el haz.
+ *
+ * Se dibujan en [LogicColors.OnDarkMuted] —el tono más claro del tema (§9.2) sin ser un acento
+ * neón— y con trazo ancho (0.18 del radio, casi el doble del contorno de la celda): contra el
+ * relleno oscuro de [drawBoardCells] necesitan ese contraste para leerse de un vistazo como "por
+ * aquí se puede ir", no solo como una insinuación de línea.
  *
  * Aquí es donde se aplica el **retraso elástico del giro**: el motor ya dejó la rotación en su
  * valor final, así que se dibuja con un desfase de `−60°` que se consume con `EaseOutBack`. El
@@ -358,9 +374,9 @@ private fun DrawScope.drawIdlePaths(
                 coord = coord,
                 transform = transform,
                 rotationDeg = offsetDeg,
-                color = LogicColors.SurfaceVariantDark,
-                widthFactor = 0.10f,
-                alpha = 0.9f,
+                color = LogicColors.OnDarkMuted,
+                widthFactor = 0.18f,
+                alpha = 0.85f,
             )
         }
     }
@@ -374,22 +390,31 @@ private fun DrawScope.drawIdlePaths(
  * proporción que usa `drawNeonTile` para su tubo de luz (§9.7 de `CLAUDE.md`: si el trazo no es
  * el contorno de un tile, se replica la estructura de capas en vez de inventar otro halo).
  *
- * El color va de [LogicColors.NeonCyan] a [LogicColors.NeonGreen] según la profundidad, salvo
- * cuando la proyección se escapa del tablero: entonces todo el haz es [LogicColors.Error].
+ * El color va de [LogicColors.NeonCyan] a [LogicColors.NeonGreen] según la profundidad, con dos
+ * excepciones en rojo:
+ *  - si la fuga es **inminente** ([LookaheadPath.imminent]) arde el haz entero — es la
+ *    emergencia;
+ *  - si la fuga cae lejos pero dentro del horizonte, solo se tiñe **el último tramo**: marca
+ *    dónde está la salida sin gritar. Con nueve azulejos de horizonte esto pasa casi siempre en
+ *    un tablero de tres anillos, así que teñirlo todo dejaría el haz permanentemente rojo.
  */
 private fun DrawScope.drawProjectedBeam(game: HexaOrbitState, transform: BoardTransform) {
     val steps = game.projection.steps
     if (steps.isEmpty()) return
 
+    val lastIndex = steps.size - 1
     steps.forEachIndexed { index, step ->
         val depth = index.toFloat() / (HexaOrbitBalance.LOOKAHEAD_TILES + 1).toFloat()
-        // Desvanecido cuadrático: la caída es más marcada al principio, así que los dos primeros
-        // azulejos —donde de verdad hay que decidir— destacan sobre el resto de la cola.
-        val intensity = (1f - depth) * (1f - depth)
-        val color = if (game.projection.escapes) {
-            LogicColors.Error
-        } else {
-            lerp(LogicColors.NeonCyan, LogicColors.NeonGreen, depth)
+        // Desvanecido cuadrático **con suelo**: la caída sigue siendo más marcada al principio
+        // (los primeros azulejos son donde de verdad hay que decidir), pero el suelo mantiene la
+        // cola legible. Sin él, con nueve azulejos el último tramo caería a ~0.01 de opacidad y
+        // alargar el haz no se vería en pantalla — que es justo lo que se pide aquí.
+        val falloff = (1f - depth) * (1f - depth)
+        val intensity = BEAM_MIN_INTENSITY + (1f - BEAM_MIN_INTENSITY) * falloff
+        val color = when {
+            game.projection.imminent -> LogicColors.Error
+            game.projection.escapes && index == lastIndex -> LogicColors.Error
+            else -> lerp(LogicColors.NeonCyan, LogicColors.NeonGreen, depth)
         }
 
         val curve = HexGeometry.orientedCurve(step.coord, step.entryEdge, step.exitEdge)
@@ -596,10 +621,10 @@ private fun HexaOrbitHud(game: HexaOrbitState, modifier: Modifier = Modifier) {
         )
         Text(
             text = stringResource(
-                if (game.projection.escapes) Res.string.hexa_orbit_warning else Res.string.hexa_orbit_subtitle,
+                if (game.projection.imminent) Res.string.hexa_orbit_warning else Res.string.hexa_orbit_subtitle,
             ),
             style = MaterialTheme.typography.bodyMedium,
-            color = if (game.projection.escapes) LogicColors.Error else LogicColors.OnDarkMuted,
+            color = if (game.projection.imminent) LogicColors.Error else LogicColors.OnDarkMuted,
         )
         Row(modifier = Modifier.padding(top = 8.dp)) {
             HexaOrbitHudPill(
@@ -661,6 +686,12 @@ private const val SPIN_DEGREES = 60f
 
 /** Duración del giro: dentro de los 100-250 ms de micro-feedback de la §9.4. */
 private const val SPIN_DURATION_SEC = 0.22f
+
+/**
+ * Opacidad mínima del tramo más lejano del haz. Es el suelo del desvanecido: garantiza que los
+ * nueve azulejos proyectados se vean, en vez de desaparecer en la cola.
+ */
+private const val BEAM_MIN_INTENSITY = 0.22f
 
 /** Radio del orbe recolectable como fracción del radio del hexágono. */
 private const val ORB_RADIUS_FACTOR = 0.16f

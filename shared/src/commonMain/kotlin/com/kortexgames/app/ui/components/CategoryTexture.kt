@@ -53,6 +53,7 @@ import kotlin.math.sin
  *  - [GameMotif.POLARITY_SECTORS] → círculo de 4 sectores con partículas entrantes.
  *  - [GameMotif.QUANTUM_SPHERES] → esferas de luz de tamaños crecientes dentro del reactor.
  *  - [GameMotif.HEXA_ORBIT] → panal de hexágonos con un trazo de luz curvo atravesándolos.
+ *  - [GameMotif.LIGHTS_GRID] → rejilla con la cruz de celdas que enciende un toque.
  *  - Memoria → red neuronal ([NeuralCornerTexture]).
  *  - Cálculo Mental → símbolos matemáticos de distintos tamaños.
  *  - Pensamiento Lógico → piezas de rompecabezas.
@@ -156,6 +157,7 @@ private fun MotifTexture(
         GameMotif.SINGLE_LINE -> SingleLineTexture(accent = accent, modifier = modifier, intensity = intensity)
         GameMotif.LEGION_SWARM -> LegionSwarmTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
         GameMotif.HEXA_ORBIT -> HexaOrbitTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
+        GameMotif.LIGHTS_GRID -> LightsGridTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
     }
 }
 
@@ -1628,5 +1630,53 @@ private fun HexaOrbitTexture(accent: Color, modifier: Modifier, intensity: Float
             radius = radius * 0.12f,
             center = centers[2],
         )
+    }
+}
+
+/**
+ * Celdas (columna, fila) encendidas del motivo de **Neon Grid Switch**, en una
+ * rejilla 4×4. Es deliberadamente la CRUZ que dibuja la propia mecánica del
+ * juego —tocar la celda central enciende (o apaga) esa celda y sus cuatro
+ * vecinas ortogonales—, así la miniatura enseña la regla de un vistazo en vez
+ * de un patrón de luces arbitrario (mismo criterio que el trazo de
+ * [SINGLE_LINE_ROUTE] para Línea Neón).
+ */
+private val GRID_SWITCH_LIT = setOf(1 to 1, 0 to 1, 2 to 1, 1 to 0, 1 to 2)
+
+/**
+ * **Neon Grid Switch**: rejilla 4×4 de tubos de neón huecos, con la cruz de
+ * [GRID_SWITCH_LIT] a pleno encendido. Mismo lenguaje visual que
+ * [SequenceGridTexture] (halo + contorno, sin relleno sólido) para que el
+ * motivo se lea como "celdas de neón" coherente con el resto del catálogo.
+ */
+@Composable
+private fun LightsGridTexture(accent: Color, modifier: Modifier, intensity: Float, centered: Boolean = false) {
+    Canvas(modifier = modifier) {
+        val n = 4
+        val cell = size.height / 5f
+        val gridSize = n * cell
+        val originX = if (centered) (size.width - gridSize) / 2f else size.width - gridSize + cell * 0.4f
+        val originY = (size.height - gridSize) / 2f
+        val inset = cell * 0.09f
+        val radius = CornerRadius(cell * 0.22f)
+        val stroke = 1.5f.dp.toPx()
+        for (r in 0 until n) {
+            for (c in 0 until n) {
+                val tl = Offset(originX + c * cell + inset, originY + r * cell + inset)
+                val cellSize = Size(cell - inset * 2, cell - inset * 2)
+                val lit = (c to r) in GRID_SWITCH_LIT
+                if (lit) {
+                    // Halo de la celda encendida, mismo lenguaje que SequenceGridTexture.
+                    drawRoundRect(
+                        color = accent.copy(alpha = 0.32f * intensity),
+                        topLeft = tl, size = cellSize, cornerRadius = radius,
+                    )
+                }
+                drawRoundRect(
+                    color = accent.copy(alpha = (if (lit) 0.95f else 0.28f) * intensity),
+                    topLeft = tl, size = cellSize, cornerRadius = radius, style = Stroke(width = stroke),
+                )
+            }
+        }
     }
 }

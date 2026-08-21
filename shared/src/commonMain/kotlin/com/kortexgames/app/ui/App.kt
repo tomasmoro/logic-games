@@ -38,6 +38,7 @@ import com.kortexgames.app.game.crucigrama.CrucigramaNeonScreen
 import com.kortexgames.app.game.energyflow.EnergyFlowScreen
 import com.kortexgames.app.game.memory.SequenceMemoryScreen
 import com.kortexgames.app.game.hexaorbit.HexaOrbitScreen
+import com.kortexgames.app.game.gridswitch.GridSwitchScreen
 import com.kortexgames.app.game.hypergate.HypergateScreen
 import com.kortexgames.app.game.legion.LegionScreen
 import com.kortexgames.app.game.quantummerge.QuantumMergeScreen
@@ -470,6 +471,9 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean, introGamesPlay
                 }
                 composable(Routes.HEXA_ORBIT) {
                     HexaOrbitScreen(graph, exitGame)
+                }
+                composable(Routes.NEON_GRID_SWITCH) {
+                    GridSwitchScreen(graph, exitGame)
                 }
             }
             }

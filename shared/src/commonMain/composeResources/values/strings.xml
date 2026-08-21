@@ -250,6 +250,19 @@
     <string name="hexa_orbit_hud_orbs">Orbes</string>
     <string name="hexa_orbit_hud_speed">Velocidad</string>
 
+    <!-- ===================== Neon Grid Switch (Reconocimiento de Patrones) ===================== -->
+    <!-- Antesala: qué se hace en el juego, antes de la primera partida. -->
+    <string name="grid_switch_intro_description">Apaga todas las luces del tablero. Cada toque conmuta esa celda y sus vecinas: encuentra el patrón antes de que la cuadrícula crezca.</string>
+    <!-- Recordatorio del gesto, bajo el título, mientras se juega. -->
+    <string name="grid_switch_subtitle">Toca una celda para conmutarla junto a sus vecinas</string>
+    <!-- Etiquetas del marcador. -->
+    <string name="grid_switch_hud_stage">Etapa</string>
+    <string name="grid_switch_hud_moves">Movimientos</string>
+    <!-- Descripción accesible del botón de reinicio de etapa. -->
+    <string name="grid_switch_restart_description">Reiniciar etapa</string>
+    <!-- Titular del cartel de fin de etapa (GameOverOverlay). -->
+    <string name="grid_switch_gameover_headline">¡Etapa despejada!</string>
+
     <!-- ============================================================
          GameOverOverlay — capa modal de fin de partida compartida por
          todos los juegos (ver KDoc de GameOverOverlay.kt). Los textos

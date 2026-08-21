@@ -30,10 +30,10 @@ import com.kortexgames.app.game.quantummerge.QuantumDifficulty
  * copia: así no pueden desincronizarse si mañana se renombra un nivel o se añade uno.
  *
  * El mismo mecanismo separa tablas por **nivel** en los juegos LEVELED (Hyper-Cube,
- * Water Sort): ahí `difficulty_level` no es una dificultad elegida, sino el nivel
- * jugado, pero el problema y la solución son el mismo — ver [difficultyNames] y
- * [openLevelRankedGames] respectivamente, según si el juego tiene un último nivel o
- * no.
+ * Water Sort, Flujo de Energía): ahí `difficulty_level` no es una dificultad
+ * elegida, sino el nivel jugado, pero el problema y la solución son el mismo — ver
+ * [difficultyNames] y [openLevelRankedGames] respectivamente, según si el juego
+ * tiene un último nivel o no.
  */
 object GameRankingScopes {
 
@@ -70,15 +70,16 @@ object GameRankingScopes {
      * [difficultyNames] porque no hay un último nivel que cerrar la lista. Su rótulo es
      * siempre `"Nivel N"` (ver [difficultyLabel]).
      *
-     * ## Por qué Water Sort lo necesita
-     * `WaterSortEngine.calculateScore` ya hace el puntaje monótono en el nivel para que una
+     * ## Por qué Water Sort (y Flujo de Energía) lo necesitan
+     * `WaterSortEngine.calculateScore` (y, con el mismo criterio explícito en su KDoc,
+     * `EnergyFlowEngine.calculateScore`) ya hacen el puntaje monótono en el nivel para que una
      * tabla ÚNICA ordene sin invertirse, pero eso solo resuelve "quién llegó más lejos": un
      * jugador que resuelve el nivel 4 de forma impecable queda igualmente sepultado bajo
      * cualquiera que ya superó el nivel 5 con la peor partida posible. Separar por nivel (mismo
      * criterio que Hyper-Cube) hace que cada tabla compare partidas del MISMO reto, que es la
      * pregunta que de verdad le importa al jugador de un nivel concreto.
      */
-    private val openLevelRankedGames: Set<String> = setOf(GameIds.WATER_SORT)
+    private val openLevelRankedGames: Set<String> = setOf(GameIds.WATER_SORT, GameIds.ENERGY_FLOW)
 
     /**
      * Juegos cuyo ranking mundial se ordena por **tiempo** (gana el más rápido) en vez de por

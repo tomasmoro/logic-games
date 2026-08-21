@@ -56,7 +56,10 @@ import com.kortexgames.app.ui.components.GameIntroScreen
 import com.kortexgames.app.game.GameHelpContent
 import com.kortexgames.app.ui.components.GameOverOverlay
 import com.kortexgames.app.ui.components.GamePauseControls
+import com.kortexgames.app.ui.components.RankingPreviewUnavailable
 import com.kortexgames.app.ui.components.SpaceBackdrop
+import com.kortexgames.app.ui.components.WorldRankingLoading
+import com.kortexgames.app.ui.components.WorldRankingPreviewPanel
 import com.kortexgames.app.ui.components.softGlow
 import kotlin.math.cos
 import kotlin.math.sin
@@ -106,6 +109,18 @@ fun HypergateScreen(graph: AppGraph, onExit: () -> Unit) {
             },
             onExit = onExit,
             background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },
+            // Comparativa mundial del jugador, ANTES de jugar (mismo panel que el
+            // diálogo de fin de partida): pedido explícito para que la antesala
+            // también responda "¿cómo me va?". Sin selector de dificultad —el juego
+            // rankea en una tabla única—, así que solo hay que resolver el panel.
+            configContent = {
+                val preview = state.rankingPreview
+                when {
+                    state.rankingPreviewLoading -> WorldRankingLoading()
+                    preview != null -> WorldRankingPreviewPanel(ranking = preview)
+                    else -> RankingPreviewUnavailable(difficultyLabel = null)
+                }
+            },
         )
         return
     }

@@ -63,6 +63,9 @@ import com.kortexgames.app.ui.components.GamePauseControls
 import com.kortexgames.app.ui.components.KortexIcons
 import com.kortexgames.app.ui.components.LevelStripState
 import com.kortexgames.app.ui.components.NeonIcon
+import com.kortexgames.app.ui.components.RankingPreviewUnavailable
+import com.kortexgames.app.ui.components.WorldRankingLoading
+import com.kortexgames.app.ui.components.WorldRankingPreviewPanel
 import com.kortexgames.app.ui.components.bounceClick
 import com.kortexgames.app.ui.components.drawNeonTile
 import kotlin.math.PI
@@ -106,6 +109,10 @@ fun EnergyFlowScreen(graph: AppGraph, onExit: () -> Unit) {
     // Fase de intro: antesala del juego con icono, descripción y carril de niveles.
     if (state.phase == LeveledGamePhase.LEVEL_SELECT) {
         var selectedLevel by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
+        // Comparativa mundial del nivel resaltado, ANTES de jugarlo: se relanza en
+        // cada cambio de nivel del carril (y en la entrada a la antesala, con el
+        // nivel por defecto). Ver EnergyFlowViewModel.refreshRankingPreview.
+        LaunchedEffect(selectedLevel) { vm.onIntent(EnergyFlowIntent.PreviewLevel(selectedLevel)) }
         GameIntroScreen(
             help = GameHelpContent.energyFlow,
             title = "Flujo de Energía",
@@ -127,6 +134,17 @@ fun EnergyFlowScreen(graph: AppGraph, onExit: () -> Unit) {
             motif = GameMotif.ENERGY_PIPES,
             background = {
                 CitySkylineBackground(modifier = Modifier.fillMaxSize(), accent = CategoryPalette.SpatialVision)
+            },
+            // Ranking mundial del nivel elegido, justo encima del CTA (mismo panel que
+            // el diálogo de fin de nivel; mismo mecanismo que Water Sort): pedido
+            // explícito para que la antesala también responda "¿cómo me va ahí?".
+            configContent = {
+                val preview = state.rankingPreview
+                when {
+                    state.rankingPreviewLoading -> WorldRankingLoading()
+                    preview != null -> WorldRankingPreviewPanel(ranking = preview)
+                    else -> RankingPreviewUnavailable(difficultyLabel = "Nivel $selectedLevel")
+                }
             },
         )
         return

@@ -5,7 +5,8 @@ package com.kortexgames.app.game.hexaorbit
  *
  * El haz de luz que se enciende por delante del puntero. Es la mecánica que convierte un juego
  * de reflejos en uno **táctico**: sin él el jugador solo reacciona a la celda que pisa; con él
- * ve cuatro azulejos por delante y puede planear qué girar y en qué orden.
+ * ve [HexaOrbitBalance.LOOKAHEAD_TILES] azulejos por delante y puede planear una secuencia de
+ * giros, no solo el siguiente.
  *
  * Este archivo contiene el algoritmo completo. El motor (FASE 2) se limita a llamarlo.
  */
@@ -49,14 +50,13 @@ data class TraversalStep(
  *
  * El haz tiene que arrancar **en el puntero**, no en la frontera del siguiente azulejo: si el
  * primer elemento fuera ya el azulejo siguiente, quedaría un hueco oscuro entre el orbe y su
- * propia luz. Por eso `steps[0]` es siempre el azulejo ocupado y los 4 proyectados que pide el
- * spec son [upcoming]. Es decir: `steps.size <= LOOKAHEAD_TILES + 1`.
+ * propia luz. Por eso `steps[0]` es siempre el azulejo ocupado y los proyectados son
+ * [upcoming]. Es decir: `steps.size <= LOOKAHEAD_TILES + 1`.
  *
  * @property steps tramos consecutivos, empezando por el azulejo actual.
  * @property escapes `true` si el recorrido proyectado termina **saliéndose del tablero** dentro
- *           del horizonte calculado. Es información táctica de primer orden: la UI pinta el haz
- *           en rojo de alarma cuando apunta al vacío, y avisa al jugador con antelación de que
- *           ese camino le mata.
+ *           del horizonte calculado. Con un horizonte largo esto es lo normal, no una urgencia:
+ *           significa "por ahí se sale, más adelante". La urgencia la marca [imminent].
  */
 data class LookaheadPath(
     val steps: List<TraversalStep>,
@@ -68,6 +68,27 @@ data class LookaheadPath(
 
     /** Los azulejos **futuros** proyectados (como mucho [HexaOrbitBalance.LOOKAHEAD_TILES]). */
     val upcoming: List<TraversalStep> get() = if (steps.isEmpty()) emptyList() else steps.drop(1)
+
+    /**
+     * Profundidad, en azulejos futuros, a la que el recorrido abandona el tablero; `null` si la
+     * fuga no entra en el horizonte. `0` significaría que el puntero se sale del azulejo que ya
+     * está pisando.
+     *
+     * Se deriva del tamaño de [steps] en vez de guardarse: cuando hay fuga, el trazado se corta
+     * justo ahí, así que el último tramo emitido **es** el que da al vacío.
+     */
+    val escapeDepth: Int? get() = if (escapes && steps.isNotEmpty()) steps.size - 1 else null
+
+    /**
+     * `true` cuando la fuga está lo bastante cerca como para ser una **emergencia**: dentro de
+     * [HexaOrbitBalance.ESCAPE_ALERT_TILES] azulejos.
+     *
+     * Es esta propiedad —y no [escapes]— la que enciende el haz rojo, el aviso del marcador y la
+     * penalización de precisión. Con el horizonte alargado a nueve azulejos, [escapes] es cierto
+     * casi todo el rato (el tablero solo mide 3 anillos), así que usarlo como alarma la dejaría
+     * permanentemente encendida: una alarma que nunca se apaga no informa de nada.
+     */
+    val imminent: Boolean get() = escapeDepth?.let { it <= HexaOrbitBalance.ESCAPE_ALERT_TILES } == true
 
     companion object {
         /** Proyección vacía: estado previo a la partida. */
@@ -92,7 +113,9 @@ data class LookaheadPath(
  * 3. **Saltar al vecino**: `coord + dirección(salida)`, entrando por la arista opuesta
  *    (`salida + 3`), que es esa misma frontera vista desde el otro lado.
  * 4. **Comprobar la frontera**: si el vecino no existe en el tablero, el recorrido termina con
- *    `escapes = true` — el puntero se saldría por ahí, que es la condición de derrota.
+ *    `escapes = true` — el puntero se saldría por ahí, que es la condición de derrota. Lo cerca
+ *    que quede esa salida lo dice [LookaheadPath.escapeDepth], y es lo que separa "ahí está el
+ *    borde" de "gira ya" ([LookaheadPath.imminent]).
  *
  * Y se corta al alcanzar [maxTiles] tramos futuros.
  *
@@ -113,11 +136,12 @@ data class LookaheadPath(
  * Nota deliberada: **no se filtran repeticiones**. Si el trazado vuelve a pisar un azulejo ya
  * visitado (o el mismo con otra arista de entrada), se emite otra vez: es un tramo distinto del
  * recorrido y la luz debe dibujarse en los dos. Deduplicar rompería tanto el haz de los bucles
- * como el conteo "4 azulejos por delante".
+ * como el conteo de azulejos por delante.
  *
  * @param from azulejo donde está el puntero.
  * @param entryEdge arista (índice de tablero) por la que entró en [from].
- * @param maxTiles cuántos azulejos **futuros** iluminar; por defecto los 4 del spec.
+ * @param maxTiles cuántos azulejos **futuros** iluminar; por defecto
+ *   [HexaOrbitBalance.LOOKAHEAD_TILES].
  * @return el trazado, vacío si [from] no pertenece al tablero.
  */
 fun HexBoard.project(

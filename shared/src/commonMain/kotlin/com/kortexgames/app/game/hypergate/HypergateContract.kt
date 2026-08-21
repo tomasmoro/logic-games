@@ -3,6 +3,7 @@ package com.kortexgames.app.game.hypergate
 import com.kortexgames.app.core.mvi.UiEffect
 import com.kortexgames.app.core.mvi.UiIntent
 import com.kortexgames.app.core.mvi.UiState
+import com.kortexgames.app.domain.model.GameRanking
 import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
 
@@ -33,11 +34,21 @@ import com.kortexgames.app.game.GameStatus
  * @property gameOver datos del resultado final (puntaje, percentil, récord); `null` mientras la
  *   partida no ha terminado. Es estado persistente (no un `Effect`) porque el overlay debe
  *   sobrevivir a las recomposiciones hasta que el jugador lo cierre.
+ * @property rankingPreview comparativa mundial del jugador, para pintar en la antesala el mismo
+ *   panel que el diálogo de fin de partida ANTES de jugar (ver
+ *   [com.kortexgames.app.domain.repository.ProgressRepository.previewRanking]). Tabla única (el
+ *   juego no separa por dificultad): `null` mientras se resuelve ([rankingPreviewLoading]) o si
+ *   no hay comparativa que mostrar (invitado, sin red, o sin ninguna marca todavía).
+ * @property rankingPreviewLoading `true` mientras se pide [rankingPreview] tras entrar en la
+ *   antesala. Arranca en `true` (no en `false`) para no enseñar el aviso de "sin comparativa" un
+ *   instante antes de que llegue.
  */
 data class HypergateUiState(
     val game: HypergateState = HypergateState(),
     val status: GameStatus = GameStatus.IDLE,
     val gameOver: GameOverInfo? = null,
+    val rankingPreview: GameRanking? = null,
+    val rankingPreviewLoading: Boolean = true,
 ) : UiState
 
 /**

@@ -52,15 +52,20 @@ import kotlin.random.Random
  *  - *Girar y reiniciar el tramo* regalaría un "deshacer" infinito con el que el jugador podría
  *    quedarse dando vueltas en la misma pieza indefinidamente.
  *
- * Bloquearla es además coherente con la mecánica central: el haz proyectado da **cuatro
- * azulejos** de aviso precisamente para que las decisiones se tomen por delante del puntero. La
- * muerte por no haber girado a tiempo es la regla del juego, no una injusticia.
+ * Bloquearla es además coherente con la mecánica central: el haz proyectado da
+ * [HexaOrbitBalance.LOOKAHEAD_TILES] azulejos de aviso precisamente para que las decisiones se
+ * tomen por delante del puntero. La muerte por no haber girado a tiempo es la regla del juego,
+ * no una injusticia.
  *
- * ## Los orbes están anclados al espacio, no a la pieza
+ * ## Los orbes viven en las ARISTAS, no sobre las curvas
  *
- * Girar un azulejo mueve sus caminos pero **no** los orbes que hay dentro (ver [EnergyOrb]).
- * Esa es justamente la decisión interesante: el jugador tiene que encaminar el haz por encima
- * del orbe, no limitarse a pisar la casilla.
+ * Un orbe nace en un punto del contorno del hexágono (una arista, "entre los lados"), nunca
+ * sobre uno de sus tres caminos internos: así el punto se distingue siempre del tubo de luz de
+ * la pieza en vez de mezclarse visualmente con él. El contorno del hexágono además no gira —solo
+ * giran sus caminos internos—, así que el orbe queda anclado al espacio con más fuerza todavía:
+ * girar un azulejo mueve sus curvas pero **nunca** el orbe (ver [EnergyOrb]). El jugador tiene
+ * que encaminar el haz para que la curva pase junto a esa arista, no limitarse a pisar la
+ * casilla.
  *
  * @param random inyectable para tests deterministas de generación de tablero y de spawns.
  */
@@ -89,9 +94,13 @@ class HexaOrbitEngine(
     private var nextOrbId = 1L
 
     /**
-     * Segundos acumulados con el haz proyectado **sin** apuntar al vacío. Es el numerador de
+     * Segundos acumulados **sin** una fuga inminente proyectada. Es el numerador de
      * [currentAccuracy]: mide cuánto tiempo mantuvo el jugador un circuito seguro, que es la
      * habilidad real del juego. Se acumula aquí y no en el estado porque la UI no lo pinta.
+     *
+     * El criterio es [LookaheadPath.imminent] y no [LookaheadPath.escapes]: con el horizonte de
+     * nueve azulejos el haz alcanza la frontera casi siempre, así que medir contra `escapes`
+     * dejaría la precisión clavada cerca de 0 en cualquier partida y no distinguiría a nadie.
      */
     private var safeSeconds: Float = 0f
 
@@ -210,7 +219,7 @@ class HexaOrbitEngine(
             HexaOrbitBalance.MAX_SPEED,
         )
 
-        if (!state.projection.escapes) safeSeconds += dtSec
+        if (!state.projection.imminent) safeSeconds += dtSec
 
         var next = state.copy(elapsedSeconds = elapsed, speed = speed)
         var remaining = speed * dtSec
@@ -330,39 +339,62 @@ class HexaOrbitEngine(
     }
 
     /**
-     * Añade un orbe en un punto aleatorio de uno de los caminos de un azulejo elegido al azar.
+     * Añade un orbe en un punto aleatorio de una arista INTERIOR de un azulejo elegido al azar
+     * — nunca sobre una de sus curvas internas, y nunca sobre una arista de la frontera exterior
+     * del tablero.
      *
-     * Dos restricciones al elegir el azulejo, ambas de diseño:
+     * Tres restricciones al elegir el azulejo y la arista, todas de diseño:
      *  - **Lejos del puntero** ([MIN_SPAWN_DISTANCE] azulejos): un orbe que apareciera justo
      *    delante del haz sería un punto regalado, y encima resultaría invisible (nace y se
      *    recoge en el mismo frame).
      *  - **Una casilla sin orbe**: dos orbes en la misma pieza se solaparían visualmente y
      *    valdrían lo mismo que uno.
+     *  - **Arista compartida con un vecino real** (no la frontera exterior): cruzar la frontera
+     *    ES la condición de derrota ([HexaOrbitState.escaped]), así que el puntero solo llega al
+     *    punto medio de una arista exterior en el mismo frame en que la partida termina —un orbe
+     *    ahí solo se "recogería" simultáneamente con perder. Restringir el spawn a aristas
+     *    internas garantiza que todo orbe sea alcanzable sin morir en el intento.
      *
-     * El punto concreto se toma sobre una de las tres curvas del azulejo **en su rotación
-     * actual**, en el tramo central (`[0.3, 0.7]` de su longitud): así el orbe nace siempre
-     * sobre un camino transitable —cumpliendo el "aparecen sobre los caminos" del spec— y lejos
-     * de las aristas, donde quedaría partido entre dos piezas.
+     * El punto concreto se interpola entre los dos vértices que enmarcan la arista elegida, en
+     * el tramo central (`[0.3, 0.7]` de esa arista): así el orbe nace siempre sobre el borde del
+     * hexágono —nunca encima del tubo de luz "apagado" que dibuja `drawIdlePaths`— y lejos de
+     * los vértices, donde se confundiría con la esquina de tres piezas a la vez.
      *
-     * Si no hubiera ninguna casilla candidata (imposible con el tablero de radio 3, pero cierto
-     * en un tablero degenerado) devuelve el estado intacto en vez de forzar una posición mala.
+     * Un punto de arista NO gira con la pieza (el contorno del hexágono es fijo; solo giran sus
+     * caminos internos, ver [HexaOrbitState.board]), así que este spawn es además independiente
+     * de la rotación y del patrón del azulejo: `withNewOrb` no necesita mirar
+     * [HexTile.connections] en absoluto.
+     *
+     * Si no hubiera ninguna casilla candidata con al menos una arista interior (imposible con el
+     * tablero de radio 3 —hasta sus celdas de esquina tienen 3 vecinos dentro—, pero cierto en un
+     * tablero degenerado de un solo azulejo) devuelve el estado intacto en vez de forzar una
+     * posición mala.
      */
     private fun HexaOrbitState.withNewOrb(): HexaOrbitState {
         val taken = orbs.map { it.coord }.toSet()
         val candidates = board.tiles.keys.filter { coord ->
             coord !in taken && coord.distanceTo(pointer.coord) >= MIN_SPAWN_DISTANCE
+        }.shuffled(random)
+
+        // Se recorren los candidatos en orden aleatorio y se queda con el primero que tenga
+        // alguna arista interior: así un azulejo sin vecinos dentro del tablero (solo posible en
+        // un tablero degenerado) no bloquea el spawn si hay otras casillas disponibles.
+        for (coord in candidates) {
+            val interiorEdges = (0 until HEX_EDGES).filter { edge -> coord + HexDirection.ofEdge(edge) in board }
+            if (interiorEdges.isEmpty()) continue
+
+            val edge = interiorEdges[random.nextInt(interiorEdges.size)]
+            // Los vértices que enmarcan la arista `edge` son las esquinas `edge - 1` y `edge`
+            // (ver HexGeometry.edgeMidpoint, que cae exactamente entre ambos).
+            val cornerA = HexGeometry.corner((edge - 1).mod(HEX_EDGES))
+            val cornerB = HexGeometry.corner(edge)
+            val fraction = ORB_SPAWN_MIN_FRACTION +
+                random.nextFloat() * (ORB_SPAWN_MAX_FRACTION - ORB_SPAWN_MIN_FRACTION)
+            val local = cornerA + (cornerB - cornerA) * fraction
+
+            return copy(orbs = orbs + EnergyOrb(id = nextOrbId++, coord = coord, local = local))
         }
-        if (candidates.isEmpty()) return this
-
-        val coord = candidates[random.nextInt(candidates.size)]
-        val tile = board.tiles.getValue(coord)
-        val connection = tile.connections[random.nextInt(tile.connections.size)]
-        val fraction = ORB_SPAWN_MIN_FRACTION +
-            random.nextFloat() * (ORB_SPAWN_MAX_FRACTION - ORB_SPAWN_MIN_FRACTION)
-        val curve = HexGeometry.curveFor(connection)
-        val local = curve.pointAt(HexCurveMetrics.parameterAt(connection.curvature, fraction))
-
-        return copy(orbs = orbs + EnergyOrb(id = nextOrbId++, coord = coord, local = local))
+        return this
     }
 
     // --- Estela ------------------------------------------------------------------------------
@@ -398,8 +430,8 @@ class HexaOrbitEngine(
     }
 
     /**
-     * Precisión = porcentaje del tiempo de partida en el que el haz proyectado **no** apuntaba
-     * al vacío.
+     * Precisión = porcentaje del tiempo de partida sin una fuga **inminente** proyectada
+     * (dentro de [HexaOrbitBalance.ESCAPE_ALERT_TILES] azulejos).
      *
      * Se elige esta métrica y no "orbes recogidos sobre orbes aparecidos" porque los orbes se
      * repueblan solos: esa ratio tendería a un número sin significado. El tiempo con el circuito

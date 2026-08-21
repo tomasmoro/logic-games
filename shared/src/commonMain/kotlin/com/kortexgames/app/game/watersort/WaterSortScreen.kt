@@ -84,7 +84,10 @@ import com.kortexgames.app.ui.components.GamePauseControls
 import com.kortexgames.app.ui.components.KortexIcons
 import com.kortexgames.app.ui.components.LevelStripState
 import com.kortexgames.app.ui.components.NeonIcon
+import com.kortexgames.app.ui.components.RankingPreviewUnavailable
 import com.kortexgames.app.ui.components.ResumeState
+import com.kortexgames.app.ui.components.WorldRankingLoading
+import com.kortexgames.app.ui.components.WorldRankingPreviewPanel
 import com.kortexgames.app.ui.components.bounceClick
 import kotlin.math.PI
 import kotlin.math.cos
@@ -189,6 +192,10 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
     // récord sube; "Comenzar" arranca el motor y pasamos a la vista de juego.
     if (state.phase == LeveledGamePhase.LEVEL_SELECT) {
         var selectedLevel by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
+        // Comparativa mundial del nivel resaltado, ANTES de jugarlo: se relanza en
+        // cada cambio de nivel del carril (y en la entrada a la antesala, con el
+        // nivel por defecto). Ver WaterSortViewModel.refreshRankingPreview.
+        LaunchedEffect(selectedLevel) { vm.onIntent(WaterSortIntent.PreviewLevel(selectedLevel)) }
         GameIntroScreen(
             help = GameHelpContent.waterSort,
             title = "Ordena las Pociones",
@@ -213,6 +220,17 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
                     onResume = { vm.onIntent(WaterSortIntent.ResumeSaved) },
                     detail = "Nivel $level en curso",
                 )
+            },
+            // Ranking mundial del nivel elegido, justo encima del CTA (mismo panel que
+            // el diálogo de fin de nivel; mismo mecanismo que Neon Grid 2048): pedido
+            // explícito para que la antesala también responda "¿cómo me va ahí?".
+            configContent = {
+                val preview = state.rankingPreview
+                when {
+                    state.rankingPreviewLoading -> WorldRankingLoading()
+                    preview != null -> WorldRankingPreviewPanel(ranking = preview)
+                    else -> RankingPreviewUnavailable(difficultyLabel = "Nivel $selectedLevel")
+                }
             },
             onExit = onExit,
             background = {

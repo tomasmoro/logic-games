@@ -2,8 +2,10 @@ package com.kortexgames.app.game
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BubbleChart
+import androidx.compose.material.icons.rounded.GridOn
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.RocketLaunch
+import androidx.compose.material.icons.rounded.TouchApp
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.ui.components.GameHelp
 import com.kortexgames.app.ui.components.HelpStep
@@ -621,21 +623,50 @@ object GameHelpContent {
             HelpStep(
                 icon = KortexIcons.Play,
                 title = "Sigue el haz",
-                text = "El trazado iluminado te enseña los cuatro hexágonos que el puntero " +
+                text = "El trazado iluminado te enseña los nueve hexágonos que el puntero " +
                     "recorrerá a continuación. Decide ahí, no cuando ya esté encima.",
             ),
             HelpStep(
                 icon = KortexIcons.Warning,
                 title = "No lo pierdas",
-                text = "Si el haz se pone rojo, el puntero va camino del borde. Si sale del " +
-                    "tablero, la partida termina.",
+                text = "El final del haz se tiñe de rojo donde el recorrido sale del tablero. " +
+                    "Cuando se enciende entero, ya casi no queda margen: gira ya.",
             ),
         ),
         tips = listOf(
-            "La pieza que el puntero está atravesando no se puede girar: por eso el haz te " +
-                "avisa con cuatro hexágonos de antelación.",
+            "La pieza que el puntero está atravesando no se puede girar: por eso conviene " +
+                "decidir en la mitad lejana del haz, no en la cercana.",
             "Encadenar giros cerrados crea un circuito cerrado donde el puntero da vueltas: " +
                 "úsalo para ganar tiempo mientras preparas el camino hacia el siguiente orbe.",
+        ),
+    )
+
+    /** Neon Grid Switch: Lights Out con progresión de tamaño de matriz (Reconocimiento de Patrones). */
+    val gridSwitch = GameHelp(
+        title = "Neon Grid Switch",
+        summary = "Apaga todas las luces de la cuadrícula: cada toque conmuta esa celda y sus vecinas.",
+        accent = CategoryPalette.PatternRecognition,
+        art = iconHelpArt(Icons.Rounded.GridOn),
+        steps = listOf(
+            HelpStep(
+                icon = Icons.Rounded.TouchApp,
+                title = "Toca una celda",
+                text = "Se apaga o enciende junto con sus vecinas de arriba, abajo, izquierda y derecha.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Check,
+                title = "Apaga todo el tablero",
+                text = "La etapa termina en cuanto no queda ninguna luz encendida.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Refresh,
+                title = "Etapas cada vez más grandes",
+                text = "Cada etapa superada crece la cuadrícula: empieza en 3×3 y llega hasta 6×6.",
+            ),
+        ),
+        tips = listOf(
+            "Tocar la misma celda dos veces la deja como estaba: no suma a tu favor.",
+            "El orden de los toques no cambia el resultado final, solo importa QUÉ celdas tocaste.",
         ),
     )
 }

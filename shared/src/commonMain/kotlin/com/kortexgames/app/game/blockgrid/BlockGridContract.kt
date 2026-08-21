@@ -5,6 +5,7 @@ import com.kortexgames.app.core.audio.SoundEffect
 import com.kortexgames.app.core.mvi.UiEffect
 import com.kortexgames.app.core.mvi.UiIntent
 import com.kortexgames.app.core.mvi.UiState
+import com.kortexgames.app.domain.model.GameRanking
 import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
 
@@ -82,6 +83,15 @@ data class DragState(
  * @property savedScore puntuación de la corrida guardada al salir, o null si no hay
  *           ninguna pendiente. Solo relevante en la antesala (IDLE), donde se ofrece
  *           como "Continuar" (ver [com.kortexgames.app.ui.components.ResumeState]).
+ * @property rankingPreview comparativa mundial del jugador, para pintar en la
+ *           antesala el mismo panel que el diálogo de fin de partida ANTES de jugar
+ *           (ver [com.kortexgames.app.domain.repository.ProgressRepository.previewRanking]).
+ *           Tabla única (el juego no separa por dificultad): `null` mientras se
+ *           resuelve ([rankingPreviewLoading]) o si no hay comparativa que mostrar
+ *           (invitado, sin red, o sin ninguna marca todavía).
+ * @property rankingPreviewLoading `true` mientras se pide [rankingPreview] tras
+ *           entrar en la antesala. Arranca en `true` (no en `false`) para no enseñar
+ *           el aviso de "sin comparativa" un instante antes de que llegue.
  */
 data class BlockGridUiState(
     val board: BoardGrid = BoardGrid(),
@@ -93,6 +103,8 @@ data class BlockGridUiState(
     val gameOver: GameOverInfo? = null,
     val awaitingRevive: Boolean = false,
     val savedScore: Int? = null,
+    val rankingPreview: GameRanking? = null,
+    val rankingPreviewLoading: Boolean = true,
 ) : UiState
 
 /** Intents: único punto de entrada de la UI (patrón MVI, §4 CLAUDE.md). */

@@ -179,6 +179,14 @@ object GameProgressions {
         GameIds.HEXA_ORBIT to GameProgression(
             ProgressionKind.ENDLESS, MetricDirection.HIGHER_IS_BETTER, "Orbes", MetricUnit.COUNT,
         ),
+        // Neon Grid Switch: etapas discretas (progresión de tamaño de matriz) y siempre
+        // resolubles (el generador las construye desde una solución) — la partida-etapa
+        // solo termina al completarla, nunca se "falla" —, así que el tiempo por etapa es
+        // comparable entre partidas: tracksLevelTime, como Línea Neón y el Hyper-Cubo.
+        GameIds.NEON_GRID_SWITCH to GameProgression(
+            ProgressionKind.LEVELED, MetricDirection.HIGHER_IS_BETTER, "Etapa máx", MetricUnit.LEVEL,
+            tracksLevelTime = true,
+        ),
     )
 
     /** Progresión de un juego, o null si el id es null o no está registrado. */

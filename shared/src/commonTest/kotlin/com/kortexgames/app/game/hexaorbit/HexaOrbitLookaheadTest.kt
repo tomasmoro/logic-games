@@ -6,6 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -17,7 +18,8 @@ import kotlin.test.assertTrue
  *  1. La rotación de un azulejo es una permutación coherente y reversible de sus caminos.
  *  2. Los azulejos vecinos empalman: la arista de salida de uno es la de entrada del otro, y
  *     ambos puntos medios caen en el mismo lugar del plano.
- *  3. El trazado ilumina exactamente 4 azulejos futuros y detecta la fuga por la frontera.
+ *  3. El trazado ilumina el horizonte completo, detecta la fuga por la frontera y distingue la
+ *     fuga inminente (alarma) de la lejana (mera información).
  *  4. Un circuito cerrado no cuelga el algoritmo.
  */
 class HexaOrbitLookaheadTest {
@@ -29,14 +31,58 @@ class HexaOrbitLookaheadTest {
             .associateWith { HexTile(it, pattern, rotation) },
     )
 
+    /**
+     * Tablero uniforme donde cada azulejo, entrando por el OESTE, sale por el ESTE (y viceversa):
+     * el equivalente de "tablero de rectas" ahora que el patrón de tres rectas fue excluido del
+     * catálogo (ver el KDoc de exclusión en `TilePattern`, que explica por qué esa forma no puede
+     * cambiar de dirección al girar).
+     *
+     * Se construye con [TilePattern.SHARP_BRIDGE] —el único patrón restante con un camino recto,
+     * `2-5` (SW-NE) en su orientación canónica— girado 1 paso para realinear ese camino con el
+     * eje W-E (`3-0`): `exitEdgeFor` resta la rotación antes de consultar la tabla canónica, así
+     * que rotación 1 hace que entrar por `3` (oeste) resuelva como si se entrara por `2` (SW) en
+     * el patrón original, y `2` sale por `5`, que rotado vuelve a ser `0` (este). Los otros dos
+     * caminos de la pieza (dos giros cerrados) quedan sin usar en estos tests: nunca se entra por
+     * sus aristas.
+     */
+    private fun straightWestEastBoard(): HexBoard = uniformBoard(TilePattern.SHARP_BRIDGE, rotation = 1)
+
     // --- 1. Rotación --------------------------------------------------------------------------
 
     @Test
-    fun `los cuatro patrones emparejan las seis aristas sin dejar ninguna suelta`() {
+    fun `los tres patrones emparejan las seis aristas sin dejar ninguna suelta`() {
         for (pattern in TilePattern.entries) {
             val covered = pattern.connections.flatMap { listOf(it.a, it.b) }.toSet()
             assertEquals((0 until HEX_EDGES).toSet(), covered, "Patrón incompleto: $pattern")
             assertEquals(3, pattern.connections.size, "Un azulejo tiene 3 caminos: $pattern")
+        }
+    }
+
+    @Test
+    fun `ningun patron del catalogo tiene sus tres caminos con aristas enfrentadas`() {
+        // Es justo la forma excluida (los tres pares opuestos): girarla no cambia ni un solo
+        // camino, así que un tap sobre ella no tendría ningún efecto observable.
+        val allStraight = setOf(EdgePair(0, 3), EdgePair(1, 4), EdgePair(2, 5))
+        for (pattern in TilePattern.entries) {
+            assertTrue(
+                pattern.connections.toSet() != allStraight,
+                "$pattern no debería reducirse a los tres caminos rectos",
+            )
+        }
+    }
+
+    @Test
+    fun `ningun patron del catalogo es invariante bajo rotacion`() {
+        // Consecuencia general de excluir la órbita de tamaño 1: para cada patrón restante debe
+        // existir AL MENOS una rotación (1..5) que produzca un conjunto de caminos distinto —
+        // si no, ese giro tampoco tendría ningún efecto y el jugador se encontraría con la misma
+        // trampa aunque el patrón concreto no fuera TRIPLE_STRAIGHT.
+        for (pattern in TilePattern.entries) {
+            val canonical = pattern.connections.toSet()
+            val changesOnSomeRotation = (1 until HEX_EDGES).any { steps ->
+                pattern.connections.map { it.rotated(steps) }.toSet() != canonical
+            }
+            assertTrue(changesOnSomeRotation, "$pattern es invariante bajo rotación")
         }
     }
 
@@ -154,17 +200,17 @@ class HexaOrbitLookaheadTest {
     // --- 3. Trazado proyectado ----------------------------------------------------------------
 
     @Test
-    fun `el trazado ilumina el azulejo actual mas cuatro futuros`() {
-        // Tablero de rectas recorrido de oeste a este. Se arranca en (-1, 0) y no en el centro
-        // porque desde el centro solo quedan 3 azulejos hasta el borde: el horizonte completo
-        // necesita 4 por delante.
-        val board = uniformBoard(TilePattern.TRIPLE_STRAIGHT)
-        val start = HexCoord(-1, 0)
-        val path = board.project(from = start, entryEdge = HexDirection.WEST.edgeIndex)
+    fun `el trazado ilumina el azulejo actual mas el horizonte completo`() {
+        // El horizonte (9) es más largo que cualquier recta que quepa en un tablero de radio 3,
+        // así que para verlo entero hace falta un recorrido que NO llegue al borde: el circuito
+        // cerrado de los giros cerrados da exactamente eso.
+        val board = uniformBoard(TilePattern.TRIPLE_SHARP)
+        val path = board.project(from = HexCoord.ORIGIN, entryEdge = 0)
 
         assertEquals(HexaOrbitBalance.LOOKAHEAD_TILES, path.upcoming.size)
         assertEquals(HexaOrbitBalance.LOOKAHEAD_TILES + 1, path.steps.size)
-        assertEquals(start, path.current?.coord)
+        assertEquals(HexCoord.ORIGIN, path.current?.coord)
+        assertFalse(path.escapes)
     }
 
     @Test
@@ -180,19 +226,21 @@ class HexaOrbitLookaheadTest {
 
     @Test
     fun `entrar por el oeste en un tablero de rectas lleva al puntero hacia el este`() {
-        val board = uniformBoard(TilePattern.TRIPLE_STRAIGHT)
+        val board = straightWestEastBoard()
         val path = board.project(from = HexCoord(-3, 0), entryEdge = HexDirection.WEST.edgeIndex)
 
+        // Cruza el tablero de lado a lado (7 azulejos) y se sale: el horizonte de 9 da de sobra.
         assertEquals(
-            listOf(HexCoord(-3, 0), HexCoord(-2, 0), HexCoord(-1, 0), HexCoord(0, 0), HexCoord(1, 0)),
+            (-3..3).map { HexCoord(it, 0) },
             path.steps.map { it.coord },
         )
+        assertTrue(path.escapes)
     }
 
     @Test
     fun `marca la fuga cuando el recorrido proyectado alcanza la frontera`() {
         // Desde el borde este entrando por el oeste, la recta sale del tablero en un solo paso.
-        val board = uniformBoard(TilePattern.TRIPLE_STRAIGHT)
+        val board = straightWestEastBoard()
         val border = HexCoord(HexaOrbitBalance.BOARD_RADIUS, 0)
         val path = board.project(from = border, entryEdge = HexDirection.WEST.edgeIndex)
 
@@ -203,9 +251,45 @@ class HexaOrbitLookaheadTest {
 
     @Test
     fun `no marca fuga mientras el peligro quede fuera del horizonte visible`() {
-        val board = uniformBoard(TilePattern.TRIPLE_STRAIGHT)
-        val path = board.project(from = HexCoord(-3, 0), entryEdge = HexDirection.WEST.edgeIndex)
-        assertFalse(path.escapes, "Con 4 azulejos de horizonte aún no se ve la frontera opuesta")
+        // Con un horizonte corto, la frontera opuesta ni se ve: el trazado se corta antes.
+        val board = straightWestEastBoard()
+        val path = board.project(from = HexCoord(-3, 0), entryEdge = HexDirection.WEST.edgeIndex, maxTiles = 2)
+        assertFalse(path.escapes, "Con 2 azulejos de horizonte aún no se ve la frontera opuesta")
+        assertNull(path.escapeDepth)
+        assertFalse(path.imminent)
+    }
+
+    // --- 3b. Alarma: la fuga cercana es urgente, la lejana solo informa -----------------------
+
+    @Test
+    fun `una fuga a un paso es inminente y una lejana no`() {
+        val board = straightWestEastBoard()
+
+        // Desde el borde este: se sale en el propio azulejo → profundidad 0, emergencia.
+        val atBorder = board.project(HexCoord(3, 0), HexDirection.WEST.edgeIndex)
+        assertEquals(0, atBorder.escapeDepth)
+        assertTrue(atBorder.imminent)
+
+        // Desde el borde oeste: la salida está a 6 azulejos, dentro del haz pero fuera de la
+        // ventana de alarma. Es información ("por ahí se sale"), no urgencia.
+        val farSide = board.project(HexCoord(-3, 0), HexDirection.WEST.edgeIndex)
+        assertEquals(6, farSide.escapeDepth)
+        assertTrue(farSide.escapes)
+        assertFalse(farSide.imminent, "Una fuga a 6 azulejos no debe encender la alarma")
+    }
+
+    @Test
+    fun `la alarma se enciende justo en el limite de la ventana`() {
+        val board = straightWestEastBoard()
+        val alert = HexaOrbitBalance.ESCAPE_ALERT_TILES
+
+        // Se arranca a distintas distancias del borde este recorriendo la fila r = 0.
+        for (q in -3..3) {
+            val path = board.project(HexCoord(q, 0), HexDirection.WEST.edgeIndex)
+            val depth = 3 - q // azulejos hasta salirse por el este
+            assertEquals(depth, path.escapeDepth, "Desde q=$q")
+            assertEquals(depth <= alert, path.imminent, "Desde q=$q (ventana=$alert)")
+        }
     }
 
     // --- 4. Circuitos cerrados ----------------------------------------------------------------

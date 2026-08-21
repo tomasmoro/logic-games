@@ -192,21 +192,25 @@ fun edgePairOf(x: Int, y: Int): EdgePair =
 /**
  * Patrón canónico de un azulejo: la partición fija de sus 6 aristas en **3 caminos**.
  *
- * ## Por qué solo hay cuatro patrones
+ * ## Por qué solo hay tres patrones (y no cuatro)
  *
- * Matemáticamente hay 15 formas de emparejar 6 aristas en 3 parejas, pero **la rotación es
- * estado en tiempo de ejecución** ([HexTile.rotation]): dos particiones que se obtienen una de
- * otra girando describen el mismo azulejo en distinta posición inicial. Agrupando las 15 por
- * rotación quedan exactamente **4 clases** (de tamaños 1, 2, 6 y 6), y aquí se declara un
- * representante de cada una. Incluir más sería duplicar piezas que el jugador no distinguiría,
- * y sesgaría el generador aleatorio hacia las formas con más representantes.
+ * Matemáticamente hay 15 formas de emparejar 6 aristas en 3 parejas. Agrupándolas por rotación
+ * —**la rotación es estado en tiempo de ejecución** ([HexTile.rotation]): dos particiones que se
+ * obtienen una de otra girando describen el mismo azulejo en distinta posición inicial— quedan
+ * **4 clases** (de tamaños 1, 2, 6 y 6). Aquí solo se declaran representantes de las tres
+ * últimas.
+ *
+ * La clase de tamaño 1 —`{0-3, 1-4, 2-5}`, los tres caminos rectos, cada uno uniendo aristas
+ * **enfrentadas**— se excluye a propósito: es la única partición que queda **fija bajo
+ * cualquier rotación** (por eso su órbita mide 1 y no 2 o 6). Girar ese azulejo no cambia un
+ * solo camino, así que un tap sobre él no tiene ningún efecto observable — rompe la premisa
+ * central del juego, donde cada giro debe poder redirigir al puntero. Las otras tres clases sí
+ * tienen giros que alteran el trazado (aunque [SHARP_BRIDGE] conserve un único camino recto
+ * entre sus tres caminos, ese camino SÍ cambia de dirección al girar la pieza entera).
  *
  * @property connections los tres caminos en la orientación canónica (`rotation = 0`).
  */
 enum class TilePattern(val connections: List<EdgePair>) {
-
-    /** Tres rectas que se cruzan en el centro. La pieza "autopista": rápida y previsible. */
-    TRIPLE_STRAIGHT(listOf(EdgePair(0, 3), EdgePair(1, 4), EdgePair(2, 5))),
 
     /** Tres giros cerrados que rebotan contra las esquinas. La pieza "muelle": desvía mucho. */
     TRIPLE_SHARP(listOf(EdgePair(0, 1), EdgePair(2, 3), EdgePair(4, 5))),
@@ -360,25 +364,39 @@ data class HexBoard(
 }
 
 /**
- * Orbe de energía recolectable, anclado a un punto **fijo del espacio** dentro de un azulejo.
+ * Orbe de energía recolectable, anclado a un punto **fijo del espacio** sobre una ARISTA de un
+ * azulejo — nunca sobre uno de sus caminos internos.
  *
  * ## Por qué un punto fijo y no "el azulejo entero"
  *
  * Si el orbe se recogiera con solo pisar su casilla, girar piezas no tendría nada que ver con
- * recolectar y el juego perdería su tensión central. Anclándolo a un punto concreto —elegido en
- * el instante del spawn sobre uno de los caminos del azulejo— el jugador tiene que **encaminar
- * el haz por encima**, que es justo la decisión interesante. El anclaje es espacial, así que
- * girar el azulejo mueve los caminos pero **no** el orbe.
+ * recolectar y el juego perdería su tensión central. Anclándolo a un punto concreto el jugador
+ * tiene que **encaminar el haz por encima**, que es justo la decisión interesante. El anclaje es
+ * espacial, así que girar el azulejo mueve los caminos pero **no** el orbe.
  *
- * El radio de recogida ([HexaOrbitBalance.COLLECT_RADIUS]) es deliberadamente generoso para que
- * varias orientaciones del azulejo sirvan: el objetivo es "pasar cerca", no clavar una curva
- * concreta, que sería frustrante a la velocidad a la que corre el puntero.
+ * ## Por qué en una arista y no sobre una curva
+ *
+ * El contorno del hexágono es la única parte del tablero que NO gira nunca (solo giran los
+ * caminos internos), y visualmente queda siempre por debajo del tubo de luz de los caminos: un
+ * orbe colocado sobre una curva se confundía con ella. Restringir el spawn a una arista —el
+ * borde entre un azulejo y su vecino— separa limpiamente "lo que se recoge" de "lo que se
+ * recorre", y de paso independiza el spawn de qué patrón o rotación tenga la pieza.
+ *
+ * Solo aristas INTERIORES, nunca la frontera exterior del tablero: cruzarla es la condición de
+ * derrota, así que un orbe ahí solo sería "alcanzable" en el mismo instante en que la partida
+ * termina.
+ *
+ * El radio de recogida ([HexaOrbitBalance.COLLECT_RADIUS]) es deliberadamente generoso: el
+ * objetivo es "pasar cerca de esa arista", no clavar un punto exacto, que sería frustrante a la
+ * velocidad a la que corre el puntero.
  *
  * @property id identidad estable del orbe; la UI la usa como `key` de animación para que un
  *           respawn se lea como un orbe **nuevo** (aparición con pulso) y no como uno que se
  *           teletransporta.
- * @property coord azulejo que lo contiene (permite decidir en O(1) si toca comprobar distancia).
- * @property local desplazamiento respecto al centro del azulejo, en unidades de radio de hex.
+ * @property coord uno de los dos azulejos que comparten la arista donde vive el orbe (permite
+ *           decidir en O(1) si toca comprobar distancia); la posición absoluta es la misma
+ *           vista desde cualquiera de los dos.
+ * @property local desplazamiento respecto al centro de [coord], en unidades de radio de hex.
  */
 data class EnergyOrb(
     val id: Long,
@@ -473,10 +491,31 @@ object HexaOrbitBalance {
     const val BOARD_RADIUS: Int = 3
 
     /**
-     * Azulejos que ilumina el haz por delante del puntero. El spec fija 4: suficiente para
-     * planear dos o tres giros, corto como para no revelar todo el tablero y matar la tensión.
+     * Azulejos que ilumina el haz por delante del puntero.
+     *
+     * El horizonte largo (9) existe para que el jugador pueda **encadenar un plan**: a rapidez
+     * alta, con 4 azulejos no daba tiempo a preparar más de un giro antes de que el puntero
+     * llegara. Con 9 se ve el recorrido entero hasta el borde en casi cualquier dirección, que
+     * es lo que convierte el juego en táctico de verdad.
+     *
+     * Ojo a la consecuencia, que es la razón de existir de [ESCAPE_ALERT_TILES]: en un tablero
+     * de radio [BOARD_RADIUS] la frontera está a 3-7 azulejos, así que un horizonte de 9 la
+     * alcanza **casi siempre**. Si la alarma roja se disparara con cualquier fuga dentro del
+     * horizonte estaría encendida de forma permanente y dejaría de significar nada.
      */
-    const val LOOKAHEAD_TILES: Int = 4
+    const val LOOKAHEAD_TILES: Int = 9
+
+    /**
+     * Profundidad, en azulejos, dentro de la cual una fuga proyectada se considera **inminente**
+     * y enciende la alarma (haz rojo, aviso en el marcador y penalización de precisión).
+     *
+     * Está desacoplado de [LOOKAHEAD_TILES] a propósito: el haz informa a nueve azulejos, pero
+     * *alarma* solo a cuatro. Ver el tramo lejano del haz tocando el borde es información útil
+     * ("por ahí se sale"), no una urgencia; la urgencia empieza cuando ya no queda margen para
+     * girar dos piezas. Cuatro es justo ese margen, y es el que tenía el juego antes de alargar
+     * el haz — así que la dificultad no cambia, solo se ve más lejos.
+     */
+    const val ESCAPE_ALERT_TILES: Int = 4
 
     /** Orbes simultáneos en el tablero. */
     const val MAX_ORBS: Int = 3
@@ -488,15 +527,26 @@ object HexaOrbitBalance {
      */
     const val INITIAL_SPEED: Float = 2.8f
 
-    /** Incremento de rapidez por segundo de partida (rampa lineal), en radios/s². */
-    const val SPEED_RAMP_PER_SEC: Float = 0.08f
+    /**
+     * Incremento de rapidez por segundo de partida (rampa lineal), en radios/s².
+     *
+     * Deliberadamente suave: como el techo ([MAX_SPEED]) es solo el doble de la rapidez inicial,
+     * una rampa agresiva llegaría a él casi de inmediato y la "sensación de aceleración" —el
+     * objetivo del §1 del spec, que el juego se vuelva "más frenético"— se perdería en los
+     * primeros segundos. Con 0.03 se tarda algo más de 90 s en alcanzar el techo, así que la
+     * mayoría de partidas terminan (por fuga) mucho antes de aplanarse.
+     */
+    const val SPEED_RAMP_PER_SEC: Float = 0.03f
 
     /**
-     * Techo de rapidez (~5 azulejos rectos por segundo). Por encima el jugador no llega a
-     * reaccionar dentro del horizonte de 4 azulejos y el juego pasa a decidirse por azar, que es
-     * justo lo contrario de un juego táctico.
+     * Techo de rapidez: el **doble** de [INITIAL_SPEED] (~3,2 azulejos rectos por segundo). Un
+     * techo bajo, y no una constante independiente, para que subir [INITIAL_SPEED] en el futuro
+     * escale el juego entero de forma coherente en vez de desajustar la proporción entre el
+     * inicio y el máximo. Por encima de x2 el jugador no llega a reaccionar dentro de la ventana
+     * de alarma ([ESCAPE_ALERT_TILES]) y el juego pasa a decidirse por azar, que es justo lo
+     * contrario de un juego táctico.
      */
-    const val MAX_SPEED: Float = 8.6f
+    const val MAX_SPEED: Float = INITIAL_SPEED * 2f
 
     /** Radio de recogida de un orbe, en unidades de radio de hex. */
     const val COLLECT_RADIUS: Float = 0.32f
