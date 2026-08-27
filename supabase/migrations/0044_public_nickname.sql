@@ -209,6 +209,8 @@ begin
 
     -- El propio nickname del usuario cuenta como disponible: así la pantalla de
     -- edición no marca en rojo lo que ya es suyo.
+    -- OJO: este `<>` es incorrecto cuando `auth.uid()` es NULL — lo CORRIGE la
+    -- migración 0046 con `is distinct from`. No copies este patrón.
     if exists (
         select 1 from public.users u
         where u.nickname_key = v_key and u.id <> auth.uid()
