@@ -50,12 +50,16 @@ import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.ui.components.GameIntroScreen
 import com.kortexgames.app.ui.components.GameOverOverlay
 import com.kortexgames.app.ui.components.GamePauseControls
+import com.kortexgames.app.ui.components.ReviveAdOverlay
 import com.kortexgames.app.ui.components.SpaceBackdrop
 import kortexgames.shared.generated.resources.Res
 import kortexgames.shared.generated.resources.hexa_orbit_hud_orbs
 import kortexgames.shared.generated.resources.hexa_orbit_hud_score
 import kortexgames.shared.generated.resources.hexa_orbit_hud_speed
 import kortexgames.shared.generated.resources.hexa_orbit_intro_description
+import kortexgames.shared.generated.resources.hexa_orbit_revive_body
+import kortexgames.shared.generated.resources.hexa_orbit_revive_reward
+import kortexgames.shared.generated.resources.hexa_orbit_revive_title
 import kortexgames.shared.generated.resources.hexa_orbit_subtitle
 import kortexgames.shared.generated.resources.hexa_orbit_warning
 import org.jetbrains.compose.resources.stringResource
@@ -227,6 +231,20 @@ fun HexaOrbitScreen(graph: AppGraph, onExit: () -> Unit) {
         }
 
         HexaOrbitHud(game = game, modifier = Modifier.align(Alignment.TopCenter))
+
+        // Oferta de revivir viendo un anuncio: el motor congeló la partida; aquí solo se decide.
+        if (state.awaitingRevive) {
+            ReviveAdOverlay(
+                adManager = graph.adManager,
+                onRevive = { vm.onIntent(HexaOrbitIntent.Revive) },
+                onDecline = { vm.onIntent(HexaOrbitIntent.DeclineRevive) },
+                title = stringResource(Res.string.hexa_orbit_revive_title),
+                rewardLabel = stringResource(Res.string.hexa_orbit_revive_reward),
+                body = stringResource(Res.string.hexa_orbit_revive_body),
+                accent = CategoryPalette.SpatialVision,
+                audio = graph.audio,
+            )
+        }
 
         if (state.status == GameStatus.FINISHED && state.gameOver != null) {
             GameOverOverlay(

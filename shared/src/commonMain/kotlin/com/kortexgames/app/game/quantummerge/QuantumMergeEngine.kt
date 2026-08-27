@@ -132,6 +132,28 @@ class QuantumMergeEngine(
     private var bestTier = QuantumTier.QUARK
     private var dangerProgress = 0f
 
+    /**
+     * `true` mientras se ofrece la segunda oportunidad del láser tras el primer desbordamiento
+     * (ver [QuantumMergeState.awaitingRevive]). [onFrame] no avanza ningún sub-paso mientras esto
+     * sea `true`: la física queda congelada bajo el overlay de oferta, igual que si estuviera en
+     * pausa, pero sin tocar `status` (sigue en `RUNNING`, ver el porqué en el KDoc del `property`).
+     */
+    private var awaitingRevive = false
+
+    /**
+     * `true` en cuanto la segunda oportunidad se ha ofrecido una vez en la partida (se haya
+     * aceptado o rechazado). Un segundo desbordamiento ya no la vuelve a ofrecer: es una prórroga
+     * puntual, no una regla que el jugador pueda explotar acumulando desbordamientos.
+     */
+    private var reviveOffered = false
+
+    /**
+     * Nº de veces que el láser se ha disparado en la partida (botón del HUD + la segunda
+     * oportunidad, si se usó). Alimenta la penalización de [calculateScore]: ver el porqué en su
+     * KDoc y en la memoria de producto "la puntuación debe penalizar las ayudas por anuncio".
+     */
+    private var lasersUsed = 0
+
     /** Enfriamiento del sonido de rebote (ver [tryEmitBounce]). */
     private var bounceCooldownSec = 0f
 
@@ -163,6 +185,9 @@ class QuantumMergeEngine(
         nextSphereId = 1L
         nextFlashId = 1L
         aimX = QuantumWorld.WIDTH / 2f
+        awaitingRevive = false
+        reviveOffered = false
+        lasersUsed = 0
 
         val first = randomSpawnTier()
         currentDrop = Sphere(
@@ -223,7 +248,10 @@ class QuantumMergeEngine(
      * @param frameNanos tiempo monotónico del frame actual.
      */
     fun onFrame(frameNanos: Long) {
-        if (status.value != GameStatus.RUNNING) return
+        // `awaitingRevive`: la oferta del láser está en pantalla y el scrim bloquea el tablero;
+        // congelar la física aquí (y no solo el input) evita que algo cambie por debajo mientras
+        // el jugador decide, ver KDoc de la propiedad.
+        if (status.value != GameStatus.RUNNING || awaitingRevive) return
 
         // `null` = primer frame tras arrancar/reanudar o dt==0: no integramos este frame.
         val dtSec = frameClock.tick(frameNanos) ?: return
@@ -698,27 +726,137 @@ class QuantumMergeEngine(
     }
 
     /**
-     * Cierra la partida por desbordamiento del contenedor. Guarda contra la doble finalización:
-     * [onFrame] la llama en el mismo frame en el que el temporizador se completa, y `finish()` ya
-     * habrá cambiado el estado a FINISHED.
+     * El contenedor desbordó. Guarda contra la doble finalización: [onFrame] la llama en el mismo
+     * frame en el que el temporizador se completa, y tanto `finish()` como [awaitingRevive] ya
+     * habrán movido el motor fuera de este camino.
+     *
+     * La **primera** vez en la partida no termina directo: ofrece la segunda oportunidad del láser
+     * ([awaitingRevive], ver KDoc) y sale sin tocar `status` ni el marcador. La segunda vez (o
+     * cualquiera posterior) sí termina — es una prórroga puntual, no infinita.
      */
     private fun endByOverflow() {
-        if (status.value != GameStatus.RUNNING) return
+        if (status.value != GameStatus.RUNNING || awaitingRevive) return
+
+        if (!reviveOffered) {
+            reviveOffered = true
+            awaitingRevive = true
+            publish()
+            return
+        }
+
         _effects.trySend(QuantumMergeEffect.PlaySound(QuantumMergeEffect.PlaySound.Cue.GAME_OVER))
         _effects.trySend(QuantumMergeEffect.Vibrate(QuantumMergeEffect.Vibrate.Cue.GAME_OVER))
         finish()
     }
 
     /**
+     * Botón "Láser" del HUD: dispara el láser en plena partida, sin esperar a estar a punto de
+     * perder. `false` si no hay ninguna esfera de [QuantumTier.LASER_TARGETS] en el tablero
+     * ([QuantumMergeIntent.WatchAdForLaser] ya lo revalida antes de pedir el anuncio, pero el
+     * intent es público y esta es su única fuente de verdad) o si la partida no está en `RUNNING`.
+     * En la práctica el dispensador reabastece esos tiers constantemente, así que casi siempre
+     * hay algo que despejar: el botón está disponible **siempre**, no solo cerca de perder.
+     */
+    fun fireLaser(): Boolean {
+        if (status.value != GameStatus.RUNNING || awaitingRevive) return false
+        val fired = applyLaser()
+        if (fired) publish()
+        return fired
+    }
+
+    /**
+     * El anuncio de la segunda oportunidad concedió la recompensa: dispara el láser y **reanuda**
+     * la partida (sin efecto si no se estaba ofreciendo). El reloj de frames se resetea igual que
+     * en [onPause]/[onResume]: el tiempo que el jugador pasó decidiendo (y viendo el anuncio) no
+     * debe integrarse como un salto de física al volver.
+     */
+    fun reviveWithLaser() {
+        if (!awaitingRevive) return
+        applyLaser()
+        awaitingRevive = false
+        frameClock.reset()
+        accumulatorSec = 0f
+        publish()
+    }
+
+    /**
+     * El jugador rechazó la segunda oportunidad (o el anuncio se cerró / no había): fin de partida
+     * real. Sin efecto si no se estaba ofreciendo.
+     */
+    fun declineRevive() {
+        if (!awaitingRevive) return
+        awaitingRevive = false
+        _effects.trySend(QuantumMergeEffect.PlaySound(QuantumMergeEffect.PlaySound.Cue.GAME_OVER))
+        _effects.trySend(QuantumMergeEffect.Vibrate(QuantumMergeEffect.Vibrate.Cue.GAME_OVER))
+        finish()
+    }
+
+    /**
+     * El disparo del láser en sí: elimina TODA esfera cuyo [Body.tier] esté en
+     * [QuantumTier.LASER_TARGETS] —los cuatro tiers más pequeños—, sin importar dónde esté en el
+     * tablero. A propósito **no** es un barrido posicional (una línea, una zona): es un filtro por
+     * tamaño, así que despeja el "ruido" de base sea cual sea su altura, en vez de depender de que
+     * algo esté justo a la altura de la línea de peligro en el instante del disparo.
+     *
+     * Cada esfera eliminada deja un [MergeFlash] en su sitio (la "explosión de burbuja"), el MISMO
+     * destello —sin escalar, mismo tamaño que en una fusión normal— que usa [merge]: ver KDoc de
+     * [MergeFlash] y [addFlash]. Se añade ANTES de marcar el cuerpo muerto porque necesita su
+     * posición. A propósito no lleva un haz ni un destello más grande que el de una fusión —una
+     * ronda de disparo puede eliminar varias esferas a la vez y un efecto más vistoso por cada una
+     * saturaría la pantalla— así que se apoya en la MISMA explosión discreta de siempre.
+     *
+     * Cuenta como uso ([lasersUsed]) solo si de verdad eliminó algo: no tiene sentido penalizar (ni
+     * animar) un disparo al vacío. En la práctica esto solo puede pasar en un tablero recién
+     * empezado sin ninguna esfera todavía.
+     *
+     * Resetea el reloj de "asentado por encima de la línea" ([Body.aboveLineSec]) de TODO lo que
+     * sobrevive: aunque el láser no apunta a la línea de peligro, vaciar el tablero de esferas
+     * pequeñas suele hundir lo que quedaba encima (pierde su apoyo y cae por gravedad en el
+     * siguiente sub-paso), así que dar el margen de gracia completo ([OVERFLOW_LIMIT_SEC]) de
+     * nuevo es coherente con ese respiro, no solo un regalo arbitrario.
+     */
+    private fun applyLaser(): Boolean {
+        var cleared = 0
+        for (i in 0 until bodyCount) {
+            val body = bodies[i]
+            if (body.alive && body.tier in QuantumTier.LASER_TARGETS) {
+                addFlash(body.x, body.y, body.radius, body.tier.accent)
+                body.alive = false
+                cleared++
+            }
+        }
+        if (cleared == 0) return false
+
+        compact()
+        for (i in 0 until bodyCount) bodies[i].aboveLineSec = 0f
+        dangerProgress = 0f
+        lasersUsed++
+
+        _effects.trySend(QuantumMergeEffect.PlaySound(QuantumMergeEffect.PlaySound.Cue.LASER))
+        _effects.trySend(QuantumMergeEffect.Vibrate(QuantumMergeEffect.Vibrate.Cue.LASER))
+        return true
+    }
+
+    /**
      * Puntaje = suma de los [QuantumTier.mergeScore] de todo lo fusionado (más los bonos de
-     * aniquilación), que es lo que el motor ya viene acumulando en [score].
+     * aniquilación) **menos la penalización del láser**.
      *
      * No lleva componente de tiempo ni de eficiencia, a diferencia de los juegos por niveles: aquí
      * lanzar mucho no es "hacer trampa", es la mecánica, y quien lanza sin pensar **se penaliza
      * solo** llenando el contenedor y terminando la partida antes. La escala superlineal de
      * [QuantumTier.mergeScore] ya premia la cadena larga sobre el volumen de lanzamientos.
+     *
+     * ## Por qué resta el láser
+     * El láser desatasca un contenedor que de otro modo habría terminado la partida (o directamente
+     * abre hueco para seguir sumando fusiones): es la ayuda que más vale, así que quien la usa no
+     * puede rankear igual que quien jugó limpio (misma regla que el "tubo extra" de Ordena las
+     * Pociones). [LASER_SCORE_PENALTY] se calibra por encima del `mergeScore` de un tier medio-bajo
+     * ([QuantumTier.ELECTRON]): suficiente para que abusar del láser cueste más de lo que un uso
+     * suelto ahorra, sin llegar a devorar una partida entera bien jugada. No se topa por debajo de
+     * ninguna base —a diferencia de Water Sort— porque aquí no hay un "nivel" que deba seguir
+     * ordenando por encima del castigo; el suelo es simplemente `0` ([coerceAtLeast]).
      */
-    override fun calculateScore(): Int = score
+    override fun calculateScore(): Int = penalizedScore()
 
     /**
      * Precisión = fracción de lanzamientos que acabaron combinando. Es la lectura honesta de "cuánto
@@ -728,8 +866,13 @@ class QuantumMergeEngine(
     override fun currentAccuracy(): Double =
         if (drops == 0) 100.0 else (merges * 100.0 / drops).coerceAtMost(100.0)
 
-    /** Récord = mejor puntaje de la corrida (ENDLESS/POINTS, ver `GameProgressions`). */
-    override fun reachedMetric(): Int? = score.takeIf { it > 0 }
+    /**
+     * Récord = mejor puntaje de la corrida (ENDLESS/POINTS, ver `GameProgressions`). Usa
+     * [calculateScore] (ya penalizado) y no el [score] crudo: el récord personal y el puntaje
+     * guardado en la partida deben contar la misma historia, o el jugador vería un "mejor marca"
+     * que la tabla mundial nunca registró.
+     */
+    override fun reachedMetric(): Int? = calculateScore().takeIf { it > 0 }
 
     // --- Utilidades internas ------------------------------------------------------------------
 
@@ -814,14 +957,22 @@ class QuantumMergeEngine(
             nextSphereTier = nextTier,
             aimX = aimX,
             flashes = flashes.toList(),
-            score = score,
+            // Penalizado, no el acumulador crudo: el HUD debe mostrar el mismo número que se va a
+            // guardar (ver KDoc de [calculateScore]). Mostrarlo ya descontado en caliente, en vez de
+            // dar la sorpresa solo en el cartel final, es lo que hace que el coste del láser se
+            // sienta real en el momento de pulsar el botón.
+            score = penalizedScore(),
             merges = merges,
             drops = drops,
             bestTier = bestTier,
             dangerProgress = dangerProgress,
             difficulty = level,
+            awaitingRevive = awaitingRevive,
         )
     }
+
+    /** Puntaje acumulado menos la penalización del láser, sin bajar de cero. Ver [calculateScore]. */
+    private fun penalizedScore(): Int = (score - lasersUsed * LASER_SCORE_PENALTY).coerceAtLeast(0)
 
     /**
      * Cuerpo mutable de trabajo: el gemelo interno de [Sphere] durante el tick.
@@ -1001,6 +1152,14 @@ class QuantumMergeEngine(
 
         /** El destello de la aniquilación es mayor que el de una fusión normal. */
         const val ANNIHILATION_FLASH_SCALE = 1.6f
+
+        /**
+         * Puntos que resta CADA disparo del láser al puntaje final (ver KDoc de [calculateScore]).
+         * Por encima del `mergeScore` de [QuantumTier.ELECTRON] (100): un solo disparo ya cuesta más
+         * de lo que vale la fusión más común que desatasca, y varios disparos se notan de verdad en
+         * la tabla mundial en vez de ser un descuento simbólico.
+         */
+        const val LASER_SCORE_PENALTY = 200
 
         /** A partir de este tier, la fusión merece háptica fuerte. */
         val BIG_MERGE_TIER = QuantumTier.ATOM

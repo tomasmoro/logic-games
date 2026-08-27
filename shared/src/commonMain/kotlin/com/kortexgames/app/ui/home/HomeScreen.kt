@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -65,6 +66,7 @@ import com.kortexgames.app.ui.components.CategoryMotifSurface
 import com.kortexgames.app.ui.components.GameMotifIcon
 import com.kortexgames.app.ui.components.KortexIcons
 import com.kortexgames.app.ui.components.NeonIcon
+import com.kortexgames.app.ui.components.NewBadge
 import com.kortexgames.app.ui.components.StaggeredReveal
 import com.kortexgames.app.ui.components.alphaIf
 import com.kortexgames.app.ui.components.bounceClick
@@ -72,7 +74,11 @@ import com.kortexgames.app.ui.components.dashedBorder
 import com.kortexgames.app.ui.components.pulse
 import com.kortexgames.app.ui.components.softGlow
 import com.kortexgames.app.ui.navigation.Routes
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.home_new_games_subtitle
+import kortexgames.shared.generated.resources.home_new_games_title
 import kotlin.math.roundToInt
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Pantalla de Inicio: el **centro de motivación**. Saludo con avatar, la tarjeta de
@@ -179,6 +185,20 @@ fun HomeScreen(
                     )
                 }
             }
+            // Juegos nuevos: solo se muestra si hay alguna novedad vigente en el
+            // catálogo (ver GameInfo.isNew). Va después del juego estrella y antes
+            // de las categorías: primero "lo tuyo", luego "lo nuevo", y por último
+            // el mapa completo de categorías.
+            val newGames = remember { GameCatalog.newGames }
+            if (newGames.isNotEmpty()) {
+                StaggeredReveal(index = slot++) {
+                    NewGamesCard(
+                        games = newGames,
+                        onOpenGame = { game -> Routes.gameRoute(game.id)?.let(onOpenGame) ?: onSeeGames() },
+                    )
+                }
+            }
+
             StaggeredReveal(index = slot) {
                 CategoryRow(
                     onOpenCategory = { category ->
@@ -1057,6 +1077,106 @@ private fun OtherGameRankRow(
             style = MaterialTheme.typography.titleMedium,
             color = LogicColors.OnDarkMuted,
             fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+/**
+ * Tarjeta **"Juegos nuevos"**: carrusel horizontal con las últimas incorporaciones
+ * al catálogo ([GameCatalog.newGames]). Existe para que una novedad se descubra
+ * en la Home, de un vistazo, sin obligar al jugador a rebuscarla en el catálogo
+ * completo — el mismo gancho de "hay algo que aún no probaste" que agrega
+ * cualquier producto vivo.
+ *
+ * Reutiliza el lenguaje de las demás tarjetas grandes de la Home (fondo con
+ * degradado del acento hacia [LogicColors.SurfaceDark] + sombra corta, sin borde;
+ * ver [TrainingCard]/[StarGameCard]) para no introducir un tercer estilo de
+ * tarjeta en la misma pantalla. El acento es [LogicColors.Violet] — a propósito
+ * distinto del ámbar de recompensa/racha y del color de categoría del juego
+ * estrella, para que "novedad" se lea como su propia categoría de contenido.
+ *
+ * El propio llamador ([HomeScreen]) ya la oculta cuando [games] está vacía, así
+ * que aquí no hace falta comprobarlo de nuevo.
+ *
+ * @param games juegos marcados [GameInfo.isNew], en orden de catálogo.
+ * @param onOpenGame abre el juego tocado.
+ */
+@Composable
+private fun NewGamesCard(games: List<GameInfo>, onOpenGame: (GameInfo) -> Unit) {
+    val accent = LogicColors.Violet
+    val shape = RoundedCornerShape(28.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(elevation = 8.dp, shape = shape, clip = false)
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(accent.copy(alpha = 0.22f), LogicColors.SurfaceDark)))
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            NeonIcon(icon = KortexIcons.Sparkle, tint = accent, size = 26.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    stringResource(Res.string.home_new_games_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = LogicColors.OnDark,
+                )
+                Text(
+                    stringResource(Res.string.home_new_games_subtitle),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = LogicColors.OnDarkMuted,
+                )
+            }
+        }
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(end = 4.dp),
+        ) {
+            items(games, key = { it.id ?: it.title }) { game ->
+                NewGameCell(game = game, onClick = { onOpenGame(game) })
+            }
+        }
+    }
+}
+
+/** Ancho de una celda de [NewGamesCard]: fija el tamaño de la miniatura y el título debajo. */
+private val NewGameCellWidth = 92.dp
+
+/**
+ * Celda de un juego dentro de [NewGamesCard]: miniatura cuadrada (mismo
+ * [GameThumbnail] que el juego estrella) con la insignia [NewBadge] asomando por
+ * la esquina superior derecha, y el título debajo a dos líneas.
+ */
+@Composable
+private fun NewGameCell(game: GameInfo, onClick: () -> Unit) {
+    val accent = game.category.accent
+    Column(
+        modifier = Modifier
+            .width(NewGameCellWidth)
+            .bounceClick(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(contentAlignment = Alignment.TopEnd) {
+            GameThumbnail(game = game, accent = accent, size = NewGameCellWidth, cornerRadius = 20.dp)
+            // Asoma medio fuera de la miniatura (offset negativo), como una cinta
+            // de esquina: no tapa el arte del juego que identifica de qué se trata.
+            NewBadge(
+                compact = true,
+                modifier = Modifier.offset(x = 8.dp, y = (-8).dp),
+            )
+        }
+        Text(
+            game.title,
+            style = MaterialTheme.typography.labelMedium,
+            color = LogicColors.OnDark,
+            textAlign = TextAlign.Center,
+            fontWeight = FontWeight.SemiBold,
+            minLines = 2,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

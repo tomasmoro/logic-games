@@ -55,13 +55,28 @@ class GridSwitchEngineTest {
 
     @Test
     fun cadaEtapaArrancaConElTamanoDeSuProgresion() {
+        // 3 etapas por tamaño (1-3 en 3×3, 4-6 en 4×4, 7-9 en 5×5) antes de crecer.
         assertEquals(3, engineAtStage(1).state.value.board.size)
-        assertEquals(4, engineAtStage(2).state.value.board.size)
-        assertEquals(5, engineAtStage(3).state.value.board.size)
-        assertEquals(6, engineAtStage(4).state.value.board.size)
-        // A partir de la 4, el tamaño se estabiliza en 6×6 (la dificultad sigue
+        assertEquals(3, engineAtStage(3).state.value.board.size)
+        assertEquals(4, engineAtStage(4).state.value.board.size)
+        assertEquals(4, engineAtStage(6).state.value.board.size)
+        assertEquals(5, engineAtStage(7).state.value.board.size)
+        assertEquals(5, engineAtStage(9).state.value.board.size)
+        // A partir de la 10, el tamaño se estabiliza en 6×6 (la dificultad sigue
         // subiendo por más desorden, no por más tablero).
-        assertEquals(6, engineAtStage(7).state.value.board.size)
+        assertEquals(6, engineAtStage(10).state.value.board.size)
+        assertEquals(6, engineAtStage(15).state.value.board.size)
+    }
+
+    @Test
+    fun laPrimeraEtapaEsUnTutorialDeUnSoloToque() {
+        // Pedido del usuario: la 1ª etapa se resuelve con un único toque (el mismo
+        // que la desordenó, ver KDoc de GridSwitchGenerator).
+        assertEquals(1, GridSwitchStages.scrambleTouchesForStage(1))
+
+        val engine = engineAtStage(1)
+        val solution = solve(engine.state.value.board)
+        assertEquals(1, solution.size, "la etapa tutorial debería resolverse en un solo toque")
     }
 
     @Test
@@ -150,11 +165,14 @@ class GridSwitchEngineTest {
 
     @Test
     fun avanzarDeEtapaCargaElSiguienteTamanoYaDesordenado() {
-        val engine = engineAtStage(1)
+        // Etapa 3 (3×3, última del tier) → etapa 4 (4×4, 1ª del siguiente tier):
+        // la única transición de las primeras etapas que SÍ cruza de tamaño (ver
+        // GridSwitchStages: 3 etapas por tamaño).
+        val engine = engineAtStage(3)
         solve(engine.state.value.board).forEach(engine::onCellToggled)
         assertEquals(GameStatus.FINISHED, engine.status.value)
 
-        engine.startAtStage(2)
+        engine.startAtStage(4)
 
         assertEquals(GameStatus.RUNNING, engine.status.value)
         assertEquals(4, engine.state.value.board.size)

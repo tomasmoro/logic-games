@@ -308,6 +308,14 @@ enum class GameMotif {
  *           tarjeta del catálogo y, dibujado centrado, hace de arte "héroe" en la
  *           intro y de miniatura en la Home (**fuente única de identidad visual**).
  *           null = usa el fondo genérico de la categoría y su icono como respaldo.
+ * @property isNew true = el juego luce la insignia "NUEVO" en su tarjeta del
+ *           catálogo ([com.kortexgames.app.ui.games.GameListScreen]) y aparece en
+ *           la tarjeta "Juegos nuevos" de la Home ([GameCatalog.newGames]). Es una
+ *           decisión editorial (se enciende/apaga a mano, no caduca sola por
+ *           fecha) espejada en Supabase (`games.is_new`, migración
+ *           `0043_games_is_new_badge.sql`) para poder ajustarla sin pasar por una
+ *           release — aunque hoy, como el resto de [GameInfo], la UI solo lee este
+ *           campo del cliente.
  */
 data class GameInfo(
     val id: String?,
@@ -316,6 +324,7 @@ data class GameInfo(
     val playable: Boolean,
     val published: Boolean = true,
     val motif: GameMotif? = null,
+    val isNew: Boolean = false,
 )
 
 /**
@@ -333,34 +342,36 @@ object GameCatalog {
      * único punto para que nunca se cuelen en dos sitios distintos.
      */
     private val allGames: List<GameInfo> = listOf(
+        // Orden deliberadamente mezclado (no agrupado por categoría) y con los
+        // juegos nuevos ([GameInfo.isNew]) intercalados cerca del principio, para
+        // que el catálogo se sienta variado desde el primer scroll en vez de
+        // enterrar las novedades al final de la lista.
         GameInfo(GameIds.WATER_SORT, "Ordena las Pociones", GameCategory.LOGIC, playable = true, motif = GameMotif.POTIONS),
-        GameInfo(GameIds.NEON_2048, "2048", GameCategory.MENTAL_MATH, playable = true, motif = GameMotif.NUMBER_TILES),
+        // isNew = true: uno de los tres últimos juegos incorporados (ver GameInfo.isNew).
+        GameInfo(GameIds.NEON_LEGION, "Neon Legion", GameCategory.MENTAL_SPEED, playable = true, motif = GameMotif.LEGION_SWARM, isNew = true),
         GameInfo(GameIds.NEON_DEFUSER, "Buscaminas", GameCategory.ATTENTION, playable = true, motif = GameMotif.MINESWEEPER),
-        GameInfo(GameIds.ENERGY_FLOW, "Flujo de Energía", GameCategory.SPATIAL, playable = true, motif = GameMotif.ENERGY_PIPES),
+        GameInfo(GameIds.HEXA_ORBIT, "Hexa Orbit", GameCategory.SPATIAL, playable = true, motif = GameMotif.HEXA_ORBIT, isNew = true),
         GameInfo(GameIds.BUBBLE_MATH, "Burbujas de Cálculo", GameCategory.MENTAL_MATH, playable = true, motif = GameMotif.MATH_BUBBLES),
-        GameInfo(GameIds.HYPER_CUBE, "Hyper Cubo", GameCategory.SPATIAL, playable = true, motif = GameMotif.HYPER_CUBE),
-        GameInfo(GameIds.NEON_BLOCK_GRID, "Tetris Neón", GameCategory.LOGIC, playable = true, motif = GameMotif.TETROMINO),
-        GameInfo(GameIds.CRUCIGRAMA_NEON, "Crucigrama Neón", GameCategory.LANGUAGE, playable = true, motif = GameMotif.CROSSWORD),
-        GameInfo(GameIds.NEON_SUDOKU_MATRIX, "Neon Sudoku", GameCategory.MENTAL_MATH, playable = true, motif = GameMotif.SUDOKU_GRID),
-        GameInfo(GameIds.NEON_PULSE, "Pulso Neon", GameCategory.REFLEXES, playable = true, motif = GameMotif.NEON_PULSE),
-        GameInfo(GameIds.POLARITY_COLLISION, "Atracción Geométrica", GameCategory.SPATIAL, playable = true, motif = GameMotif.POLARITY_SECTORS),
-        GameInfo(GameIds.WORD_CONNECT, "Palabras Conectadas", GameCategory.LANGUAGE, playable = true, published = false, motif = GameMotif.WORD_WHEEL),
-        GameInfo(GameIds.NEON_SCREWS, "Tornillos Neón", GameCategory.SPATIAL, playable = true, published = false),
-        GameInfo(GameIds.SEQUENCE_MEMORY, "Memoria de Secuencias", GameCategory.MEMORY, playable = true, motif = GameMotif.SEQUENCE_GRID),
-        GameInfo(GameIds.NEON_LEXICON, "Sopa de Letras Neón", GameCategory.LANGUAGE, playable = true, motif = GameMotif.WORD_SEARCH),
-        GameInfo(GameIds.STARPORT_ESCAPE, "Neon Starport Escape", GameCategory.LOGIC, playable = true, published = false),
-        GameInfo(GameIds.NEON_CIRCUIT, "Conectores", GameCategory.PROBLEM_SOLVING, playable = true, motif = GameMotif.CIRCUIT_FLOW),
-        GameInfo(GameIds.NEON_LINE, "Línea Neón", GameCategory.PROBLEM_SOLVING, playable = true, motif = GameMotif.SINGLE_LINE),
-        GameInfo(GameIds.HYPERGATE, "Hypergate", GameCategory.REFLEXES, playable = true, motif = GameMotif.HYPERGATE),
-        GameInfo(GameIds.QUANTUM_MERGE, "Quantum Merge", GameCategory.SPATIAL, playable = true, motif = GameMotif.QUANTUM_SPHERES),
-        // Primer juego de Velocidad Mental del catálogo: la categoría deja de estar vacía.
-        // Desactivado temporalmente: se retira de publicación mientras se prepara el próximo
-        // release (queda jugable en código y con seed en Supabase, solo oculto del catálogo).
-        GameInfo(GameIds.NEON_LEGION, "Neon Legion", GameCategory.MENTAL_SPEED, playable = true, published = false, motif = GameMotif.LEGION_SWARM),
-        GameInfo(GameIds.HEXA_ORBIT, "Hexa Orbit", GameCategory.SPATIAL, playable = true, motif = GameMotif.HEXA_ORBIT),
         // Primer juego de Reconocimiento de Patrones del catálogo: la categoría deja de
         // estar vacía.
-        GameInfo(GameIds.NEON_GRID_SWITCH, "Neon Grid Switch", GameCategory.PATTERNS, playable = true, motif = GameMotif.LIGHTS_GRID),
+        GameInfo(GameIds.NEON_GRID_SWITCH, "Neon Grid Switch", GameCategory.PATTERNS, playable = true, motif = GameMotif.LIGHTS_GRID, isNew = true),
+        GameInfo(GameIds.NEON_BLOCK_GRID, "Tetris Neón", GameCategory.LOGIC, playable = true, motif = GameMotif.TETROMINO),
+        GameInfo(GameIds.QUANTUM_MERGE, "Quantum Merge", GameCategory.SPATIAL, playable = true, motif = GameMotif.QUANTUM_SPHERES),
+        GameInfo(GameIds.WORD_CONNECT, "Palabras Conectadas", GameCategory.LANGUAGE, playable = true, published = false, motif = GameMotif.WORD_WHEEL),
+        GameInfo(GameIds.CRUCIGRAMA_NEON, "Crucigrama Neón", GameCategory.LANGUAGE, playable = true, motif = GameMotif.CROSSWORD),
+        GameInfo(GameIds.HYPER_CUBE, "Hyper Cubo", GameCategory.SPATIAL, playable = true, motif = GameMotif.HYPER_CUBE),
+        GameInfo(GameIds.NEON_SUDOKU_MATRIX, "Neon Sudoku", GameCategory.MENTAL_MATH, playable = true, motif = GameMotif.SUDOKU_GRID),
+        GameInfo(GameIds.NEON_SCREWS, "Tornillos Neón", GameCategory.SPATIAL, playable = true, published = false),
+        GameInfo(GameIds.NEON_PULSE, "Pulso Neon", GameCategory.REFLEXES, playable = true, motif = GameMotif.NEON_PULSE),
+        GameInfo(GameIds.ENERGY_FLOW, "Flujo de Energía", GameCategory.SPATIAL, playable = true, motif = GameMotif.ENERGY_PIPES),
+        GameInfo(GameIds.SEQUENCE_MEMORY, "Memoria de Secuencias", GameCategory.MEMORY, playable = true, motif = GameMotif.SEQUENCE_GRID),
+        GameInfo(GameIds.NEON_2048, "2048", GameCategory.MENTAL_MATH, playable = true, motif = GameMotif.NUMBER_TILES),
+        GameInfo(GameIds.STARPORT_ESCAPE, "Neon Starport Escape", GameCategory.LOGIC, playable = true, published = false),
+        GameInfo(GameIds.POLARITY_COLLISION, "Atracción Geométrica", GameCategory.SPATIAL, playable = true, motif = GameMotif.POLARITY_SECTORS),
+        GameInfo(GameIds.NEON_LEXICON, "Sopa de Letras Neón", GameCategory.LANGUAGE, playable = true, motif = GameMotif.WORD_SEARCH),
+        GameInfo(GameIds.NEON_CIRCUIT, "Conectores", GameCategory.PROBLEM_SOLVING, playable = true, motif = GameMotif.CIRCUIT_FLOW),
+        GameInfo(GameIds.HYPERGATE, "Hypergate", GameCategory.REFLEXES, playable = true, motif = GameMotif.HYPERGATE),
+        GameInfo(GameIds.NEON_LINE, "Línea Neón", GameCategory.PROBLEM_SOLVING, playable = true, motif = GameMotif.SINGLE_LINE),
         GameInfo(null, "Parejas Relámpago", GameCategory.MEMORY, playable = false),
         GameInfo(null, "Cadena Lógica", GameCategory.LOGIC, playable = false),
         GameInfo(null, "Encuentra el Intruso", GameCategory.ATTENTION, playable = false),
@@ -376,6 +387,14 @@ object GameCatalog {
      * la lista, la Home o la ruta aleatoria.
      */
     val games: List<GameInfo> = allGames.filter { it.published }
+
+    /**
+     * Juegos recién incorporados al catálogo ([GameInfo.isNew]), en el mismo orden
+     * en que aparecen en [games]. Alimenta la tarjeta "Juegos nuevos" de la Home
+     * ([com.kortexgames.app.ui.home.HomeScreen]); vacía cuando no hay ninguna
+     * novedad vigente, en cuyo caso esa tarjeta no se muestra.
+     */
+    val newGames: List<GameInfo> = games.filter { it.isNew }
 
     /** Categorías destacadas en la Home (fila horizontal, como el mockup). */
     val featuredCategories: List<GameCategory> = listOf(

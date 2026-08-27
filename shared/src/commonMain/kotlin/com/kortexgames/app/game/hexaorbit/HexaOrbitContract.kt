@@ -43,6 +43,12 @@ import com.kortexgames.app.game.GameStatus
  *           (ver [HexaOrbitState]).
  * @property status fase del ciclo de vida ([GameStatus]); en `IDLE` se muestra la antesala/intro
  *           y en `FINISHED` el overlay de resultados.
+ * @property awaitingRevive `true` mientras se ofrece revivir viendo un anuncio tras la primera
+ *           fuga del puntero. Se espeja de [HexaOrbitState.awaitingRevive] (es el motor quien
+ *           abre/cierra la oferta); durante la oferta la partida NO está `FINISHED` todavía: si
+ *           el jugador acepta, el puntero vuelve al centro; si declina (o expira la cuenta
+ *           atrás), entonces sí se cierra la partida y se publica [gameOver]. Solo se ofrece una
+ *           vez ([HexaOrbitState.reviveUsed]).
  * @property gameOver datos del resultado final (puntaje, percentil, ranking, récord); `null`
  *           mientras la partida no ha terminado. Es estado persistente y no un `Effect` porque
  *           el overlay debe sobrevivir a las recomposiciones hasta que el jugador lo cierre.
@@ -54,6 +60,7 @@ import com.kortexgames.app.game.GameStatus
 data class HexaOrbitUiState(
     val game: HexaOrbitState = HexaOrbitState(),
     val status: GameStatus = GameStatus.IDLE,
+    val awaitingRevive: Boolean = false,
     val gameOver: GameOverInfo? = null,
     val rankingPreview: GameRanking? = null,
     val rankingPreviewLoading: Boolean = true,
@@ -92,6 +99,17 @@ sealed interface HexaOrbitIntent : UiIntent {
      * @property coord azulejo que el jugador quiere girar.
      */
     data class RotateTile(val coord: HexCoord) : HexaOrbitIntent
+
+    /**
+     * El anuncio recompensado terminó con recompensa concedida: repone el puntero en el centro
+     * con un horizonte nuevo. La UI SOLO lo emite tras `AdManager.showRewardedAd()` == `EARNED`
+     * (el flujo del anuncio vive en la pantalla, como en Neon Legion); el motor se limita a
+     * aplicar la reposición y marcar [HexaOrbitState.reviveUsed].
+     */
+    data object Revive : HexaOrbitIntent
+
+    /** El jugador rechaza revivir (o la cuenta atrás expiró): cierra la partida de verdad. */
+    data object DeclineRevive : HexaOrbitIntent
 
     /** Pausa la partida (menú de pausa): congela puntero, velocidad y cronómetro. */
     data object Pause : HexaOrbitIntent

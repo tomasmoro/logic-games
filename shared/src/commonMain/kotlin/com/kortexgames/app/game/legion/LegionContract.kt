@@ -51,6 +51,12 @@ import com.kortexgames.app.game.GameStatus
  *   Neon Legion es de dificultad única con tabla única, así que se pide una sola vez al entrar.
  * @property rankingPreviewLoading `true` mientras se pide [rankingPreview]. Arranca en `true`
  *   para no enseñar el aviso de "sin comparativa" un instante antes de que llegue la respuesta.
+ * @property isFirstEverPlay `true` si este dispositivo nunca terminó una partida de Neon Legion
+ *   (historial local vacío para `GameIds.NEON_LEGION`, ver `LegionViewModel.init`). La antesala
+ *   lo usa para interponer el tutorial de las cuentas matemáticas ANTES de la primera ronda de la
+ *   primera partida — una sola vez en la vida de la app, nunca más (se apoya en el historial en
+ *   vez de en una preferencia aparte: cero esquema nuevo, y se "repara" solo si el historial se
+ *   borrara). Arranca en `false` (no interrumpir) hasta que la consulta local responda.
  */
 data class LegionUiState(
     val game: LegionState = LegionState(),
@@ -59,6 +65,7 @@ data class LegionUiState(
     val gameOver: GameOverInfo? = null,
     val rankingPreview: GameRanking? = null,
     val rankingPreviewLoading: Boolean = true,
+    val isFirstEverPlay: Boolean = false,
 ) : UiState
 
 /**

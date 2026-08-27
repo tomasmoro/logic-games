@@ -52,17 +52,23 @@ object DifficultyUnlocks {
     private val NEON_2048_SCORE_GATES = listOf(1_000, 2_000, 3_500, 5_000)
 
     /**
-     * Umbrales de Quantum Merge, uno por escalón (Pequeño, Mediano; Grande no abre nada más).
+     * Umbrales de Quantum Merge, uno por escalón: `[0]` es lo que hay que sacar en Grande (el
+     * escalón inicial) para abrir Mediano, `[1]` lo que hay que sacar en Mediano para abrir
+     * Pequeño (Pequeño no abre nada más). El orden de los escalones va de más exigente a más
+     * manejable —ver KDoc de [com.kortexgames.app.game.quantummerge.QuantumDifficulty]—, así que
+     * el índice `tier - 1` de esta lista ya no es "Pequeño, Mediano" sino "Grande, Mediano".
      *
-     * A diferencia de Neon Grid 2048, aquí el puntaje **baja** al subir de escalón —esferas más
-     * grandes llenan antes el contenedor, ver KDoc de [com.kortexgames.app.game.GameRankingScopes]—,
-     * así que una tabla creciente como la de 2048 no tendría sentido: el umbral de Mediano es más
-     * alto que el de Pequeño porque exige una partida más larga, no porque Mediano puntúe mejor.
-     * Calibrados simulando el motor con lanzamientos automáticos (mira aleatoria, suelta en cuanto
-     * puede) para conocer el rango real de puntajes por escalón sin adivinar a ciegas: esa
-     * simulación —el peor caso posible, sin ninguna estrategia— ya alcanza varios miles de puntos en
-     * Pequeño, así que un jugador real que agrupe con intención lo supera sin esfuerzo. El objetivo,
-     * como en 2048, es que el primer desbloqueo llegue en las primeras partidas y no a las cincuenta.
+     * A diferencia de Neon Grid 2048, aquí el puntaje **baja** al subir de escalón (esferas más
+     * grandes llenan antes el contenedor), así que una tabla creciente como la de 2048 no tendría
+     * sentido: el umbral es más alto en el escalón que exige una partida más larga, no en el que
+     * puntúa mejor.
+     *
+     * ⚠️ Los dos valores son los que traía la calibración ORIGINAL (cuando el escalón `[0]` era
+     * Pequeño, no Grande) simplemente reasignados a las nuevas posiciones — no se han vuelto a
+     * simular. Pequeño tiene más cabida que Grande, así que es probable que 3.000 sea un listón
+     * más alto en Grande de lo que era en Pequeño; conviene recalibrar con la misma metodología
+     * original (lanzamientos automáticos, mira aleatoria, sin estrategia) o con partidas reales
+     * antes de confiar en que el primer desbloqueo sigue llegando en las primeras partidas.
      */
     private val QUANTUM_MERGE_SCORE_GATES = listOf(3_000, 5_000)
 

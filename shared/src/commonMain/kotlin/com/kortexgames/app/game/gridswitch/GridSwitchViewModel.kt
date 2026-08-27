@@ -7,18 +7,22 @@ import com.kortexgames.app.core.audio.HapticFeedback
 import com.kortexgames.app.core.audio.SoundEffect
 import com.kortexgames.app.core.mvi.MviViewModel
 import com.kortexgames.app.domain.model.GameResult
+import com.kortexgames.app.domain.repository.PlayerProgressRepository
 import com.kortexgames.app.domain.repository.ProgressRepository
+import com.kortexgames.app.game.GameIds
+import com.kortexgames.app.game.LeveledGamePhase
 import com.kortexgames.app.game.toGameOverInfo
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
 /**
- * ViewModel MVI de "Neon Grid Switch". Juego **LEVELED sin selector**: arranca
- * en IDLE (antesala), [GridSwitchIntent.StartGame] empieza la etapa 1 y cada
- * etapa resuelta persiste su resultado (récord = etapa alcanzada, local-first)
- * antes de que [GridSwitchIntent.NextStage] arranque la siguiente — mismo molde
- * que `NeonLineViewModel`/`HyperCubeViewModel` (LEVELED "que nunca fallan").
+ * ViewModel MVI de "Neon Grid Switch". Juego **LEVELED con selector**: arranca
+ * en el selector de etapas y, al elegir una, se genera ([GridSwitchGenerator]) y
+ * se juega. Cada etapa resuelta persiste su resultado (récord = etapa alcanzada,
+ * local-first) antes de que [GridSwitchIntent.NextStage] arranque la siguiente —
+ * mismo molde que `NeonLineViewModel`/`HyperCubeViewModel` (LEVELED "que nunca
+ * fallan").
  *
  * Reparto de responsabilidades:
  *  - Reglas (conmutación ortogonal, conteo de movimientos, victoria) → [GridSwitchEngine].
@@ -27,6 +31,7 @@ import kotlinx.coroutines.launch
  */
 class GridSwitchViewModel(
     private val progress: ProgressRepository,
+    private val playerProgress: PlayerProgressRepository,
     audio: AudioAndHapticManager,
     private val adManager: AdManager,
 ) : MviViewModel<GridSwitchIntent, GridSwitchUiState, GridSwitchEffect>(GridSwitchUiState()) {
@@ -44,13 +49,16 @@ class GridSwitchViewModel(
         engine.status.onEach { st -> setState { copy(status = st) } }.launchIn(viewModelScope)
         engine.outcome.onEach { result -> result?.let(::onFinished) }.launchIn(viewModelScope)
         engine.events.onEach(::onEngineEvent).launchIn(viewModelScope)
-        // No se arranca aquí: se queda en IDLE mostrando la antesala y la
-        // partida empieza con StartGame (patrón del resto de juegos LEVELED).
+        // Etapa máxima desbloqueada (récord), reactiva y local-first. No se arranca
+        // el motor: se empieza en el selector y el jugador elige.
+        playerProgress.observe(GameIds.NEON_GRID_SWITCH)
+            .onEach { p -> setState { copy(maxUnlocked = p?.bestMetric ?: 0) } }
+            .launchIn(viewModelScope)
     }
 
     override fun onIntent(intent: GridSwitchIntent) {
         when (intent) {
-            GridSwitchIntent.StartGame -> playStage(1)
+            is GridSwitchIntent.PlayStage -> playStage(intent.stage)
             is GridSwitchIntent.ToggleCell -> engine.onCellToggled(intent.cell)
             GridSwitchIntent.RestartStage -> engine.restartStage()
             GridSwitchIntent.NextStage -> {
@@ -61,10 +69,12 @@ class GridSwitchViewModel(
             }
             GridSwitchIntent.Pause -> engine.pause()
             GridSwitchIntent.Resume -> engine.resume()
-            // Sin selector de nivel, "nueva partida" solo puede significar volver
-            // al principio de la progresión (mismo criterio que el "Empezar de
-            // nuevo" de los juegos ENDLESS, adaptado a que aquí sí hay etapas).
-            GridSwitchIntent.PlayAgain -> playStage(1)
+            // Rejugar la MISMA etapa (mismo criterio que Línea Neón/Crucigrama),
+            // no volver al principio de la progresión.
+            GridSwitchIntent.PlayAgain -> playStage(currentState.stageLevel)
+            GridSwitchIntent.ChooseStage -> setState {
+                copy(phase = LeveledGamePhase.LEVEL_SELECT, gameOver = null)
+            }
         }
     }
 
@@ -87,9 +97,9 @@ class GridSwitchViewModel(
         }
     }
 
-    /** Empieza (o reempieza) la etapa [stage]: limpia el game-over y arranca el motor. */
+    /** Empieza (o reempieza) la etapa [stage]: entra a juego, limpia el game-over y arranca el motor. */
     private fun playStage(stage: Int) {
-        setState { copy(stageLevel = stage, gameOver = null) }
+        setState { copy(phase = LeveledGamePhase.PLAYING, stageLevel = stage, gameOver = null) }
         engine.startAtStage(stage)
     }
 

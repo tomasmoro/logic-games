@@ -142,6 +142,30 @@ sealed interface QuantumMergeIntent : UiIntent {
 
     /** Vacía el contenedor y empieza de cero: botón "Jugar de nuevo" del overlay de fin. */
     data object RestartGame : QuantumMergeIntent
+
+    /**
+     * Botón "Láser" del HUD: el jugador pide ver un anuncio recompensado para disparar el láser en
+     * plena partida (no hace falta estar a punto de perder; el dispensador reabastece
+     * [QuantumTier.LASER_TARGETS] todo el rato, así que el botón está disponible casi siempre).
+     * Pulsar el botón YA es la confirmación —mismo trato que "Tubo extra" en Ordena las Pociones—,
+     * así que dispara [QuantumMergeEffect.ShowRewardedAd] directamente, sin overlay de oferta de
+     * por medio. El ViewModel revalida que haya algo que despejar antes de pedir el anuncio: no
+     * tiene sentido gastarle uno al jugador si el láser no fuera a eliminar ninguna esfera.
+     */
+    data object WatchAdForLaser : QuantumMergeIntent
+
+    /** La UI confirma que el anuncio de [WatchAdForLaser] terminó con recompensa → se dispara el láser. */
+    data object LaserRewarded : QuantumMergeIntent
+
+    /**
+     * Desde [QuantumMergeState.awaitingRevive]: el anuncio del
+     * [com.kortexgames.app.ui.components.ReviveAdOverlay] concedió la recompensa → el motor dispara
+     * el láser en la línea de peligro y la partida continúa.
+     */
+    data object Revive : QuantumMergeIntent
+
+    /** El jugador rechazó la oferta de revivir (o el anuncio se cerró / no había): fin de partida real. */
+    data object DeclineRevive : QuantumMergeIntent
 }
 
 /**
@@ -182,6 +206,9 @@ sealed interface QuantumMergeEffect : UiEffect {
 
             /** Una esfera se asentó por encima de la línea de peligro: fin de la partida. */
             GAME_OVER,
+
+            /** El láser se disparó (botón del HUD o segunda oportunidad tras desbordar). */
+            LASER,
         }
     }
 
@@ -211,6 +238,21 @@ sealed interface QuantumMergeEffect : UiEffect {
 
             /** Derrota (→ `ERROR`). */
             GAME_OVER,
+
+            /** El láser se disparó: un golpe con peso (→ `HEAVY`), a juego con [PlaySound.Cue.LASER]. */
+            LASER,
         }
     }
+
+    /**
+     * Pide a la UI mostrar un **anuncio recompensado** para el botón "Láser" del HUD
+     * ([QuantumMergeIntent.WatchAdForLaser]). Al terminar con recompensa, la UI debe devolver
+     * [QuantumMergeIntent.LaserRewarded] para que el motor dispare el láser.
+     *
+     * A diferencia de [PlaySound] y [Vibrate], este efecto lo emite el **ViewModel** directamente
+     * (`sendEffect`), no el motor: es una petición de UI (mostrar el anuncio), no un evento de la
+     * simulación. Nunca llega por el canal `engine.effects` — mismo patrón que
+     * `WaterSortEffect.ShowRewardedAd`.
+     */
+    data object ShowRewardedAd : QuantumMergeEffect
 }

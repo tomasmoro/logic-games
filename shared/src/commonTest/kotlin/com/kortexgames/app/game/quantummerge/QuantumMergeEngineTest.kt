@@ -64,9 +64,25 @@ class QuantumMergeEngineTest {
             }
         }
 
-        /** Espera a que el dispensador tenga esfera y la suelta en [x]. Devuelve su tier. */
-        fun dropAt(x: Float): QuantumTier {
-            while (state.currentDropSphere == null) advance(0.05f)
+        /**
+         * Espera a que el dispensador tenga esfera y la suelta en [x]. Devuelve su tier, o `null`
+         * si el motor deja de avanzar mientras se espera —partida terminada o congelada por la
+         * oferta de revivir ([QuantumMergeState.awaitingRevive])— porque entonces ninguna esfera
+         * nueva va a aparecer jamás.
+         *
+         * Sin esta salida, un desbordamiento que ocurriera durante uno de estos micro-`advance`
+         * (puede pasar en CUALQUIER sub-paso de física, no solo entre lanzamientos) colgaría el
+         * test para siempre: `onFrame` deja de avanzar en cuanto `status` o `awaitingRevive`
+         * cambian, así que `currentDropSphere` nunca volvería a dejar de ser `null`. El `guard` es
+         * el último resguardo por si algún día hay una regresión real en el dispensador.
+         */
+        fun dropAt(x: Float): QuantumTier? {
+            var guard = 0
+            while (state.currentDropSphere == null) {
+                if (engine.status.value != GameStatus.RUNNING || state.awaitingRevive) return null
+                advance(0.05f)
+                check(guard++ < 4_000) { "dropAt: el dispensador nunca recargó una esfera nueva" }
+            }
             engine.moveDropper(x)
             val tier = state.currentDropSphere!!.tier
             engine.dropSphere()
@@ -151,6 +167,7 @@ class QuantumMergeEngineTest {
         // Se apila a la izquierda una primera esfera y se espera a que el dispensador ofrezca otra
         // de su mismo tier; las que no coinciden se descartan al extremo opuesto.
         val target = sim.dropAt(LEFT_X)
+        assertNotNull(target, "la partida no debería terminar en el primer lanzamiento")
         sim.advance(1.5f)
         val before = sim.state.activeSpheres.size
 
@@ -204,15 +221,89 @@ class QuantumMergeEngineTest {
 
     // --- Derrota -----------------------------------------------------------------------------
 
-    @Test
-    fun elContenedorDesbordadoTerminaLaPartida() {
-        val sim = Sim(difficulty = QuantumDifficulty.GRANDE)
+    /**
+     * Llena el contenedor hasta el primer desbordamiento. Devuelve tras `advance` una vez que
+     * [QuantumMergeState.awaitingRevive] se activa (o si el `guard` se agota antes, en cuyo caso
+     * las aserciones del llamador fallarán con un mensaje claro).
+     */
+    private fun Sim.fillUntilFirstOverflow(guardLimit: Int = 400) {
+        var guard = 0
+        while (!state.awaitingRevive && guard < guardLimit) {
+            // `dropAt` puede devolver `null` si el desbordamiento llegó DURANTE su propia espera
+            // (ver su KDoc): en ese caso ya no hay nada más que hacer aquí, se sale sin el
+            // `advance` final.
+            if (dropAt(if (guard % 2 == 0) 12f else QuantumWorld.WIDTH - 12f) == null) break
+            advance(0.4f)
+            guard++
+        }
+    }
 
-        // Lanzamientos alternos a izquierda y derecha para que casi nada empareje: es la forma
-        // más rápida de llenar el contenedor sin tocar el estado interno del motor.
+    @Test
+    fun elPrimerDesbordamientoOfreceRevivirEnVezDeTerminar() {
+        val sim = Sim(difficulty = QuantumDifficulty.GRANDE)
+        sim.fillUntilFirstOverflow()
+
+        assertTrue(sim.state.awaitingRevive, "el primer desbordamiento debería ofrecer revivir")
+        // La partida no ha terminado de verdad: sigue en RUNNING y sin `outcome`.
+        assertEquals(GameStatus.RUNNING, sim.engine.status.value)
+        assertEquals(null, sim.engine.outcome.value)
+    }
+
+    @Test
+    fun laFisicaQuedaCongeladaMientrasSeOfreceRevivir() {
+        val sim = Sim(difficulty = QuantumDifficulty.GRANDE)
+        sim.fillUntilFirstOverflow()
+        assertTrue(sim.state.awaitingRevive)
+
+        val before = sim.state.activeSpheres
+        sim.advance(2f)
+        assertEquals(before, sim.state.activeSpheres, "el tablero no debería cambiar con la oferta en pantalla")
+    }
+
+    @Test
+    fun aceptarRevivirDisparaElLaserYReanudaLaPartida() {
+        val sim = Sim(difficulty = QuantumDifficulty.GRANDE)
+        sim.fillUntilFirstOverflow()
+        assertTrue(sim.state.awaitingRevive)
+
+        sim.engine.reviveWithLaser()
+
+        assertTrue(!sim.state.awaitingRevive, "la oferta debería cerrarse al aceptar")
+        assertEquals(GameStatus.RUNNING, sim.engine.status.value)
+        assertEquals(0f, sim.state.dangerProgress)
+        assertTrue(
+            sim.state.activeSpheres.none { it.tier in QuantumTier.LASER_TARGETS },
+            "el láser debería haber eliminado toda esfera de un tier objetivo",
+        )
+        // La física vuelve a avanzar tras aceptar.
+        val before = sim.state.activeSpheres
+        sim.advance(1f)
+        assertTrue(before != sim.state.activeSpheres || sim.state.activeSpheres.isEmpty())
+    }
+
+    @Test
+    fun rechazarRevivirTerminaLaPartidaDeVerdad() {
+        val sim = Sim(difficulty = QuantumDifficulty.GRANDE)
+        sim.fillUntilFirstOverflow()
+        assertTrue(sim.state.awaitingRevive)
+
+        sim.engine.declineRevive()
+
+        assertEquals(GameStatus.FINISHED, sim.engine.status.value)
+        assertNotNull(sim.engine.outcome.value)
+    }
+
+    @Test
+    fun unSegundoDesbordamientoYaNoOfreceRevivir() {
+        val sim = Sim(difficulty = QuantumDifficulty.GRANDE)
+        sim.fillUntilFirstOverflow()
+        assertTrue(sim.state.awaitingRevive)
+        sim.engine.reviveWithLaser()
+
+        // Vuelve a llenar el contenedor tras el respiro del láser; esta vez debe terminar.
         var guard = 0
         while (sim.engine.status.value == GameStatus.RUNNING && guard < 400) {
-            sim.dropAt(if (guard % 2 == 0) 12f else QuantumWorld.WIDTH - 12f)
+            if (sim.dropAt(if (guard % 2 == 0) 12f else QuantumWorld.WIDTH - 12f) == null) break
             sim.advance(0.4f)
             guard++
         }
@@ -221,7 +312,74 @@ class QuantumMergeEngineTest {
         assertNotNull(sim.engine.outcome.value)
     }
 
+    @Test
+    fun elLaserDelHudEliminaTodasLasEsferasDeLosTiersMasPequenos() {
+        val sim = Sim(difficulty = QuantumDifficulty.GRANDE)
+        // El dispensador solo entrega QUARK..PROTON (ver [QuantumTier.SPAWN_POOL]) y los cuatro
+        // más pequeños son objetivo del láser ([QuantumTier.LASER_TARGETS]): unos pocos
+        // lanzamientos ya bastan para tener algo que eliminar, sin necesidad de acercarse al
+        // desbordamiento. Esto es justo lo que pide "el láser debería estar siempre disponible".
+        repeat(6) {
+            sim.dropAt(if (it % 2 == 0) 20f else QuantumWorld.WIDTH - 20f)
+            sim.advance(0.5f)
+        }
+        assertTrue(
+            sim.state.activeSpheres.any { it.tier in QuantumTier.LASER_TARGETS },
+            "el montaje del test no dejó ninguna esfera objetivo en el tablero",
+        )
+
+        val fired = sim.engine.fireLaser()
+
+        assertTrue(fired, "el láser debería haber eliminado al menos una esfera")
+        assertTrue(
+            sim.state.activeSpheres.none { it.tier in QuantumTier.LASER_TARGETS },
+            "quedó una esfera de un tier objetivo sin eliminar",
+        )
+        assertEquals(GameStatus.RUNNING, sim.engine.status.value)
+    }
+
+    @Test
+    fun cadaDisparoDeLaserPenalizaElPuntajeFinal() {
+        val sim = Sim(difficulty = QuantumDifficulty.GRANDE)
+
+        // Dispara el láser del HUD en cuanto haya algo que eliminar (sin esperar a la oferta de
+        // revivir, para no consumirla: [declineRevive] solo termina la partida si la oferta sigue
+        // en pie).
+        repeat(6) {
+            sim.dropAt(if (it % 2 == 0) 20f else QuantumWorld.WIDTH - 20f)
+            sim.advance(0.5f)
+        }
+        val scoreBeforeLaser = sim.state.score
+        assertTrue(sim.engine.fireLaser())
+        // El marcador publicado ya viene descontado: se nota en caliente, no solo en el cartel.
+        assertTrue(
+            sim.state.score <= scoreBeforeLaser,
+            "usar el láser no debería subir el marcador mostrado",
+        )
+
+        // Sigue jugando hasta el desbordamiento real y rechaza la segunda oportunidad para forzar
+        // el fin de partida.
+        sim.fillUntilFirstOverflow()
+        assertTrue(sim.state.awaitingRevive)
+        sim.engine.declineRevive()
+
+        val outcome = sim.engine.outcome.value
+        assertNotNull(outcome)
+        assertEquals(sim.state.score, outcome.score)
+    }
+
     // --- Dificultad --------------------------------------------------------------------------
+
+    @Test
+    fun elEscalonInicialEsGrandeYElUltimoEnAbrirsePequeno() {
+        // El orden del `enum` es la fuente de verdad de qué se abre primero (ver KDoc de
+        // [QuantumDifficulty]): decisión de producto de arrancar en el escalón más exigente y
+        // premiar con más margen (Mediano, luego Pequeño) conforme se demuestra dominio.
+        assertEquals(QuantumDifficulty.GRANDE, QuantumDifficulty.entries.first())
+        assertEquals(QuantumDifficulty.PEQUENO, QuantumDifficulty.entries.last())
+        assertEquals(0, QuantumDifficulty.GRANDE.ordinal, "difficultyLevel 1 = ordinal 0 = Grande")
+        assertEquals(QuantumDifficulty.GRANDE, QuantumDifficulty.fromLevel(1))
+    }
 
     @Test
     fun elNivelViajaEnElEstadoDesdeAntesDeArrancar() {

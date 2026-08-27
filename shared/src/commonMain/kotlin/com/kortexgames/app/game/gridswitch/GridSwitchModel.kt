@@ -7,9 +7,11 @@ import kotlinx.serialization.Serializable
 /**
  * # Modelos de dominio de "Neon Grid Switch" (Reconocimiento de Patrones)
  *
- * Variante de Lights Out con progresión de tamaño de matriz: cada etapa crece la
- * cuadrícula (3×3 → 4×4 → 5×5 → 6×6) y, a partir de la 6×6, sigue subiendo la
- * dificultad aumentando cuánto se desordena el tablero (ver [GridSwitchStages]).
+ * Variante de Lights Out con progresión de tamaño de matriz: 3 etapas por tamaño
+ * (3×3 → 4×4 → 5×5 → 6×6, la 1ª de todas un tutorial de un solo toque) y, agotado
+ * el 6×6, sigue subiendo la dificultad aumentando cuánto se desordena el tablero
+ * (ver [GridSwitchStages]). Las etapas son **seleccionables** (pedido del
+ * usuario) igual que Crucigrama/Sopa de Letras, no una secuencia forzosa.
  *
  * Decisiones clave:
  *  - **Dominio 100% puro**: nada de Compose ni colores. El acento visual (celda
@@ -96,48 +98,95 @@ data class LightGrid(
 object GridSwitchStages {
 
     /**
-     * Etapa (1-based) a partir de la cual el tablero deja de crecer y queda fijo
-     * en [GRID_SWITCH_MAX_SIZE]. Coincide con "Nivel 4+" del diseño: desde aquí la
-     * dificultad ya no viene de un tablero más grande, sino de más toques de
-     * scramble (ver [scrambleTouchesForStage]).
+     * Nº de etapas que se juegan en CADA tamaño antes de crecer al siguiente
+     * (salvo la 1ª, ver [TUTORIAL_STAGE]): 3 etapas en 3×3, 3 en 4×4, 3 en 5×5 y,
+     * agotada la rampa, el tope de [GRID_SWITCH_MAX_SIZE] en bucle. Antes cada
+     * etapa crecía el tablero (curva 3→4→5→6 en solo 4 etapas); repartir 3 etapas
+     * por tamaño deja tiempo a que el jugador aprenda cada escala antes de que
+     * crezca (pedido del usuario: "progresión más lenta").
      */
-    const val SIZE_CAP_STAGE: Int = 4
+    private const val LEVELS_PER_SIZE: Int = 3
 
     /**
-     * Toques de scramble adicionales por cada etapa por encima de [SIZE_CAP_STAGE].
-     * En un tablero 6×6 (36 celdas) 6 toques extra por etapa es un incremento
-     * perceptible pero gradual: la etapa 8 (4 etapas después del tope) parte de un
-     * tablero notablemente más revuelto que la 4 sin que un único salto de
-     * dificultad se sienta injusto.
+     * Primera etapa del juego: un ÚNICO toque de desorden sobre el 3×3 más
+     * pequeño. Pedido del usuario ("primer nivel estilo tutorial, solución en un
+     * solo click"): con un solo toque de scramble, la solución es literalmente
+     * tocar la misma celda que lo generó (ver KDoc de [GridSwitchGenerator]), así
+     * que sirve de introducción a la mecánica sin plantear un puzzle real todavía.
+     */
+    private const val TUTORIAL_STAGE: Int = 1
+
+    /**
+     * Índice de tamaño máximo alcanzable (`GRID_SWITCH_MIN_SIZE + índice`, topado
+     * en [GRID_SWITCH_MAX_SIZE]). Usado tanto por [gridSizeForStage] como por
+     * [scrambleTouchesForStage] para saber cuándo el tablero ya no crece más.
+     */
+    private const val MAX_SIZE_INDEX: Int = GRID_SWITCH_MAX_SIZE - GRID_SWITCH_MIN_SIZE
+
+    /**
+     * Toques de scramble adicionales por cada etapa una vez el 6×6 agotó su propia
+     * rampa (ver [scrambleTouchesForStage]). Mismo criterio que la curva original:
+     * en un tablero de 36 celdas, 6 toques extra por etapa es un incremento
+     * perceptible pero gradual.
      */
     private const val EXTRA_TOUCHES_PER_STAGE: Int = 6
 
     /**
-     * Lado de la cuadrícula para la etapa [stage] (1-based): 3×3 → 4×4 → 5×5 y, de
-     * ahí en adelante, fijo en [GRID_SWITCH_MAX_SIZE].
+     * Lado de la cuadrícula para la etapa [stage] (1-based): [LEVELS_PER_SIZE]
+     * etapas en 3×3, otras tantas en 4×4, otras tantas en 5×5 y, de ahí en
+     * adelante, fijo en [GRID_SWITCH_MAX_SIZE] (pedido del usuario: "y así hasta
+     * el tope").
      */
-    fun gridSizeForStage(stage: Int): Int = when {
-        stage <= 1 -> GRID_SWITCH_MIN_SIZE
-        stage == 2 -> 4
-        stage == 3 -> 5
-        else -> GRID_SWITCH_MAX_SIZE
-    }
+    fun gridSizeForStage(stage: Int): Int = GRID_SWITCH_MIN_SIZE + sizeIndexForStage(stage)
 
     /**
      * Nº de toques aleatorios que aplica [GridSwitchGenerator] para desordenar el
      * tablero de la etapa [stage].
      *
-     * Base = `size²` (aprox. un toque por celda: suficiente para que el patrón de
-     * luces resultante no se parezca al tablero resuelto, sin exigir decenas de
-     * jugadas para deshacerlo). Por encima de [SIZE_CAP_STAGE], donde el tamaño ya
-     * no crece, se suma [EXTRA_TOUCHES_PER_STAGE] por cada etapa extra para que la
-     * dificultad siga subiendo (mandato del diseño: "Nivel 4+ ... con mayor número
-     * de iteraciones de desorden").
+     * La 1ª etapa es un caso especial: 1 solo toque, el tutorial (ver
+     * [TUTORIAL_STAGE]). El resto sigue una RAMPA dentro de cada tamaño: la
+     * primera etapa de un tamaño nuevo desordena poco (`size` toques, un
+     * calentamiento suave tras el salto de tablero) y la última de ese tamaño
+     * llega al scramble "completo" (`size²` toques, aprox. un toque por celda —
+     * el criterio de la curva original). Agotada esa rampa en el tamaño tope, la
+     * dificultad sigue subiendo indefinidamente con [EXTRA_TOUCHES_PER_STAGE] por
+     * etapa (mismo mecanismo que la curva original, solo que desplazado a partir
+     * de la etapa en que el 6×6 ya llegó a `size²`).
      */
     fun scrambleTouchesForStage(stage: Int): Int {
+        if (stage <= TUTORIAL_STAGE) return 1
         val size = gridSizeForStage(stage)
-        val baseTouches = size * size
-        val extraStages = (stage - SIZE_CAP_STAGE).coerceAtLeast(0)
-        return baseTouches + extraStages * EXTRA_TOUCHES_PER_STAGE
+        val sizeIndex = sizeIndexForStage(stage)
+        // Primera etapa del tamaño actual: 1-based, así que sizeIndex=0 arranca en
+        // la etapa 1 (el tutorial) aunque este cálculo no se use para ella.
+        val tierStartStage = sizeIndex * LEVELS_PER_SIZE + 1
+        val posInTier = stage - tierStartStage // 0-based; solo puede ≥ LEVELS_PER_SIZE en el tamaño tope
+        return if (posInTier < LEVELS_PER_SIZE) {
+            rampTouches(size, posInTier)
+        } else {
+            val extraStages = posInTier - (LEVELS_PER_SIZE - 1)
+            size * size + extraStages * EXTRA_TOUCHES_PER_STAGE
+        }
+    }
+
+    /**
+     * Índice de tamaño (0 = [GRID_SWITCH_MIN_SIZE]) de la etapa [stage]: agrupa
+     * cada [LEVELS_PER_SIZE] etapas en un mismo tamaño y se queda fijo en
+     * [MAX_SIZE_INDEX] de ahí en adelante — así TODAS las etapas del tablero tope
+     * (10, 11, 12, 13…) caen en el mismo "tier", que es justo lo que necesita
+     * [scrambleTouchesForStage] para seguir sumando dificultad sin volver a
+     * arrancar la rampa desde `size` en cada bloque de [LEVELS_PER_SIZE].
+     */
+    private fun sizeIndexForStage(stage: Int): Int =
+        ((stage - 1) / LEVELS_PER_SIZE).coerceAtMost(MAX_SIZE_INDEX)
+
+    /**
+     * Rampa lineal de `size` (la etapa más suave de este tamaño, [pos] = 0) a
+     * `size²` (scramble completo, [pos] = [LEVELS_PER_SIZE] - 1).
+     */
+    private fun rampTouches(size: Int, pos: Int): Int {
+        val min = size
+        val max = size * size
+        return min + (max - min) * pos / (LEVELS_PER_SIZE - 1)
     }
 }

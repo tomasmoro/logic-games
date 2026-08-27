@@ -661,12 +661,18 @@ object GameHelpContent {
             HelpStep(
                 icon = KortexIcons.Refresh,
                 title = "Etapas cada vez más grandes",
-                text = "Cada etapa superada crece la cuadrícula: empieza en 3×3 y llega hasta 6×6.",
+                text = "Elige la etapa en el carril inicial: 3 rondas por tamaño, de 3×3 a 6×6, y luego más difícil.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Hint,
+                title = "¿Atascado? Apaga una celda",
+                text = "Viendo un anuncio, apagas la celda que más te conviene. Cuesta puntos, pero nunca cierra el paso.",
             ),
         ),
         tips = listOf(
             "Tocar la misma celda dos veces la deja como estaba: no suma a tu favor.",
             "El orden de los toques no cambia el resultado final, solo importa QUÉ celdas tocaste.",
+            "La primera etapa se resuelve con un solo toque: es el tutorial.",
         ),
     )
 }

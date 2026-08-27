@@ -67,6 +67,14 @@ import kotlin.random.Random
  * que encaminar el haz para que la curva pase junto a esa arista, no limitarse a pisar la
  * casilla.
  *
+ * ## El REVIVE vive repartido en tres piezas, igual que en Neon Legion
+ *
+ * (1) el MOTOR decide en [crossToNeighbour] si la primera fuga congela la partida ofreciendo
+ * revivir ([grantRevive]/[declineRevive]) o si ya es la definitiva; (2) la PANTALLA muestra
+ * `ReviveAdOverlay` y ejecuta el anuncio recompensado (el `AdManager` es una dependencia de UI);
+ * (3) el `HexaOrbitViewModel` solo enruta los intents resultantes. Así el motor nunca conoce el
+ * `AdManager` y el revive es testeable sin anuncios.
+ *
  * @param random inyectable para tests deterministas de generación de tablero y de spawns.
  */
 class HexaOrbitEngine(
@@ -162,6 +170,10 @@ class HexaOrbitEngine(
     fun rotateTile(coord: HexCoord) {
         if (status.value != GameStatus.RUNNING) return
         val current = _state.value
+        // Con la oferta de revive en pantalla no hay tablero que pilotar: el overlay ya bloquea
+        // el toque en la UI, pero el motor se defiende igual (mismo criterio que `canSteer` en
+        // Neon Legion).
+        if (current.awaitingRevive) return
         if (coord !in current.board) return
         if (coord == current.pointer.coord) return
 
@@ -181,9 +193,15 @@ class HexaOrbitEngine(
      */
     fun onFrame(frameNanos: Long) {
         if (status.value != GameStatus.RUNNING) return
+        val current = _state.value
         val dtSec = frameClock.tick(frameNanos) ?: return
 
-        val advanced = step(_state.value, dtSec)
+        // Oferta de revive en pantalla: la física entera queda congelada (el reloj se sigue
+        // consumiendo para que al decidir no llegue un `dt` gigante de golpe). Mismo criterio
+        // que `LegionEngine.onFrame`.
+        if (current.awaitingRevive) return
+
+        val advanced = step(current, dtSec)
         _state.value = advanced
 
         // La fuga se detecta durante el paso de física, pero cerrar la partida se hace FUERA del
@@ -193,8 +211,65 @@ class HexaOrbitEngine(
         if (advanced.escaped) {
             emit(HexaOrbitEffect.PlaySound(HexaOrbitEffect.PlaySound.Cue.GAME_OVER))
             emit(HexaOrbitEffect.Vibrate(HexaOrbitEffect.Vibrate.Cue.ERROR))
-            finish()
+            // El sonido/vibración de la fuga suena SIEMPRE, la oferta o no un revive: es el
+            // choque lo que se está celebrando/castigando, no el desenlace final (mismo criterio
+            // que `LegionEngine.stepBoss` con `COMBAT_LOSS`). Si `crossToNeighbour` dejó
+            // `awaitingRevive = true` (revive disponible), la partida queda congelada esperando
+            // la decisión del jugador; si no, es el fin de verdad.
+            if (!advanced.awaitingRevive) finish()
         }
+    }
+
+    // --- Revive --------------------------------------------------------------------------------
+
+    /**
+     * Concede el revive (el anuncio recompensado YA terminó con `EARNED`; el flujo del anuncio
+     * vive en la pantalla, como en Neon Legion): reposiciona el puntero en el **centro** con un
+     * horizonte nuevo y descongela la partida.
+     *
+     * El puntero vuelve al centro y no al punto exacto de la fuga por la misma razón que en
+     * [onStart]: es el punto más lejano a la frontera en las seis direcciones, así que el jugador
+     * recupera el horizonte de aviso íntegro en vez de heredar una fuga ya inminente. La entrada
+     * se sortea de nuevo (no se reutiliza la de la partida original) para que la segunda
+     * oportunidad no repita literalmente el mismo tramo que acaba de matarlo.
+     *
+     * El tablero y los orbes vivos se conservan tal cual: limpiarlos regalaría objetivos nuevos
+     * de premio por ver un anuncio, que es justo lo que [HexaOrbitBalance.REVIVE_PENALTY] existe
+     * para compensar.
+     */
+    fun grantRevive() {
+        val s = _state.value
+        if (!s.awaitingRevive || status.value != GameStatus.RUNNING) return
+        frameClock.reset()
+
+        val entryEdge = random.nextInt(HEX_EDGES)
+        val startTile = s.board.tileAt(HexCoord.ORIGIN) ?: error("El tablero siempre tiene centro")
+        val step = TraversalStep(HexCoord.ORIGIN, entryEdge, startTile.exitEdgeFor(entryEdge))
+
+        val pointer = PointerState(
+            coord = HexCoord.ORIGIN,
+            entryEdge = entryEdge,
+            exitEdge = step.exitEdge,
+            progress = 0f,
+            position = pointOnStep(step, 0f),
+            trail = emptyList(),
+        )
+
+        _state.value = s.copy(
+            pointer = pointer,
+            projection = s.board.project(pointer.coord, pointer.entryEdge),
+            escaped = false,
+            awaitingRevive = false,
+            reviveUsed = true,
+        )
+    }
+
+    /** El jugador rechazó revivir (o la cuenta atrás expiró): ahora sí, fin de partida real. */
+    fun declineRevive() {
+        val s = _state.value
+        if (!s.awaitingRevive || status.value != GameStatus.RUNNING) return
+        _state.value = s.copy(awaitingRevive = false)
+        finish()
     }
 
     // --- Paso de física ----------------------------------------------------------------------
@@ -289,7 +364,12 @@ class HexaOrbitEngine(
             // Sin vecino: el puntero cruza la frontera exterior. Se le deja clavado en el punto
             // exacto de salida (progress = 1) para que el fogonazo de fin de partida ocurra
             // sobre la arista por la que se escapó, y no en una posición ya fuera del tablero.
-            ?: return withPointerProgress(1f).copy(escaped = true)
+            //
+            // `awaitingRevive` se marca aquí mismo (y no en `onFrame`) porque es este mismo
+            // `HexaOrbitState` —con su `reviveUsed`— el que sabe si todavía queda revive por
+            // gastar: si no se ha usado, la partida se congela ofreciéndolo; si ya se gastó, esta
+            // fuga es la definitiva.
+            ?: return withPointerProgress(1f).copy(escaped = true, awaitingRevive = !reviveUsed)
 
         val entryEdge = exiting.nextEntryEdge
         val pointer = pointer.copy(
@@ -415,18 +495,23 @@ class HexaOrbitEngine(
     // --- Resultado ---------------------------------------------------------------------------
 
     /**
-     * Puntuación = orbes recogidos + bono por segundo sobrevivido.
+     * Puntuación = orbes recogidos + bono por segundo sobrevivido − penalización por revive.
      *
      * Los dos sumandos son deliberados: solo con orbes, dar vueltas en un bucle seguro sin
      * recoger nada no puntuaría (correcto) pero tampoco recompensaría aguantar a rapidez alta
      * (incorrecto: sobrevivir a 8 radios/s es difícil). Solo con tiempo, el juego premiaría
      * aparcar el puntero en un circuito cerrado y esperar. Sumando ambos, la partida buena es la
      * que recoge **mientras** sobrevive, que es la que el juego pide.
+     *
+     * La resta solo se aplica si [HexaOrbitState.reviveUsed]: las ayudas por anuncio siempre
+     * restan en este proyecto (ver KDoc de [HexaOrbitBalance.REVIVE_PENALTY]), o el ranking
+     * mundial premiaría a quien más anuncios ve en vez de a quien mejor pilota.
      */
     override fun calculateScore(): Int {
         val current = _state.value
         val survivalBonus = (current.elapsedSeconds * SURVIVAL_POINTS_PER_SEC).roundToInt()
-        return (current.score + survivalBonus).coerceAtLeast(0)
+        val revivePenalty = if (current.reviveUsed) HexaOrbitBalance.REVIVE_PENALTY else 0
+        return (current.score + survivalBonus - revivePenalty).coerceAtLeast(0)
     }
 
     /**

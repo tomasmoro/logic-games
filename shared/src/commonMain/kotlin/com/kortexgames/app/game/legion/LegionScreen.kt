@@ -36,7 +36,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,17 +63,24 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
+import com.kortexgames.app.core.theme.LogicGradients
 import com.kortexgames.app.di.AppGraph
 import com.kortexgames.app.game.GameHelpContent
 import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameStatus
+import com.kortexgames.app.ui.components.AnimatedGameButton
+import com.kortexgames.app.ui.components.GameExitGuard
+import com.kortexgames.app.ui.components.GameExitProgress
 import com.kortexgames.app.ui.components.GameIntroScreen
 import com.kortexgames.app.ui.components.GameOverOverlay
 import com.kortexgames.app.ui.components.GamePauseControls
+import com.kortexgames.app.ui.components.KortexIcons
+import com.kortexgames.app.ui.components.NeonIcon
 import com.kortexgames.app.ui.components.RankingPreviewUnavailable
 import com.kortexgames.app.ui.components.ReviveAdOverlay
 import com.kortexgames.app.ui.components.SpaceBackdrop
@@ -86,6 +95,11 @@ import kortexgames.shared.generated.resources.legion_hud_enemy
 import kortexgames.shared.generated.resources.legion_hud_gates
 import kortexgames.shared.generated.resources.legion_hud_round
 import kortexgames.shared.generated.resources.legion_intro_description
+import kortexgames.shared.generated.resources.legion_mathtutorial_cta
+import kortexgames.shared.generated.resources.legion_mathtutorial_tip_1
+import kortexgames.shared.generated.resources.legion_mathtutorial_tip_2
+import kortexgames.shared.generated.resources.legion_mathtutorial_tip_3
+import kortexgames.shared.generated.resources.legion_mathtutorial_title
 import kortexgames.shared.generated.resources.legion_quiz_subtitle
 import kortexgames.shared.generated.resources.legion_quiz_title
 import kortexgames.shared.generated.resources.legion_revive_body
@@ -137,8 +151,26 @@ fun LegionScreen(graph: AppGraph, onExit: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val game = state.game
 
+    // Único punto de salida "en juego" (atrás del sistema y "SALIR" del menú de pausa): cierra
+    // la corrida guardando su resultado real antes de navegar (Legion es ENDLESS, no reanuda
+    // una carrera a medias — ver KDoc de `LegionViewModel.requestExit`).
+    val exitWithSave: () -> Unit = { vm.requestExit(onExit) }
+
     // Antesala: mientras no arranca (IDLE) se muestra la intro y NO corre el bucle de juego.
     if (state.status == GameStatus.IDLE) {
+        // Tutorial de las cuentas matemáticas: se interpone ANTES de arrancar la ronda 1 la
+        // primera vez que se juega (ver KDoc de LegionUiState.isFirstEverPlay), nunca más. Vive
+        // en estado LOCAL de la pantalla, no en el ViewModel: es puramente presentacional (no
+        // cambia nada del dominio), solo demora el intent Start un toque.
+        var showMathTutorial by remember { mutableStateOf(false) }
+
+        val startPlaying: () -> Unit = {
+            // Cuenta para la misión diaria en cuanto se juega, no hace falta terminar
+            // la partida (ver DailyGoalManager.markPlayed).
+            graph.dailyGoalManager.markPlayed(GameIds.NEON_LEGION)
+            vm.onIntent(LegionIntent.Start)
+        }
+
         GameIntroScreen(
             help = GameHelpContent.legion,
             title = "Neon Legion",
@@ -146,10 +178,7 @@ fun LegionScreen(graph: AppGraph, onExit: () -> Unit) {
             description = stringResource(Res.string.legion_intro_description),
             accent = CategoryPalette.MentalSpeed,
             onStart = {
-                // Cuenta para la misión diaria en cuanto se juega, no hace falta terminar
-                // la partida (ver DailyGoalManager.markPlayed).
-                graph.dailyGoalManager.markPlayed(GameIds.NEON_LEGION)
-                vm.onIntent(LegionIntent.Start)
+                if (state.isFirstEverPlay) showMathTutorial = true else startPlaying()
             },
             onExit = onExit,
             background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },
@@ -163,6 +192,15 @@ fun LegionScreen(graph: AppGraph, onExit: () -> Unit) {
                 }
             },
         )
+
+        if (showMathTutorial) {
+            LegionMathTutorialDialog(
+                onDismiss = {
+                    showMathTutorial = false
+                    startPlaying()
+                },
+            )
+        }
         return
     }
 
@@ -555,10 +593,96 @@ fun LegionScreen(graph: AppGraph, onExit: () -> Unit) {
             audio = graph.audio,
             onPause = { vm.onIntent(LegionIntent.Pause) },
             onResume = { vm.onIntent(LegionIntent.Resume) },
-            onExit = onExit,
+            onExit = exitWithSave,
             gameTitle = "Neon Legion",
             help = GameHelpContent.legion,
             accent = CategoryPalette.MentalSpeed,
+        )
+
+        // Atrás del sistema: reanuda si estaba en pausa, o pregunta antes de salir mientras se
+        // corre (la ronda alcanzada y el puntaje se guardan al confirmar, ver exitWithSave).
+        GameExitGuard(
+            status = state.status,
+            onResume = { vm.onIntent(LegionIntent.Resume) },
+            onConfirmExit = exitWithSave,
+            progress = GameExitProgress.ENDS_RUN,
+            accent = CategoryPalette.MentalSpeed,
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Tutorial de las cuentas matemáticas (primera partida)
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Cartel que explica el mecanismo de las puertas ANTES de la ronda 1 — solo la primera vez que
+ * se juega Neon Legion (ver KDoc de [LegionUiState.isFirstEverPlay]).
+ *
+ * Existe aparte de [GameHelpContent.legion] (el "¿Cómo se juega?" genérico del menú de pausa,
+ * bajo demanda) porque enseña algo más puntual y fácil de pasar por alto jugando a ojo: que un
+ * `×2` no es automáticamente la mejor puerta — el generador a veces empareja un `×2` con una
+ * suma que da MÁS tropas (ver KDoc de `LegionEngine.positiveRow`), así que hay que comparar los
+ * números, no reconocer el símbolo. Ese aviso puntual se pierde en la ayuda general, pensada
+ * para el flujo completo del juego, no para esta trampa concreta.
+ *
+ * Mismo lenguaje visual que el resto de diálogos modales de la app (p. ej.
+ * [ReviveAdOverlay] o `ConfirmExitDialog` de [GameExitGuard]): tarjeta redondeada
+ * [LogicColors.SurfaceDark], icono neón, CTA con degradado. Sin botón de descarte aparte: la
+ * única salida es "Entendido", porque no hay nada que perder por leerlo — todavía no arrancó
+ * ninguna ronda.
+ */
+@Composable
+private fun LegionMathTutorialDialog(onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(28.dp))
+                .background(LogicColors.SurfaceDark)
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            NeonIcon(icon = KortexIcons.Hint, tint = CategoryPalette.MentalSpeed, size = 40.dp)
+            Text(
+                stringResource(Res.string.legion_mathtutorial_title),
+                style = MaterialTheme.typography.headlineMedium,
+                color = LogicColors.OnDark,
+            )
+            MathTutorialTip(stringResource(Res.string.legion_mathtutorial_tip_1))
+            MathTutorialTip(stringResource(Res.string.legion_mathtutorial_tip_2))
+            MathTutorialTip(stringResource(Res.string.legion_mathtutorial_tip_3))
+
+            AnimatedGameButton(
+                onClick = onDismiss,
+                gradient = LogicGradients.play,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    stringResource(Res.string.legion_mathtutorial_cta),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = LogicColors.BackgroundDark,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+            }
+        }
+    }
+}
+
+/** Una fila del tutorial: viñeta + texto, sin icono propio (el del cartel ya alcanza). */
+@Composable
+private fun MathTutorialTip(text: String) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            "•",
+            style = MaterialTheme.typography.bodyLarge,
+            color = CategoryPalette.MentalSpeed,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = LogicColors.OnDarkMuted,
         )
     }
 }

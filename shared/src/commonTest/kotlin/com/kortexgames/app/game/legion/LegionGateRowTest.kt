@@ -79,17 +79,20 @@ class LegionGateRowTest {
     }
 
     @Test
-    fun `ninguna puerta puede aniquilar al ejercito`() {
-        // Regla del motor: tras cualquier puerta queda al menos 1 tropa. Se comprueba sobre un
-        // barrido de tamaños de ejército, no solo el de entrada, porque las filas se generan
-        // contra la proyección óptima y esa cifra crece a lo largo de la ronda.
-        forEachRow { row, _ ->
-            for (troops in intArrayOf(1, 2, 5, 20, 100, 500, 1_000)) {
-                for (gate in row.gates) {
-                    val result = gate.operation.apply(troops).coerceAtLeast(1)
-                    assertTrue(result >= 1, "${gate.operation.label} dejó $result tropas desde $troops")
-                }
-            }
+    fun `la mejor puerta de una fila nunca aniquila al ejercito`() {
+        // Ya NO hay suelo de 1 tropa: una puerta de castigo puede terminar la partida. Lo que el
+        // generador sí garantiza es que exista salida — la mejor puerta de la fila deja viva a la
+        // legión—, o la fila sería una sentencia sin contrajugada (ver KDoc de `negativeRow`).
+        //
+        // Se evalúa con la proyección para la que se generó la fila, que es el tamaño de ejército
+        // contra el que el generador dimensionó sus valores.
+        forEachProjectedRow { row, projected, seed ->
+            val best = row.gates.maxOf { it.operation.apply(projected) }
+            assertTrue(
+                best >= 1,
+                "Semilla $seed: fila sin salida con $projected tropas " +
+                    "(${row.gates.map { it.operation.label }} dejan como mucho $best)",
+            )
         }
     }
 
@@ -125,10 +128,14 @@ class LegionGateRowTest {
     fun `el recorrido optimo de una ronda nunca se sale de la escala legible`() {
         // El techo de 1000 es lo que mantiene las cifras leíbles de un vistazo en movimiento
         // (ver LegionBalance.TROOPS_SOFT_CAP). Se recorre la ronda eligiendo siempre la mejor
-        // puerta, que es la cota superior de lo que un jugador puede alcanzar.
+        // puerta, que es la cota superior de lo que un jugador puede alcanzar. Se parte de
+        // `roundStartTroops` (no de LegionBalance.INITIAL_TROOPS) porque cada partida sortea su
+        // propia semilla de tropas (ver LegionEngine.seedTroops); el máximo objetivo posible
+        // (semilla 20 → 80 tropas objetivo en la ronda 1) sigue muy por debajo del techo.
         for (seed in 1..40) {
-            var projected = LegionBalance.INITIAL_TROOPS
-            for (row in firstRoundRows(seed)) {
+            val engine = engineWith(seed)
+            var projected = engine.state.value.roundStartTroops
+            for (row in engine.state.value.gateRows) {
                 projected = row.gates.maxOf { it.operation.apply(projected).coerceAtLeast(1) }
             }
             assertTrue(
@@ -178,8 +185,11 @@ class LegionGateRowTest {
      */
     private fun forEachProjectedRow(check: (row: GateRow, projected: Int, seed: Int) -> Unit) {
         for (seed in 1..40) {
-            var projected = LegionBalance.INITIAL_TROOPS
-            for (row in firstRoundRows(seed)) {
+            val engine = engineWith(seed)
+            // Parte de la semilla de tropas real de ESTA partida, no de una constante fija: cada
+            // motor sortea la suya en `onStart` (ver LegionEngine.seedTroops).
+            var projected = engine.state.value.roundStartTroops
+            for (row in engine.state.value.gateRows) {
                 check(row, projected, seed)
                 projected = row.gates.maxOf { it.operation.apply(projected).coerceAtLeast(1) }
             }

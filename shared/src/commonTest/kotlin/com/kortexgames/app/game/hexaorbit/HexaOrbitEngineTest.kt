@@ -11,7 +11,9 @@ import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -125,16 +127,95 @@ class HexaOrbitEngineTest {
     }
 
     @Test
-    fun `la partida termina cuando el puntero cruza la frontera`() {
+    fun `la primera fuga ofrece revivir en vez de terminar la partida de inmediato`() {
         // Semilla fija que, sin que se gire nada, hace escapar al puntero en pocos segundos.
         val engine = engineWith(seed = 5)
         engine.runFrames(frames = 600)
 
-        assertEquals(GameStatus.FINISHED, engine.status.value)
         assertTrue(engine.state.value.escaped)
+        assertTrue(engine.state.value.awaitingRevive, "La primera fuga debería ofrecer revivir")
+        assertEquals(GameStatus.RUNNING, engine.status.value, "La oferta no cierra la partida")
+        assertNull(engine.outcome.value)
+    }
+
+    @Test
+    fun `rechazar el revive termina la partida`() {
+        val engine = engineWith(seed = 5)
+        engine.runFrames(frames = 600)
+        assertTrue(engine.state.value.awaitingRevive)
+
+        engine.declineRevive()
+
+        assertEquals(GameStatus.FINISHED, engine.status.value)
+        assertFalse(engine.state.value.awaitingRevive)
         val result = engine.outcome.value
         assertNotNull(result)
         assertTrue(result.score >= 0)
+    }
+
+    @Test
+    fun `conceder el revive repone el puntero en el centro y descongela la partida`() {
+        val engine = engineWith(seed = 5)
+        engine.runFrames(frames = 600)
+        assertTrue(engine.state.value.awaitingRevive)
+
+        engine.grantRevive()
+        val revived = engine.state.value
+
+        assertFalse(revived.escaped)
+        assertFalse(revived.awaitingRevive)
+        assertTrue(revived.reviveUsed)
+        assertEquals(HexCoord.ORIGIN, revived.pointer.coord)
+        assertEquals(GameStatus.RUNNING, engine.status.value)
+        assertNull(engine.outcome.value)
+
+        // La partida sigue de verdad: alimentar otro frame vuelve a mover el puntero.
+        engine.runFrames(frames = 1)
+        assertNotEquals(revived.pointer.position, engine.state.value.pointer.position)
+    }
+
+    @Test
+    fun `el revive solo se ofrece una vez por partida`() {
+        val engine = engineWith(seed = 5)
+        engine.runFrames(frames = 600)
+        engine.grantRevive()
+        assertTrue(engine.state.value.reviveUsed)
+
+        // Se hace escapar de nuevo sin girar ninguna pieza.
+        engine.runFrames(frames = 600)
+
+        assertTrue(engine.state.value.escaped)
+        assertFalse(engine.state.value.awaitingRevive, "Ya no debería ofrecerse una segunda vez")
+        assertEquals(GameStatus.FINISHED, engine.status.value)
+        assertNotNull(engine.outcome.value)
+    }
+
+    @Test
+    fun `usar el revive resta la penalizacion de la puntuacion final`() {
+        // `calculateScore()` es pública (contrato de `GameEngine`), así que se puede leer sin
+        // forzar el fin de la partida. `grantRevive` no toca `score` ni `elapsedSeconds` —solo
+        // repone el puntero y marca `reviveUsed`—, así que la única diferencia antes/después
+        // debe ser exactamente la penalización.
+        val engine = engineWith(seed = 5)
+        engine.runFrames(frames = 600)
+        val scoreBeforeRevive = engine.calculateScore()
+
+        engine.grantRevive()
+
+        val expected = (scoreBeforeRevive - HexaOrbitBalance.REVIVE_PENALTY).coerceAtLeast(0)
+        assertEquals(expected, engine.calculateScore())
+    }
+
+    @Test
+    fun `mientras se decide el revive no se pueden girar piezas`() {
+        val engine = engineWith(seed = 5)
+        engine.runFrames(frames = 600)
+        val before = engine.state.value
+        assertTrue(before.awaitingRevive)
+
+        engine.rotateTile(before.projection.upcoming.first().coord)
+
+        assertEquals(before.board, engine.state.value.board)
     }
 
     @Test
@@ -362,6 +443,9 @@ class HexaOrbitEngineTest {
     fun `la precision mide el tiempo con el circuito a salvo`() {
         val engine = engineWith(seed = 31)
         engine.runFrames(frames = 600)
+        // La primera fuga solo ofrece revivir (no termina la partida); se rechaza para poder
+        // leer el resultado final, igual que haría la pantalla si el jugador declina.
+        if (engine.state.value.awaitingRevive) engine.declineRevive()
         val result = engine.outcome.value
         assertNotNull(result)
         assertTrue(result.accuracyPercentage in 0.0..100.0, "Precisión fuera de rango")

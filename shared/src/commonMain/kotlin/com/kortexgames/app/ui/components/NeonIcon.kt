@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Backspace
 import androidx.compose.material.icons.automirrored.rounded.ExitToApp
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Casino
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -41,6 +42,7 @@ import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.BarChart
+import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Vibration
@@ -205,6 +207,16 @@ object KortexIcons {
 
     /** Campana tachada: recordatorios desactivados. */
     val NotificationsOff: ImageVector = Icons.Rounded.NotificationsOff
+
+    /**
+     * Destello: cabecera de la tarjeta "Juegos nuevos" de la Home (novedad del
+     * catálogo). Deliberadamente distinto del resto de iconos de recompensa
+     * ([Trophy], [Star]) para no confundir "recién llegado" con "logro del jugador".
+     */
+    val Sparkle: ImageVector = Icons.Rounded.AutoAwesome
+
+    /** Rayo: acción de "láser" (p. ej. el despeje de zona de peligro de Quantum Merge). */
+    val Laser: ImageVector = Icons.Rounded.Bolt
 }
 
 /**

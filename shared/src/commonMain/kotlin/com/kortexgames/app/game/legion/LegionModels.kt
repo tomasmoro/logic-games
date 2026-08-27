@@ -96,8 +96,20 @@ object LegionBalance {
 
     // ── Tropas y velocidad ───────────────────────────────────────────────────────────────────
 
-    /** Tropas con las que arranca la partida (y a las que restaura el revive de la ronda 1). */
+    /**
+     * Tropas de arranque cuando no hay semilla real disponible (valor por defecto de
+     * [LegionState] antes de que `LegionEngine.onStart` sortee la semilla de la partida). El
+     * juego jugado NO usa este número fijo: cada partida sortea un entero en
+     * [INITIAL_TROOPS_MIN]..[INITIAL_TROOPS_MAX] para que la ronda 1 no se sienta siempre igual
+     * —antes SIEMPRE eran 40 tropas objetivo y 22 enemigos, partida tras partida—.
+     */
     const val INITIAL_TROOPS: Int = 10
+
+    /** Extremo inferior del sorteo de tropas iniciales de la partida (ver [INITIAL_TROOPS]). */
+    const val INITIAL_TROOPS_MIN: Int = 5
+
+    /** Extremo superior del sorteo de tropas iniciales de la partida (ver [INITIAL_TROOPS]). */
+    const val INITIAL_TROOPS_MAX: Int = 20
 
     /** Velocidad base de caída de los elementos, en unidades de mundo por segundo (ronda 1). */
     const val BASE_SPEED: Float = 0.252f
@@ -174,8 +186,15 @@ object LegionBalance {
     /** Techo blando del ejército: ninguna ronda apunta por encima de este tamaño. */
     const val TROOPS_SOFT_CAP: Int = 1_000
 
-    /** Tamaño de ejército al que apunta el recorrido óptimo al terminar la ronda 1. */
-    const val TARGET_TROOPS_BASE: Int = 40
+    /**
+     * Cuántas veces la SEMILLA de tropas de la partida (ver [INITIAL_TROOPS_MIN]) supera al
+     * objetivo de la ronda 1. Con la semilla histórica de 10 tropas el objetivo era 40 = 10 × 4;
+     * se conserva ese mismo salto para que sortear la semilla cambie la ESCALA de la partida (una
+     * que arranca con 20 tropas apunta a 80 al acabar la ronda 1; una que arranca con 5 apunta a
+     * 20) sin tocar el RITMO relativo de la curva, que sigue siendo el mismo para cualquier
+     * semilla.
+     */
+    const val TARGET_TROOPS_MULTIPLIER: Float = 4f
 
     /** Crecimiento del objetivo por ronda (×1,45 acumulativo hasta tocar [TROOPS_SOFT_CAP]). */
     const val TARGET_GROWTH_PER_ROUND: Float = 1.45f
@@ -185,18 +204,23 @@ object LegionBalance {
      * generador de pista reparte este objetivo entre las filas de la ronda (ver
      * `LegionEngine.bestOperationFor`) y el enemigo se dimensiona contra el resultado real.
      *
-     * Progresión: 40 al acabar la ronda 1, ~176 en la 5, y el techo de 1000 desde la 10. Crece
-     * rápido al principio —cuando duplicar el ejército se nota— y se aplana justo donde las
-     * cifras dejarían de leerse de un vistazo en movimiento.
+     * @param seedTroops la semilla de tropas de ESTA partida (ver [INITIAL_TROOPS_MIN]), no un
+     *   valor fijo: toda la curva escala desde ahí, así que dos partidas con semillas distintas
+     *   viven la misma progresión relativa (×1,45/ronda) pero con objetivos absolutos distintos —
+     *   es lo que hace que la ronda 1 no se sienta siempre igual (ver `LegionEngine.seedTroops`).
+     *
+     * Progresión con la semilla histórica de 10: 40 al acabar la ronda 1, ~176 en la 5, y el
+     * techo de 1000 desde la 10-11. Crece rápido al principio —cuando duplicar el ejército se
+     * nota— y se aplana justo donde las cifras dejarían de leerse de un vistazo en movimiento.
      *
      * Que el ejército ENTRE a la ronda siguiente con solo el excedente del combate (bastante
      * menor que este objetivo) es lo que mantiene viva la curva: cada ronda vuelve a partir de
      * poco y hay que reconstruir la legión desde ahí.
      */
-    fun targetTroopsForRound(round: Int): Int =
-        (TARGET_TROOPS_BASE * TARGET_GROWTH_PER_ROUND.pow(round - 1))
+    fun targetTroopsForRound(round: Int, seedTroops: Int): Int =
+        (seedTroops * TARGET_TROOPS_MULTIPLIER * TARGET_GROWTH_PER_ROUND.pow(round - 1))
             .toInt()
-            .coerceIn(INITIAL_TROOPS + 1, TROOPS_SOFT_CAP)
+            .coerceIn(seedTroops + 1, TROOPS_SOFT_CAP)
 
     // ── Combate de fin de ronda (ver Decisión 4) ─────────────────────────────────────────────
 
@@ -442,7 +466,11 @@ sealed interface GateOperation {
         override fun apply(troops: Int): Int = troops + amount
     }
 
-    /** Resta [amount] tropas (sin bajar de 0; la derrota la decide el combate, no una puerta). */
+    /**
+     * Resta [amount] tropas, sin bajar de 0. Llegar a 0 **es perder**: el motor ya no aplica
+     * ningún suelo al cruzar (ver la cabecera de `LegionEngine`), así que una puerta de castigo
+     * mayor que el ejército termina la partida ahí mismo.
+     */
     data class Subtract(val amount: Int) : GateOperation {
         override val isPositive: Boolean get() = false
         override val label: String get() = "−$amount"

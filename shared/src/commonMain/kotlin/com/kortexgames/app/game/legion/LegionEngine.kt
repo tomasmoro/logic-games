@@ -59,12 +59,26 @@ import kotlin.random.Random
  * óptimo") y la partida siempre puede perderse, cosa que un enemigo de crecimiento fijo no
  * garantiza contra un ejército que crece con puertas `×`.
  *
- * ## Suelo de 1 tropa DENTRO de la ronda
- * Una puerta o un láser pueden dejar el ejército en 0 (p. ej. `÷2` sobre 1 tropa). Se aplica un
- * suelo de **1** tras cada operación: un jugador corriendo sin ejército no tendría nada que
- * dibujar ni forma de interactuar, y la derrota ya tiene su lugar natural (el combate, donde 1
- * tropa pierde contra cualquier enemigo real). La puerta letal castiga igual — deja al jugador
- * casi sin remontada — pero la partida sigue siendo jugable hasta el choque.
+ * ## Semilla de tropas por partida (no una constante fija)
+ * [onStart] sortea [seedTroops] en `LegionBalance.INITIAL_TROOPS_MIN`..`INITIAL_TROOPS_MAX` y
+ * toda la curva de objetivos ([LegionBalance.targetTroopsForRound]) escala desde ahí. Antes la
+ * ronda 1 arrancaba SIEMPRE con las mismas 10 tropas y apuntaba SIEMPRE a las mismas 40 —el
+ * jugador veía el mismo "22 enemigos" partida tras partida—; con la semilla aleatoria cambia la
+ * ESCALA de partida en partida sin tocar el RITMO relativo (siempre ×1,45/ronda), que es lo que
+ * de verdad sostiene la dificultad.
+ *
+ * ## Quedarse sin naves ES perder (ya no hay suelo de 1 tropa)
+ * Si una puerta deja el ejército en 0, la partida termina ahí mismo ([wipeout]): oferta de revive
+ * o fin. Antes se aplicaba un suelo artificial de 1 tropa y la derrota se posponía al combate;
+ * el problema era que ese suelo volvía **inocuas** a las puertas de castigo justo cuando más
+ * debían doler — un `−n` mayor que el ejército entero costaba lo mismo que uno que dejara 1
+ * tropa—, y con ello desaparecía la razón para calcular en las filas negativas.
+ *
+ * Lo que SÍ se conserva es que siempre haya salida: el generador garantiza que la **mejor**
+ * puerta de cada fila nunca aniquila (ver [negativeRow]), así que morir es consecuencia de elegir
+ * mal, no de una fila sin contrajugada. Ojo con el alcance de esa garantía: las puertas se
+ * dimensionan contra la PROYECCIÓN óptima de la ronda, no contra las tropas reales, así que un
+ * jugador muy descolgado sí puede encontrarse una fila entera letal.
  *
  * ## Feedback como eventos (no audio directo)
  * Cada momento de feedback se emite como [LegionEffect] semántico por [effects]: la lógica queda
@@ -123,6 +137,17 @@ class LegionEngine(
     /** La ronda máxima ALCANZADA (para [reachedMetric]): sobrevive aunque el estado se reinicie. */
     private var bestRound = 1
 
+    /**
+     * Semilla de tropas de ESTA partida: un entero sorteado una vez en [onStart] entre
+     * [LegionBalance.INITIAL_TROOPS_MIN] y [LegionBalance.INITIAL_TROOPS_MAX]. Toda la curva de
+     * objetivos ([LegionBalance.targetTroopsForRound]) escala a partir de este número — antes era
+     * la constante fija `LegionBalance.INITIAL_TROOPS` (10) y la ronda 1 SIEMPRE apuntaba a las
+     * mismas 40 tropas y 22 enemigos, partida tras partida. Vive fuera de [LegionState] (como
+     * [bestRound]) porque no es algo que el render necesite leer tick a tick, solo el generador
+     * de pista al abrir cada ronda ([startRound]).
+     */
+    private var seedTroops = LegionBalance.INITIAL_TROOPS_MIN
+
     override fun onStart() {
         frameClock.reset()
         nextRowId = 1L
@@ -130,10 +155,11 @@ class LegionEngine(
         nextShipId = 1L
         combatBeatSec = 0f
         bestRound = 1
+        seedTroops = random.nextInt(LegionBalance.INITIAL_TROOPS_MIN, LegionBalance.INITIAL_TROOPS_MAX + 1)
         _state.value = startRound(
             base = LegionState(),
             round = 1,
-            entryTroops = LegionBalance.INITIAL_TROOPS,
+            entryTroops = seedTroops,
         )
     }
 
@@ -184,7 +210,9 @@ class LegionEngine(
         if (optionIndex !in sweep.quiz.options.indices) return
 
         val correct = optionIndex == sweep.quiz.correctIndex
-        val newTroops = if (correct) s.troops else (s.troops - s.troops / 2).coerceAtLeast(1)
+        // Sin suelo (ver cabecera) y sin necesitarlo: restar `troops / 2` (entera) nunca llega a
+        // 0 desde 1 o más naves. Fallar el examen duele, pero no aniquila.
+        val newTroops = if (correct) s.troops else s.troops - s.troops / 2
 
         _effects.trySend(
             LegionEffect.PlaySound(
@@ -325,18 +353,29 @@ class LegionEngine(
             }
 
             // Legión aniquilada: mismo desenlace que perder un choque normal.
-            troops <= 0 -> {
-                _effects.trySend(LegionEffect.PlaySound(LegionEffect.PlaySound.Cue.COMBAT_LOSS))
-                _effects.trySend(LegionEffect.Vibrate(LegionEffect.Vibrate.Cue.ERROR))
-                if (!advanced.reviveUsed) {
-                    advanced.copy(awaitingRevive = true)
-                } else {
-                    finish()
-                    advanced
-                }
-            }
+            troops <= 0 -> wipeout(advanced)
 
             else -> advanced
+        }
+    }
+
+    /**
+     * Desenlace común de "la legión se quedó sin naves", venga de una puerta ([stepRace]) o del
+     * rayo del Jefe ([stepBoss]): suena la derrota y, si el revive sigue disponible, se congela
+     * la partida en la oferta; si ya se gastó, se cierra la partida.
+     *
+     * Es el MISMO desenlace que perder un choque de fin de ronda, a propósito: para el jugador
+     * "me quedé sin ejército" es una sola cosa, así que debe ofrecer el revive en las mismas
+     * condiciones se haya llegado por donde se haya llegado.
+     */
+    private fun wipeout(state: LegionState): LegionState {
+        _effects.trySend(LegionEffect.PlaySound(LegionEffect.PlaySound.Cue.COMBAT_LOSS))
+        _effects.trySend(LegionEffect.Vibrate(LegionEffect.Vibrate.Cue.ERROR))
+        return if (!state.reviveUsed) {
+            state.copy(awaitingRevive = true)
+        } else {
+            finish()
+            state
         }
     }
 
@@ -366,7 +405,9 @@ class LegionEngine(
         // explosiones de la pantalla con las tropas que de verdad se pierden.
         val targetDrain = (advanced.doomedTroops * advanced.attackProgress).toInt()
         val drainDelta = (targetDrain - sweep.drainedTroops).coerceAtLeast(0)
-        val newTroops = (state.troops - drainDelta).coerceAtLeast(1)
+        // Sin suelo (ver cabecera): tampoco hace falta, porque el drenaje total tiene su propio
+        // techo en el 50 % de la foto inicial ([HorizontalSweep.doomedTroops]).
+        val newTroops = state.troops - drainDelta
 
         if (remaining <= 0f) {
             // Tiempo agotado: examen fallado, la carrera continúa (ver KDoc de la función).
@@ -435,9 +476,10 @@ class LegionEngine(
             }
 
             // Cruce: aplica la puerta del carril del jugador y registra si fue la óptima.
+            // Sin `coerceAtLeast(1)`: el resultado puede ser 0 y eso es perder (ver cabecera).
             val gate = row.gates.first { it.lane == state.playerLane }
-            val results = row.gates.map { it.operation.apply(troops).coerceAtLeast(1) }
-            val picked = gate.operation.apply(troops).coerceAtLeast(1)
+            val results = row.gates.map { it.operation.apply(troops) }
+            val picked = gate.operation.apply(troops)
             val bestPossible = results.max()
 
             totalPicks++
@@ -460,6 +502,23 @@ class LegionEngine(
             // La fila cruzada NO sobrevive: se elimina en vez de marcarse (ver KDoc de GateRow).
         }
 
+        // --- (2b) ¿Aniquilada en una puerta? -------------------------------------------------
+        // Se resuelve ANTES que láseres y enemigo: sin naves ya no hay nada que esos pasos
+        // puedan hacerle a la legión, y procesarlos igual solo podría emitir feedback de una
+        // partida que ya terminó.
+        if (troops <= 0) {
+            return wipeout(
+                state.copy(
+                    troops = 0,
+                    optimalPicks = optimalPicks,
+                    totalPicks = totalPicks,
+                    rowsCleared = rowsCleared,
+                    gateRows = survivingRows,
+                    flashes = ageFlashes(flashes, dtSec),
+                ),
+            )
+        }
+
         // --- (3) Naves de láser vertical: carga, disparo y expiración ------------------------
         // El daño se aplica UNA vez, en la transición carga→disparo; el rayo visible que queda
         // (firingRemainingSec) es solo feedback (ver KDoc de VerticalLaser).
@@ -477,7 +536,10 @@ class LegionEngine(
             }
             // Disparo. ¿Sigue el jugador en el carril amenazado?
             if (laser.lane == state.playerLane) {
-                troops = (troops - troops / 2).coerceAtLeast(1) // Pierde floor(50 %), mínimo 1.
+                // Pierde floor(50 %). No lleva suelo —ya no existe (ver cabecera)— y tampoco lo
+                // necesita: restar `troops / 2` (entera) nunca llega a 0 desde 1 o más naves. El
+                // láser hiere, pero solo una puerta puede aniquilar.
+                troops -= troops / 2
                 _effects.trySend(LegionEffect.PlaySound(LegionEffect.PlaySound.Cue.LASER_HIT))
                 _effects.trySend(LegionEffect.Vibrate(LegionEffect.Vibrate.Cue.ERROR))
                 flashes = flashes + GateFlash(
@@ -696,7 +758,7 @@ class LegionEngine(
         // entre las filas que quedan, y se recalcula fila a fila: así el reparto se
         // autocorrige (si un `×2` se pasa de la raya, las filas siguientes crecen menos) y el
         // ejército nunca se dispara fuera del rango 0..1000.
-        val target = LegionBalance.targetTroopsForRound(round)
+        val target = LegionBalance.targetTroopsForRound(round, seedTroops)
         val rows = ArrayList<GateRow>(rowCount)
         var projected = entryTroops
         for (i in 0 until rowCount) {
@@ -763,8 +825,9 @@ class LegionEngine(
      *  1. **Todas las puertas de la fila son del mismo signo** ([GateRowKind]): o todas suman, o
      *     todas restan, o es una fila mixta. Es la palanca principal de dificultad — ver el KDoc
      *     de [GateRowKind] sobre por qué una fila siempre mixta no obliga a calcular nada.
-     *  2. **Nunca se puede morir en una puerta**: incluso en las filas negativas el motor aplica
-     *     un suelo de 1 tropa (ver la cabecera de la clase). La derrota vive en el combate.
+     *  2. **Siempre hay una salida viable**: la MEJOR puerta de la fila nunca aniquila a la
+     *     legión (ver [negativeRow]). Las de castigo sí pueden — desde que no hay suelo de 1
+     *     tropa, elegir mal una fila negativa puede terminar la partida (ver cabecera).
      *  3. **Las opciones son distinguibles**: los resultados difieren entre sí al menos
      *     [MIN_DISTINCT_FRACTION] de las tropas proyectadas — dos puertas que dan exactamente lo
      *     mismo convertirían la decisión en irrelevante. El umbral es bajo (8 %) a propósito:
@@ -826,17 +889,22 @@ class LegionEngine(
         }
     }
 
+
     /**
      * Fila POSITIVA: todas suman, y la gracia está en cuál suma más.
      *
-     * Cuando duplicar cabe en la escala se emparejan `×2` y `+n` con `n` entre el 55 % y el 92 %
-     * de las tropas — es decir, resultados entre `1,55×` y `1,92×` frente al `2×`. Quedan
-     * deliberadamente cerca: el jugador no puede resolverlo de un vistazo por orden de magnitud,
-     * tiene que calcular. Y como el error solo cuesta unas tropas de más o de menos (ambas
-     * suman), es una dificultad que enseña sin castigar.
+     * Cuando duplicar cabe en la escala se emparejan `×2` y `+n` con `n` entre el 55 % y el
+     * [POSITIVE_DECOY_MAX_SHARE_VS_MULTIPLY] (115 %) de la ganancia del doble — es decir,
+     * resultados entre `1,55×` y `2,15×` frente al `2×`. El rango CRUZA el 100 % a propósito: si
+     * `+n` nunca pudiera superar a `×2`, el jugador aprendería "hay un ×, gano seguro con ese" sin
+     * calcular nada, por muy pegados que quedaran los números. Con ~1 de cada 4 filas donde sumar
+     * gana de verdad (más si la fila tiene tres carriles, con dos señuelos independientes), mirar
+     * el símbolo deja de bastar. El error sigue costando solo unas tropas de más o de menos (ambas
+     * suman), así que la dificultad enseña sin castigar.
      *
-     * Si duplicar se sale de la escala, la fila degenera en dos sumas de distinto tamaño: fácil,
-     * pero mantiene la promesa de que en una fila positiva nada resta.
+     * Si duplicar se sale de la escala, la fila degenera en varias sumas de distinto tamaño
+     * (rango angosto, [POSITIVE_DECOY_MAX_SHARE]): fácil, pero mantiene la promesa de que en una
+     * fila positiva nada resta.
      */
     private fun positiveRow(projected: Int, remainingRows: Int, target: Int, lanes: Int): List<GateOperation> {
         val doubleFits = projected * 2 <= min(
@@ -845,18 +913,21 @@ class LegionEngine(
         )
         val best: GateOperation
         val gainCeiling: Int
+        val decoyMaxShare: Float
         if (doubleFits) {
             best = GateOperation.Multiply(2)
             gainCeiling = projected // La ganancia del ×2 es exactamente `projected`.
+            decoyMaxShare = POSITIVE_DECOY_MAX_SHARE_VS_MULTIPLY
         } else {
             best = bestGrowthOperation(projected, remainingRows, target)
             gainCeiling = (best.apply(projected) - projected).coerceAtLeast(2)
+            decoyMaxShare = POSITIVE_DECOY_MAX_SHARE
         }
         return buildList {
             add(best)
             repeat(lanes - 1) {
                 val share = POSITIVE_DECOY_MIN_SHARE +
-                    random.nextFloat() * (POSITIVE_DECOY_MAX_SHARE - POSITIVE_DECOY_MIN_SHARE)
+                    random.nextFloat() * (decoyMaxShare - POSITIVE_DECOY_MIN_SHARE)
                 add(GateOperation.Add((gainCeiling * share).roundToInt().coerceAtLeast(1)))
             }
         }
@@ -870,11 +941,16 @@ class LegionEngine(
      * La mejor opción pierde entre el 12 % y el 28 %, muy por debajo del 50 % del `÷2`, para que
      * una fila negativa sea un peaje y no una sentencia: el reparto de las filas siguientes
      * recupera el terreno solo (ver [bestGrowthOperation]).
+     *
+     * El techo en `projected - 1` es la **garantía de salida** de la que depende que morir en una
+     * puerta sea justo (ver cabecera de la clase): ahora que no hay suelo de 1 tropa, la mejor
+     * puerta de la fila tiene que dejar viva a la legión, o la fila entera sería una sentencia
+     * sin contrajugada. Las de castigo sí pueden aniquilar — ahí está el riesgo.
      */
     private fun negativeRow(projected: Int, lanes: Int): List<GateOperation> {
         val bestLoss = (projected * (NEGATIVE_BEST_MIN_LOSS +
             random.nextFloat() * (NEGATIVE_BEST_MAX_LOSS - NEGATIVE_BEST_MIN_LOSS)))
-            .roundToInt().coerceAtLeast(1)
+            .roundToInt().coerceIn(1, (projected - 1).coerceAtLeast(1))
         return buildList {
             add(GateOperation.Subtract(bestLoss))
             repeat(lanes - 1) {
@@ -921,7 +997,15 @@ class LegionEngine(
         val growth = (targetTroops.toFloat() / projected.toFloat())
             .pow(1f / remainingRows)
             .coerceIn(MIN_ROW_GROWTH, MAX_ROW_GROWTH)
-        val gain = (projected * (growth - 1f)).roundToInt().coerceAtLeast(2)
+        // Suelo PROPORCIONAL, no un +2 fijo: cuando el jugador va adelantado al objetivo de la
+        // ronda (`projected` ya alcanzó o superó `targetTroops`), `growth` se clampa a
+        // MIN_ROW_GROWTH y sin este suelo el resultado sería SIEMPRE +2 —trivial con 10 tropas,
+        // ridículo con 400—, mientras las filas negativas de al lado siguen restando una fracción
+        // real del ejército (ver `negativeRow`/`mixedRow`). Esa asimetría es lo que volvía "tonta"
+        // a la mejor puerta en rondas avanzadas: dejaba de ser una decisión y el ejército dejaba
+        // de crecer aunque el jugador acertara siempre.
+        val minGain = max(2, ceil(projected * MIN_ROW_GAIN_FRACTION).toInt())
+        val gain = (projected * (growth - 1f)).roundToInt().coerceAtLeast(minGain)
         return GateOperation.Add(gain)
     }
 
@@ -1167,13 +1251,33 @@ class LegionEngine(
         const val MIN_ROW_GROWTH = 1f
         const val MAX_ROW_GROWTH = 1.8f
 
+        /**
+         * Suelo mínimo de la mejor puerta, como fracción de las tropas ACTUALES (ver
+         * [bestGrowthOperation]). Bajo (2 %) a propósito: compuesto sobre como mucho 14 filas
+         * (`LegionBalance.GATE_ROWS_MAX`) son ×1,32 de más sobre el objetivo de la ronda, lejos
+         * del problema que motivó fijar [MIN_ROW_GROWTH] en 1 (aquel era un 6 % SIEMPRE activo,
+         * no un suelo que solo actúa cuando el jugador ya iba adelantado).
+         */
+        const val MIN_ROW_GAIN_FRACTION = 0.02f
+
         /** Probabilidad de que un `÷` use factor 3 en vez de 2. */
         const val RARE_FACTOR_WEIGHT = 0.25f
 
         // Señuelos de una fila POSITIVA: qué parte de la ganancia de la puerta buena ofrecen.
-        // El rango llega al 92 % para que el resultado quede pegado al de la buena.
+        // El rango llega al 92 % para que el resultado quede pegado al de la buena. Se usa solo
+        // cuando la "buena" NO es el ×2 (ver POSITIVE_DECOY_MAX_SHARE_VS_MULTIPLY para ese caso).
         const val POSITIVE_DECOY_MIN_SHARE = 0.55f
         const val POSITIVE_DECOY_MAX_SHARE = 0.92f
+
+        /**
+         * Techo del señuelo de suma cuando compite contra un `×2` (ver [positiveRow]). A
+         * diferencia de [POSITIVE_DECOY_MAX_SHARE], CRUZA el 100 %: si el `+n` nunca pudiera
+         * superar la ganancia del doble, el jugador aprendería "con un × siempre gano" sin
+         * comparar nada. Con el suelo en 0,55 y el techo en 1,15, sumar termina ganando en
+         * aproximadamente 1 de cada 4 filas — bastante para que el cálculo sea obligatorio, poco
+         * para que el `×2` deje de sentirse como la apuesta razonable.
+         */
+        const val POSITIVE_DECOY_MAX_SHARE_VS_MULTIPLY = 1.15f
 
         // Pérdida de la MEJOR puerta de una fila negativa (la menos mala), como fracción.
         const val NEGATIVE_BEST_MIN_LOSS = 0.12f

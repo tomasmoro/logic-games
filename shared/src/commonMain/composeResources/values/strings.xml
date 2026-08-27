@@ -237,6 +237,13 @@
     <string name="legion_revive_body">Mira un anuncio y repite la ronda %1$s con las tropas con las que entraste.</string>
     <!-- %1$s = ronda en la que cayó la legión (titular del fin de partida). -->
     <string name="legion_gameover_headline">Caíste en la ronda %1$s</string>
+    <!-- Tutorial de las cuentas matemáticas: se interpone ANTES de la ronda 1, una sola vez en
+         la vida de la app (ver LegionUiState.isFirstEverPlay / LegionScreen). -->
+    <string name="legion_mathtutorial_title">Así se calculan las puertas</string>
+    <string name="legion_mathtutorial_tip_1">Cada puerta le aplica una cuenta a tu ejército: sumar, restar, multiplicar o dividir.</string>
+    <string name="legion_mathtutorial_tip_2">Un ×2 no siempre gana: a veces una suma te deja con más tropas. Compará los números antes de elegir.</string>
+    <string name="legion_mathtutorial_tip_3">Elegir mal cuesta tropas de verdad — si tu ejército llega a 0, la partida termina ahí mismo.</string>
+    <string name="legion_mathtutorial_cta">¡ENTENDIDO, A JUGAR!</string>
 
     <!-- ===================== Hexa Orbit (Visión Espacial) ===================== -->
     <!-- Antesala: qué se hace en el juego, antes de la primera partida. -->
@@ -249,6 +256,10 @@
     <string name="hexa_orbit_hud_score">Puntos</string>
     <string name="hexa_orbit_hud_orbs">Orbes</string>
     <string name="hexa_orbit_hud_speed">Velocidad</string>
+    <!-- Oferta de revivir viendo un anuncio tras la primera fuga del puntero. -->
+    <string name="hexa_orbit_revive_title">¿Se escapó el puntero?</string>
+    <string name="hexa_orbit_revive_reward">una vida extra</string>
+    <string name="hexa_orbit_revive_body">Mira un anuncio y sigue la partida: el puntero vuelve al centro con un horizonte nuevo.</string>
 
     <!-- ===================== Neon Grid Switch (Reconocimiento de Patrones) ===================== -->
     <!-- Antesala: qué se hace en el juego, antes de la primera partida. -->
@@ -262,6 +273,17 @@
     <string name="grid_switch_restart_description">Reiniciar etapa</string>
     <!-- Titular del cartel de fin de etapa (GameOverOverlay). -->
     <string name="grid_switch_gameover_headline">¡Etapa despejada!</string>
+
+    <!-- ===================== Quantum Merge (Visión Espacial) =====================
+         El resto de los textos de esta pantalla siguen embebidos (juego previo a
+         la regla de strings.xml, ver CLAUDE.md §10 "Alcance"); solo el láser y la
+         segunda oportunidad son texto nuevo. -->
+    <!-- Botón del HUD que dispara el láser viendo un anuncio. -->
+    <string name="quantum_merge_laser_label">Láser</string>
+    <!-- Oferta de revivir viendo un anuncio tras el primer desbordamiento del reactor. -->
+    <string name="quantum_merge_revive_title">¿Reactor desbordado?</string>
+    <string name="quantum_merge_revive_reward">el láser que despeja la zona de peligro</string>
+    <string name="quantum_merge_revive_body">Mira un anuncio y dispara el láser: limpia la zona de peligro y sigue la partida.</string>
 
     <!-- ============================================================
          GameOverOverlay — capa modal de fin de partida compartida por
@@ -343,6 +365,14 @@
     <string name="gamepause_help_title">¿Cómo se juega?</string>
 
     <!-- ============================================================
+         GameExitGuard — guardia de salida por atrás del sistema (ver
+         KDoc de GameExitGuard.kt). Copy del caso GameExitProgress.ENDS_RUN
+         (juegos ENDLESS sin reanudación, p. ej. Neon Legion): la carrera
+         no continúa, pero su resultado sí se guarda.
+         ============================================================ -->
+    <string name="gameexit_ends_run_notice">Se guarda tu puntaje y la ronda alcanzada, pero la carrera no continúa: la próxima partida empieza desde cero.</string>
+
+    <!-- ============================================================
          GameHelpSheet — pantalla de ayuda genérica "¿Cómo se juega?"
          (ver KDoc de GameHelp.kt). El contenido en sí (título, resumen,
          pasos, consejos) lo inyecta cada juego desde GameHelpContent —
@@ -353,5 +383,14 @@
     <string name="gamehelp_example_correct">BIEN</string>
     <string name="gamehelp_example_incorrect">MAL</string>
     <string name="gamehelp_tips_section">CONSEJOS</string>
+
+    <!-- ============================================================
+         Insignia "NUEVO" (GameInfo.isNew): la tarjeta de un juego
+         recién incorporado en el catálogo ([NewBadge]) y la tarjeta
+         "Juegos nuevos" de la Home ([GameCatalog.newGames]).
+         ============================================================ -->
+    <string name="catalog_badge_new">NUEVO</string>
+    <string name="home_new_games_title">Juegos nuevos</string>
+    <string name="home_new_games_subtitle">Recién llegados al catálogo</string>
 
 </resources>

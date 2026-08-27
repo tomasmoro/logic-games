@@ -7,17 +7,18 @@ import com.kortexgames.app.core.mvi.UiIntent
 import com.kortexgames.app.core.mvi.UiState
 import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
+import com.kortexgames.app.game.LeveledGamePhase
 import com.kortexgames.app.game.grid.GridPosition
 
 /**
  * # Contrato MVI de "Neon Grid Switch"
  *
- * No hay selector de nivel (a diferencia de Línea Neón/Starport, `LEVEL_SELECT` +
- * `LEVEL`): las etapas se suceden en orden estricto desde la 1ª, cada una un
- * tablero más grande (o, tras el 6×6, más desordenado) que la anterior. Por eso
- * el estado no usa `LeveledGamePhase`: [GridSwitchUiState.stageLevel] +
- * [GridSwitchUiState.status] bastan para describir la pantalla, igual que en los
- * juegos de rondas crecientes (Neon Legion, Burbujas de Cálculo).
+ * Juego **LEVELED con selector**: la antesala ofrece un carril de etapas
+ * jugables/rejugables (mismo molde que Línea Neón/Starport, `LeveledGamePhase`),
+ * pedido explícito del usuario ("las etapas sean seleccionables, como en
+ * Crucigrama o Sopa de Letras") — antes se sucedían en orden estricto sin
+ * selector, como los juegos de rondas crecientes (Neon Legion, Burbujas de
+ * Cálculo); ya no es el caso.
  *
  * ## Coordenadas: `GridPosition`, no `(x, y)`
  *
@@ -31,6 +32,10 @@ import com.kortexgames.app.game.grid.GridPosition
 /**
  * Estado renderizable completo de la pantalla.
  *
+ * @property phase antesala con selector de etapas o partida en curso (ver KDoc
+ *           de archivo).
+ * @property maxUnlocked etapa máxima ya superada (récord); define qué etapas
+ *           están desbloqueadas en el carril de la antesala.
  * @property gridSize lado de la cuadrícula de la etapa actual (3..6, ver
  *           [GridSwitchStages.gridSizeForStage]). Redundante con `board.size`
  *           pero se expone aparte porque lo pide el layout adaptativo de la UI
@@ -56,6 +61,8 @@ import com.kortexgames.app.game.grid.GridPosition
  *           etapa máxima alcanzada, percentil); null mientras se juega.
  */
 data class GridSwitchUiState(
+    val phase: LeveledGamePhase = LeveledGamePhase.LEVEL_SELECT,
+    val maxUnlocked: Int = 0,
     val gridSize: Int = GRID_SWITCH_MIN_SIZE,
     val board: LightGrid = LightGrid.solved(GRID_SWITCH_MIN_SIZE),
     val moveCount: Int = 0,
@@ -68,8 +75,8 @@ data class GridSwitchUiState(
 /** Intents: único punto de entrada de la UI (patrón MVI, §4 CLAUDE.md). */
 sealed interface GridSwitchIntent : UiIntent {
 
-    /** Arranca la partida desde la etapa 1: tablero 3×3 recién desordenado. */
-    data object StartGame : GridSwitchIntent
+    /** Elige una etapa desbloqueada en el selector y empieza a jugarla. */
+    data class PlayStage(val stage: Int) : GridSwitchIntent
 
     /**
      * El jugador tocó la celda [cell]: conmuta esa celda y sus vecinas ortogonales
@@ -88,8 +95,11 @@ sealed interface GridSwitchIntent : UiIntent {
     data object Pause : GridSwitchIntent
     data object Resume : GridSwitchIntent
 
-    /** Desde la pantalla de resultado: nueva partida desde la etapa 1. */
+    /** Desde la pantalla de resultado: rejugar la MISMA etapa (nuevo desorden). */
     data object PlayAgain : GridSwitchIntent
+
+    /** Vuelve al selector de etapas (desde el resultado o el menú de pausa). */
+    data object ChooseStage : GridSwitchIntent
 }
 
 /**

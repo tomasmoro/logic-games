@@ -87,8 +87,8 @@ object QuantumWorld {
  * Nivel de dificultad elegible antes de empezar. Cambia **tres** cosas a la vez, todas en la misma
  * dirección: menos sitio y menos margen para planificar.
  *
- *  1. **Tamaño de las esferas** ([radiusScale]): un 10 % mayor por peldaño. Como el contenedor no
- *     cambia, caben menos y la pila sube antes.
+ *  1. **Tamaño de las esferas** ([radiusScale]): un 10 % mayor por peldaño hacia [GRANDE]. Como el
+ *     contenedor no cambia, caben menos y la pila sube antes.
  *  2. **Techo útil** ([dangerLineY]): la línea de peligro baja, recortando la altura de apilado.
  *  3. **Variedad del dispensador** (la calcula el motor a partir del nivel): más tipos distintos en
  *     juego, más difícil encontrar pareja.
@@ -103,9 +103,23 @@ object QuantumWorld {
  * Los tres escalones se nombran por el **tamaño de esfera**, no por un adjetivo de dificultad
  * abstracto ("Fácil"/"Difícil"): en este juego la dificultad ES geometría —esferas más grandes
  * llenan antes el contenedor—, así que el tamaño ya comunica el reto sin necesidad de traducirlo.
- * El orden (pequeño → grande) coincide exactamente con [radiusScale] creciente, así que renombrar
- * no altera el `ordinal` ni, por tanto, el `difficultyLevel` 1-based que ya viaja en las partidas
- * guardadas ([GameResult.difficultyLevel][com.kortexgames.app.domain.model.GameResult.difficultyLevel]).
+ *
+ * ## Por qué el orden empieza en GRANDE y no en PEQUEÑO
+ * Decisión de producto, no una consecuencia de la geometría: [GRANDE] es la identidad por defecto
+ * del juego (el primer escalón, siempre abierto) y el jugador va abriendo escalones con **más**
+ * margen —[MEDIANO], luego [PEQUENO]— conforme demuestra que domina el reactor. Es la inversa del
+ * criterio habitual del catálogo (el resto de juegos con escalón elegible abren HACIA lo más
+ * exigente); aquí se abre hacia lo más manejable porque el premio de dominar Grande no es "más
+ * difícil todavía", es la precisión de trabajar con esferas pequeñas.
+ *
+ * El orden del `enum` (y por tanto su `ordinal`) sostiene directamente esta progresión: el motor de
+ * desbloqueo ([com.kortexgames.app.game.DifficultyUnlocks]) abre siempre el siguiente `ordinal`, así
+ * que reordenar aquí es lo único que hace falta para invertir qué se abre primero — no hay que
+ * tocar la lógica de desbloqueo. La contrapartida (asumida): el `ordinal + 1` es el
+ * `difficultyLevel` 1-based que viaja en cada partida guardada
+ * ([GameResult.difficultyLevel][com.kortexgames.app.domain.model.GameResult.difficultyLevel]), así
+ * que este reordenamiento cambia qué escalón significa cada `difficultyLevel` para cualquier
+ * partida ya guardada antes del cambio.
  *
  * @property displayName rótulo visible (también lo usa `GameRankingScopes` para titular la tabla).
  * @property radiusScale factor que multiplica el [QuantumTier.baseRadius] de toda la escala.
@@ -120,20 +134,21 @@ enum class QuantumDifficulty(
     val radiusScale: Float,
     val dangerLineY: Float,
 ) {
-    /** Tamaño de referencia de la escala de tiers y el techo más alto. */
-    PEQUENO("Pequeño", radiusScale = 1.0f, dangerLineY = 28f),
-
-    MEDIANO("Mediano", radiusScale = 1.1f, dangerLineY = 34f),
-
     /**
-     * Esferas un 20 % mayores que en [PEQUENO] y 12 unidades menos de altura útil.
+     * Escalón inicial (siempre abierto): esferas un 20 % mayores que en [PEQUENO] y 12 unidades
+     * menos de altura útil.
      *
      * Consecuencia asumida: con este factor, dos [QuantumTier.SINGULARITY] ocupan 95,5 de los 100
      * de ancho del contenedor. La última fusión sigue siendo **geométricamente posible**, pero
      * exige tenerlas casi pegadas a las paredes; en la práctica es una hazaña reservada a este
      * nivel, no una ruta habitual.
      */
-    GRANDE("Grande", radiusScale = 1.2f, dangerLineY = 40f);
+    GRANDE("Grande", radiusScale = 1.2f, dangerLineY = 40f),
+
+    MEDIANO("Mediano", radiusScale = 1.1f, dangerLineY = 34f),
+
+    /** Último escalón en abrirse: tamaño de referencia de la escala de tiers y el techo más alto. */
+    PEQUENO("Pequeño", radiusScale = 1.0f, dangerLineY = 28f);
 
     /**
      * Altura a la que el dispensador sostiene la esfera antes de soltarla.
@@ -150,10 +165,12 @@ enum class QuantumDifficulty(
     companion object {
         /**
          * Nivel a partir del `difficultyLevel` 1-based de `GameResult` (la convención del resto de
-         * juegos: `ordinal + 1`). Cae en [PEQUENO] ante un valor fuera de rango —partidas antiguas
-         * o datos corruptos— en vez de reventar.
+         * juegos: `ordinal + 1`). Cae en [entries]` .first()` (el escalón inicial, `ordinal = 0`;
+         * hoy [GRANDE]) ante un valor fuera de rango —partidas antiguas o datos corruptos— en vez
+         * de reventar. Se deriva de `entries` en vez de nombrar la constante a mano para que este
+         * `fallback` no se quede desincronizado si el orden de escalones vuelve a cambiar.
          */
-        fun fromLevel(level: Int): QuantumDifficulty = entries.getOrElse(level - 1) { PEQUENO }
+        fun fromLevel(level: Int): QuantumDifficulty = entries.getOrElse(level - 1) { entries.first() }
     }
 }
 
@@ -254,6 +271,25 @@ enum class QuantumTier(
          * regla del juego, no un parámetro de tuning.
          */
         val SPAWN_POOL: List<QuantumTier> = listOf(QUARK, NEUTRINO, PHOTON, ELECTRON, PROTON)
+
+        /**
+         * Tiers que el **láser** elimina de un disparo: los cuatro más pequeños del [SPAWN_POOL]
+         * (todos menos [PROTON], el mayor que se puede lanzar).
+         *
+         * Se define como "los cuatro más pequeños del `SPAWN_POOL`" y no como una lista fija de
+         * tiers, para que quede atada a la misma regla que sostiene la curva de dificultad
+         * ([SPAWN_POOL]): si algún día ese conjunto cambia, el láser no se desincroniza solo.
+         *
+         * Es **fijo entre dificultades** a propósito: [QuantumDifficulty] solo escala el radio y
+         * el techo, nunca qué tiers existen, así que el láser se comporta exactamente igual (mismo
+         * objetivo) en Pequeño, Mediano o Grande.
+         *
+         * Se detiene en [ELECTRON] y no sube más porque el objetivo es **desatascar el "ruido" de
+         * base** —las esferas pequeñas y numerosas que llenan el contenedor mientras el jugador
+         * busca parejas—, no vaciar el trabajo de fusión ya conseguido: quitar también [PROTON] o
+         * tiers superiores borraría el progreso real de la partida, no solo el desorden.
+         */
+        val LASER_TARGETS: Set<QuantumTier> = SPAWN_POOL.dropLast(1).toSet()
     }
 }
 
@@ -410,7 +446,10 @@ data class Sphere(
 }
 
 /**
- * Destello efímero que se dibuja en el punto exacto donde ocurrió una fusión.
+ * Destello efímero que se dibuja en el punto exacto donde ocurrió una fusión, o donde el láser
+ * acaba de eliminar una esfera (ver [QuantumTier.LASER_TARGETS]): ambos sucesos son el mismo
+ * fenómeno visual —una descarga de luz en un punto— así que comparten esta misma clase en vez de
+ * duplicarla; la Fase 3 no distingue uno de otro al pintarlos.
  *
  * Es **estado**, no un efecto one-shot, y esa es la decisión importante: al vivir en el `State` el
  * destello se anima solo (`progress` avanza con el mismo tick de la física, ver §9.4 "animaciones
@@ -418,13 +457,14 @@ data class Sphere(
  * su propia lista mutable de animaciones en curso. La Fase 3 solo lo pinta; no gestiona su tiempo.
  *
  * @property id identificador estable para el `key(...)` de Compose.
- * @property x centro del destello: el punto medio exacto entre las dos esferas fusionadas.
+ * @property x centro del destello: el punto medio exacto entre las dos esferas fusionadas, o el
+ *   centro de la esfera que el láser acaba de eliminar.
  * @property y ídem en vertical.
- * @property radius radio de la esfera **nacida**. El destello escala con él para que una fusión de
- *   tier alto se sienta más grande que una de tier bajo sin necesidad de otro parámetro.
- * @property accent color del destello: el de la esfera nacida (la Fase 3 lo mezcla con blanco en
- *   el núcleo, como una descarga de luz).
- * @property ageSec tiempo transcurrido desde la fusión. Lo incrementa el tick; al llegar a
+ * @property radius radio de la esfera **nacida** (fusión) o **eliminada** (láser). El destello
+ *   escala con él para que un tier alto se sienta más grande que uno bajo sin otro parámetro.
+ * @property accent color del destello: el de la esfera nacida o eliminada (la Fase 3 lo mezcla con
+ *   blanco en el núcleo, como una descarga de luz).
+ * @property ageSec tiempo transcurrido desde el suceso. Lo incrementa el tick; al llegar a
  *   [LIFETIME_SEC] el destello se retira de la lista.
  */
 data class MergeFlash(
@@ -490,6 +530,13 @@ data class MergeFlash(
  * @property difficulty nivel con el que se juega esta partida. Viaja en el estado (y no solo en el
  *   motor) porque el render lo necesita para dibujar la línea de peligro a su altura, y la antesala
  *   para marcar el nivel elegido. Fuente única: cambiar de nivel es reconstruir el motor.
+ * @property awaitingRevive `true` mientras se ofrece **la segunda oportunidad del láser** tras el
+ *   primer desbordamiento de la partida: el `status` sigue en `RUNNING` (la partida aún no ha
+ *   terminado) pero la física está congelada —[QuantumMergeEngine.onFrame] no avanza ningún sub-paso
+ *   mientras esto sea `true`— para que nada cambie bajo el
+ *   [com.kortexgames.app.ui.components.ReviveAdOverlay] mientras el jugador decide. Se resuelve con
+ *   [QuantumMergeIntent.Revive] (dispara el láser en la línea de peligro y reanuda) o
+ *   [QuantumMergeIntent.DeclineRevive] (fin de partida). Solo se ofrece una vez por partida.
  */
 data class QuantumMergeState(
     val activeSpheres: List<Sphere> = emptyList(),
@@ -503,4 +550,5 @@ data class QuantumMergeState(
     val bestTier: QuantumTier = QuantumTier.QUARK,
     val dangerProgress: Float = 0f,
     val difficulty: QuantumDifficulty = QuantumDifficulty.PEQUENO,
+    val awaitingRevive: Boolean = false,
 )

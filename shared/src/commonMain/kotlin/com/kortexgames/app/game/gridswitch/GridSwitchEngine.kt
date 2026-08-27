@@ -17,13 +17,12 @@ import kotlin.math.max
 /**
  * # Motor de "Neon Grid Switch"
  *
- * Juego **LEVELED sin selector**: las etapas se suceden en orden estricto desde
- * la 1ª (ver KDoc de [GridSwitchContract]). Cada etapa es, a efectos de
- * puntuación y persistencia, una "partida" propia —igual que Línea Neón—: se
- * genera con [GridSwitchGenerator] al arrancar, y resolverla dispara [finish]
- * de inmediato (sin esperar a que el jugador pulse nada), para que la
- * celebración sea instantánea y el resultado (récord = etapa alcanzada) se
- * guarde etapa a etapa.
+ * Juego **LEVELED con selector**: el jugador elige la etapa en la antesala (ver
+ * KDoc de [GridSwitchContract]). Cada etapa es, a efectos de puntuación y
+ * persistencia, una "partida" propia —igual que Línea Neón—: se genera con
+ * [GridSwitchGenerator] al arrancar, y resolverla dispara [finish] de inmediato
+ * (sin esperar a que el jugador pulse nada), para que la celebración sea
+ * instantánea y el resultado (récord = etapa alcanzada) se guarde etapa a etapa.
  *
  * ## Reparto de responsabilidades
  *

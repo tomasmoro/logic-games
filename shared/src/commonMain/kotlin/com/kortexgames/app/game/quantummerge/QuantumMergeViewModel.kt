@@ -71,13 +71,16 @@ class QuantumMergeViewModel(
             .onEach { history ->
                 val unlocked = DifficultyUnlocks.unlockedTiers(GameIds.QUANTUM_MERGE, history)
                 setState { copy(unlockedTiers = unlocked) }
-                // Por defecto se preselecciona el escalón MÁS GRANDE ya desbloqueado (mismo
-                // criterio que Neon Defuser): a alguien que vuelve a jugar le importa más "cómo le
-                // va en lo grande" que en Pequeño, que es donde arrancaba antes. Solo en la
-                // antesala (IDLE): a mitad de partida no hay a qué reengancharla.
+                // Por defecto se preselecciona el ÚLTIMO escalón desbloqueado (mismo criterio que
+                // Neon Defuser): a alguien que vuelve a jugar le importa más "cómo le va" en lo que
+                // acaba de abrir que en Grande, que es donde arranca todo el mundo. Como el orden
+                // ahora va de más exigente a más manejable (Grande → Mediano → Pequeño, ver KDoc de
+                // [QuantumDifficulty]), el último desbloqueado es el más PEQUEÑO abierto, no el más
+                // grande — el nombre de la variable ya no describe el tamaño, describe la posición.
+                // Solo en la antesala (IDLE): a mitad de partida no hay a qué reengancharla.
                 if (!userSelectedDifficulty && currentState.status == GameStatus.IDLE) {
-                    val hardest = QuantumDifficulty.entries[unlocked - 1]
-                    if (hardest != currentState.game.difficulty) rebuildEngine(hardest)
+                    val lastUnlocked = QuantumDifficulty.entries[unlocked - 1]
+                    if (lastUnlocked != currentState.game.difficulty) rebuildEngine(lastUnlocked)
                     refreshRankingPreview(unlocked)
                 }
             }
@@ -114,7 +117,24 @@ class QuantumMergeViewModel(
                 setState { copy(gameOver = null) }
                 engine.start()
             }
+            QuantumMergeIntent.WatchAdForLaser -> requestLaserAd()
+            QuantumMergeIntent.LaserRewarded -> engine.fireLaser()
+            QuantumMergeIntent.Revive -> engine.reviveWithLaser()
+            QuantumMergeIntent.DeclineRevive -> engine.declineRevive()
         }
+    }
+
+    /**
+     * Botón "Láser" del HUD: pide el anuncio recompensado solo si hay alguna esfera de
+     * [QuantumTier.LASER_TARGETS] en el tablero. El intent es público y esta es su única fuente de
+     * verdad —la UI ya deshabilita el botón, pero no hay que fiarse de eso—: sin la comprobación,
+     * un disparo al vacío le gastaría un anuncio al jugador sin ninguna recompensa visible. En la
+     * práctica el dispensador reabastece esos tiers constantemente, así que casi nunca bloquea.
+     */
+    private fun requestLaserAd() {
+        val game = currentState.game
+        if (game.activeSpheres.none { it.tier in QuantumTier.LASER_TARGETS }) return
+        sendEffect(QuantumMergeEffect.ShowRewardedAd)
     }
 
     /**
@@ -200,6 +220,8 @@ class QuantumMergeViewModel(
                     QuantumMergeEffect.PlaySound.Cue.BOUNCE -> SoundEffect.MERGE_POP
                     QuantumMergeEffect.PlaySound.Cue.MERGE -> SoundEffect.SUCCESS
                     QuantumMergeEffect.PlaySound.Cue.GAME_OVER -> SoundEffect.ERROR
+                    // Mismo remate que conceder una vida en Neon Pulse: "acabas de ganar algo".
+                    QuantumMergeEffect.PlaySound.Cue.LASER -> SoundEffect.LEVEL_UP
                 },
             )
             is QuantumMergeEffect.Vibrate -> audio.hapticFeedback(
@@ -207,8 +229,14 @@ class QuantumMergeViewModel(
                     QuantumMergeEffect.Vibrate.Cue.MERGE_SMALL -> HapticFeedback.LIGHT
                     QuantumMergeEffect.Vibrate.Cue.MERGE_BIG -> HapticFeedback.HEAVY
                     QuantumMergeEffect.Vibrate.Cue.GAME_OVER -> HapticFeedback.ERROR
+                    // Un haz que barre el tablero merece el mismo peso que una fusión grande.
+                    QuantumMergeEffect.Vibrate.Cue.LASER -> HapticFeedback.HEAVY
                 },
             )
+            // Nunca llega por aquí: [engine.effects] solo emite PlaySound/Vibrate. ShowRewardedAd lo
+            // manda este ViewModel directo a la UI (ver [requestLaserAd]) — rama exhaustiva por
+            // contrato del sealed interface, no por un caso real.
+            QuantumMergeEffect.ShowRewardedAd -> Unit
         }
         // Reenvío one-shot para que la pantalla (Fase 3) pueda reaccionar (sacudida, destello…).
         sendEffect(effect)

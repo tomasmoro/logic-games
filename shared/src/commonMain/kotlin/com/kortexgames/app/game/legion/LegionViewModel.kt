@@ -8,7 +8,9 @@ import com.kortexgames.app.core.mvi.MviViewModel
 import com.kortexgames.app.domain.model.GameResult
 import com.kortexgames.app.domain.repository.ProgressRepository
 import com.kortexgames.app.game.GameIds
+import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.toGameOverInfo
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -59,6 +61,16 @@ class LegionViewModel(
         viewModelScope.launch {
             val ranking = progress.previewRanking(GameIds.NEON_LEGION)
             setState { copy(rankingPreview = ranking, rankingPreviewLoading = false) }
+        }
+
+        // ¿Primera vez que se juega Neon Legion en este dispositivo? Se deriva del historial
+        // local (¿alguna partida terminada?) en vez de una preferencia aparte: no hace falta
+        // esquema nuevo y, si el historial se borrara, el tutorial reaparece solo — que es el
+        // comportamiento correcto ("nunca jugaste" vuelve a ser cierto). Un solo `first()`, no
+        // una suscripción: el veredicto no cambia durante la sesión de la antesala.
+        viewModelScope.launch {
+            val neverPlayed = progress.observeHistory(GameIds.NEON_LEGION).first().isEmpty()
+            setState { copy(isFirstEverPlay = neverPlayed) }
         }
 
         // No arrancamos aquí: el juego queda en IDLE y muestra la antesala (intro). La partida
@@ -122,6 +134,37 @@ class LegionViewModel(
         }
         // Reenvío one-shot para que la UI (Fase 5) pueda animar el momento si lo desea.
         sendEffect(effect)
+    }
+
+    /**
+     * Punto único de salida "en juego" (atrás del sistema vía
+     * [com.kortexgames.app.ui.components.GameExitGuard] o "SALIR" del menú de pausa): si hay
+     * una corrida en curso ([GameStatus.RUNNING] o [GameStatus.PAUSED]) la CIERRA como una
+     * derrota normal en vez de descartarla en silencio.
+     *
+     * Legion es ENDLESS (ver KDoc de [com.kortexgames.app.game.ResumableGameEngine]): no existe
+     * "reanudar la carrera a medias" —a diferencia de un puzzle como Neon 2048, no hay tablero
+     * que serializar—, así que la única forma honesta de no perder el progreso es cerrar la
+     * corrida con su resultado REAL: la misma ronda y puntaje que si el combate se hubiera
+     * perdido aquí mismo. [engine.finish] dispara justo eso a través del cauce normal (la
+     * suscripción de [init] a `engine.outcome` → [onFinished] → `progress.saveResult`); no se
+     * duplica ese guardado aquí, solo se espera a que [LegionUiState.gameOver] confirme que
+     * terminó ANTES de navegar — si `onExit` se llamara antes, la pantalla podría destruir este
+     * ViewModel (y su `viewModelScope`) a mitad del guardado.
+     *
+     * En el resto de estados (antesala, fin de partida ya resuelto) no hay carrera que cerrar,
+     * así que [onExit] se llama directo.
+     */
+    fun requestExit(onExit: () -> Unit) {
+        if (engine.status.value != GameStatus.RUNNING && engine.status.value != GameStatus.PAUSED) {
+            onExit()
+            return
+        }
+        viewModelScope.launch {
+            engine.finish()
+            state.first { it.gameOver != null }
+            onExit()
+        }
     }
 
     /**

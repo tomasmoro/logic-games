@@ -30,7 +30,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.kortexgames.app.core.ads.RewardResult
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.di.AppGraph
@@ -60,19 +63,29 @@ import com.kortexgames.app.game.DifficultyUnlocks
 import com.kortexgames.app.game.GameHelpContent
 import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameStatus
+import com.kortexgames.app.ui.components.AdLoadingOverlay
 import com.kortexgames.app.ui.components.DifficultyGateSelector
 import com.kortexgames.app.ui.components.DifficultyOption
+import com.kortexgames.app.ui.components.GameActionButton
 import com.kortexgames.app.ui.components.GameIntroScreen
 import com.kortexgames.app.ui.components.GameOverOverlay
 import com.kortexgames.app.ui.components.GamePauseControls
+import com.kortexgames.app.ui.components.KortexIcons
 import com.kortexgames.app.ui.components.RankingPreviewUnavailable
+import com.kortexgames.app.ui.components.ReviveAdOverlay
 import com.kortexgames.app.ui.components.SpaceBackdrop
 import com.kortexgames.app.ui.components.WorldRankingLoading
 import com.kortexgames.app.ui.components.WorldRankingPreviewPanel
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.quantum_merge_laser_label
+import kortexgames.shared.generated.resources.quantum_merge_revive_body
+import kortexgames.shared.generated.resources.quantum_merge_revive_reward
+import kortexgames.shared.generated.resources.quantum_merge_revive_title
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.hypot
 import kotlin.math.min
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * # QuantumMergeScreen — renderizado del reactor (Fase 3)
@@ -192,19 +205,35 @@ fun QuantumMergeScreen(graph: AppGraph, onExit: () -> Unit) {
     // (no desde el estado) porque es un evento instantáneo: un `spring` poco amortiguado desde 1
     // hasta 0 oscila solo y se apaga, que es exactamente el gesto de "golpe" que se busca.
     val impactShake = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
+
+    // Anuncios: el botón "Láser" del HUD pide el rewarded real al AdManager (pulsar el botón YA es
+    // la confirmación del jugador, mismo trato que "Tubo extra" en Ordena las Pociones) y, si
+    // concede la recompensa, dispara el láser. `awaitingAd` solo alimenta el feedback visual
+    // (AdLoadingOverlay más abajo) mientras se resuelve la carga real del anuncio.
+    var awaitingAd by remember { mutableStateOf(false) }
+
+    // Un único colector para TODOS los efectos: `vm.effect` es un `Channel` de un solo consumidor
+    // (ver Mvi.kt), así que dos `LaunchedEffect` separados se repartirían los eventos en vez de
+    // verlos ambos.
+    LaunchedEffect(vm) {
         vm.effect.collect { effect ->
-            val isBigMerge = effect is QuantumMergeEffect.Vibrate &&
-                effect.cue == QuantumMergeEffect.Vibrate.Cue.MERGE_BIG
-            if (isBigMerge) {
-                impactShake.snapTo(1f)
-                impactShake.animateTo(
-                    targetValue = 0f,
-                    animationSpec = spring(
-                        dampingRatio = SHAKE_DAMPING,
-                        stiffness = Spring.StiffnessLow,
-                    ),
-                )
+            when {
+                effect is QuantumMergeEffect.Vibrate && effect.cue == QuantumMergeEffect.Vibrate.Cue.MERGE_BIG -> {
+                    impactShake.snapTo(1f)
+                    impactShake.animateTo(
+                        targetValue = 0f,
+                        animationSpec = spring(
+                            dampingRatio = SHAKE_DAMPING,
+                            stiffness = Spring.StiffnessLow,
+                        ),
+                    )
+                }
+                effect == QuantumMergeEffect.ShowRewardedAd -> {
+                    awaitingAd = true
+                    val result = graph.adManager.showRewardedAd()
+                    awaitingAd = false
+                    if (result == RewardResult.EARNED) vm.onIntent(QuantumMergeIntent.LaserRewarded)
+                }
             }
         }
     }
@@ -294,7 +323,9 @@ fun QuantumMergeScreen(graph: AppGraph, onExit: () -> Unit) {
                         }
 
                         // El destello va ENCIMA de las esferas: es la explosión de luz del
-                        // momento de la fusión y debe leerse por delante de la esfera nacida.
+                        // momento —fusión o "burbuja" eliminada por el láser— y debe leerse por
+                        // delante de la esfera nacida. Misma rutina para ambos: ver KDoc de
+                        // [MergeFlash].
                         for (flash in game.flashes) {
                             drawMergeFlash(
                                 center = Offset(flash.x * scale, flash.y * scale),
@@ -315,7 +346,54 @@ fun QuantumMergeScreen(graph: AppGraph, onExit: () -> Unit) {
                     }
                 }
             }
+
+            // Barra de acciones: el láser. Franja canónica bajo el tablero (mismo lugar que
+            // "Tubo extra" en Ordena las Pociones), a propósito por debajo de "algo que ya está
+            // pasando en el reactor" y no flotando encima del gesto de apuntar/soltar.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                GameActionButton(
+                    icon = KortexIcons.Laser,
+                    label = stringResource(Res.string.quantum_merge_laser_label),
+                    tint = LogicColors.NeonCyan,
+                    // Disponible casi siempre: el dispensador reabastece
+                    // [QuantumTier.LASER_TARGETS] todo el rato, así que solo se apaga si el
+                    // tablero está realmente vacío de esos tiers (misma comprobación que
+                    // revalida el ViewModel; evita gastar un anuncio en un disparo al vacío).
+                    enabled = state.status == GameStatus.RUNNING &&
+                        game.activeSpheres.any { it.tier in QuantumTier.LASER_TARGETS },
+                    costsAd = true,
+                    onClick = { vm.onIntent(QuantumMergeIntent.WatchAdForLaser) },
+                )
+            }
         }
+
+        // Segunda oportunidad: al primer desbordamiento del reactor, ofrece disparar el láser
+        // viendo un anuncio antes del game-over. El scrim del overlay bloquea el tablero (y la
+        // física está congelada, ver KDoc de `QuantumMergeState.awaitingRevive`) mientras se
+        // decide; al aceptar el láser limpia la zona de peligro y la partida sigue, al rechazar
+        // cae al game-over normal.
+        if (state.game.awaitingRevive) {
+            ReviveAdOverlay(
+                adManager = graph.adManager,
+                onRevive = { vm.onIntent(QuantumMergeIntent.Revive) },
+                onDecline = { vm.onIntent(QuantumMergeIntent.DeclineRevive) },
+                title = stringResource(Res.string.quantum_merge_revive_title),
+                rewardLabel = stringResource(Res.string.quantum_merge_revive_reward),
+                body = stringResource(Res.string.quantum_merge_revive_body),
+                icon = KortexIcons.Laser,
+                accent = CategoryPalette.SpatialVision,
+                audio = graph.audio,
+            )
+        }
+
+        // Aviso de "cargando anuncio" del botón del HUD (no hay oferta+cuenta atrás de por medio:
+        // pulsar el botón ya es la confirmación, ver KDoc de AdLoadingOverlay).
+        AdLoadingOverlay(visible = awaitingAd, accent = LogicColors.NeonCyan)
 
         if (state.status == GameStatus.FINISHED && state.gameOver != null) {
             GameOverOverlay(

@@ -464,7 +464,17 @@ data class PointerState(
  * @property collected orbes recogidos (métrica de la partida, dato del resultado).
  * @property elapsedSeconds tiempo de partida; es la entrada de la rampa de velocidad y parte de
  *           la puntuación final.
- * @property escaped `true` cuando el puntero cruzó la frontera exterior: fin de partida.
+ * @property escaped `true` cuando el puntero cruzó la frontera exterior: fin de partida, salvo
+ *           que [awaitingRevive] esté ofreciendo una segunda oportunidad.
+ * @property awaitingRevive `true` mientras se ofrece revivir viendo un anuncio tras la primera
+ *           fuga de la partida. La física queda congelada (ver `HexaOrbitEngine.onFrame`): si el
+ *           jugador acepta, el puntero vuelve al centro con un horizonte nuevo
+ *           (`HexaOrbitEngine.grantRevive`); si rechaza (o expira la oferta), la partida termina
+ *           de verdad. Solo se ofrece una vez por partida (ver [reviveUsed]).
+ * @property reviveUsed `true` si ya se consumió el único revive por anuncio de esta partida: una
+ *           segunda fuga con esto en `true` termina la partida sin volver a ofrecer nada, y resta
+ *           [HexaOrbitBalance.REVIVE_PENALTY] de la puntuación final (las ayudas siempre restan,
+ *           ver KDoc de `calculateScore`).
  */
 data class HexaOrbitState(
     val board: HexBoard = HexBoard.empty(),
@@ -476,6 +486,8 @@ data class HexaOrbitState(
     val collected: Int = 0,
     val elapsedSeconds: Float = 0f,
     val escaped: Boolean = false,
+    val awaitingRevive: Boolean = false,
+    val reviveUsed: Boolean = false,
 )
 
 /**
@@ -524,8 +536,12 @@ object HexaOrbitBalance {
      * Rapidez inicial en **radios de hexágono por segundo**. Cruzar un azulejo en recta mide
      * `√3 ≈ 1.73` radios, así que 2.8 equivale a ~1.6 azulejos rectos por segundo: cómodo para
      * leer el primer trazado antes de que la rampa apriete.
+     *
+     * Rebajada un 15% (de 2.8 a 2.38) a petición de producto: el puntero se sentía demasiado
+     * rápido. [SPEED_RAMP_PER_SEC] baja en la misma proporción para que toda la curva de rapidez
+     * —no solo el arranque— quede uniformemente un 15% más lenta en cada instante de la partida.
      */
-    const val INITIAL_SPEED: Float = 2.8f
+    const val INITIAL_SPEED: Float = 2.38f
 
     /**
      * Incremento de rapidez por segundo de partida (rampa lineal), en radios/s².
@@ -535,8 +551,12 @@ object HexaOrbitBalance {
      * objetivo del §1 del spec, que el juego se vuelva "más frenético"— se perdería en los
      * primeros segundos. Con 0.03 se tarda algo más de 90 s en alcanzar el techo, así que la
      * mayoría de partidas terminan (por fuga) mucho antes de aplanarse.
+     *
+     * Escalado un 15% a la baja junto a [INITIAL_SPEED] (mismo factor) para que el tiempo hasta
+     * el techo no cambie: si solo se bajara la rapidez inicial, la rampa alcanzaría [MAX_SPEED]
+     * antes, porque el rango recorrido (siempre [INITIAL_SPEED]) también se habría reducido.
      */
-    const val SPEED_RAMP_PER_SEC: Float = 0.03f
+    const val SPEED_RAMP_PER_SEC: Float = 0.0255f
 
     /**
      * Techo de rapidez: el **doble** de [INITIAL_SPEED] (~3,2 azulejos rectos por segundo). Un
@@ -553,6 +573,16 @@ object HexaOrbitBalance {
 
     /** Puntos por orbe recogido. */
     const val POINTS_PER_ORB: Int = 100
+
+    /**
+     * Penalización por usar el revive (ver `HexaOrbitEngine.grantRevive`). Equivale a ~2.5 orbes
+     * recogidos o a unos 37 s de bono de supervivencia: pesa más de lo que un revive suele
+     * recuperar en los primeros segundos tras reanudar, así que verlo cuesta más de lo que ahorra
+     * en la mayoría de las partidas. Las ayudas SIEMPRE restan en este proyecto: sin
+     * penalización, el ranking premiaría a quien más anuncios ve, no a quien mejor pilota el
+     * puntero (mismo criterio que `LegionBalance.REVIVE_PENALTY`).
+     */
+    const val REVIVE_PENALTY: Int = 300
 
     /** Muestras de posición que conserva la estela del puntero. */
     const val TRAIL_POINTS: Int = 24

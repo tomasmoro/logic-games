@@ -44,12 +44,15 @@ import com.kortexgames.app.game.GameHelpContent
 import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
+import com.kortexgames.app.game.LeveledGamePhase
 import com.kortexgames.app.game.grid.GridPosition
 import com.kortexgames.app.game.grid.orthogonalNeighbors
 import com.kortexgames.app.ui.components.GameIntroScreen
 import com.kortexgames.app.ui.components.GameOverOverlay
 import com.kortexgames.app.ui.components.GamePauseControls
 import com.kortexgames.app.ui.components.KortexIcons
+import com.kortexgames.app.ui.components.LevelStripState
+import com.kortexgames.app.ui.components.SpaceBackdrop
 import com.kortexgames.app.ui.components.bounceClick
 import com.kortexgames.app.ui.components.drawNeonTile
 import kortexgames.shared.generated.resources.Res
@@ -78,12 +81,10 @@ private const val TOGGLE_FLASH_MS = 220
 /**
  * Pantalla de "Neon Grid Switch".
  *
- * Estructura análoga a los demás juegos LEVELED del catálogo (antesala → tablero
- * a pantalla completa → [GameOverOverlay]), pero SIN carril de niveles: las
- * etapas se suceden en orden estricto desde la 1ª (ver KDoc de
- * [GridSwitchContract]), así que la antesala es la de un juego sin selector
- * (como Burbujas de Cálculo o Neon Legion) — [GameIntroScreen] con `levels =
- * null` y un único CTA "Comenzar".
+ * Estructura idéntica a los demás juegos LEVELED con selector del catálogo
+ * (antesala con carril de etapas → tablero a pantalla completa →
+ * [GameOverOverlay]), mismo molde que Línea Neón (ver KDoc de
+ * [GridSwitchContract]).
  *
  * El tablero es un único [Canvas] de lado adaptable: `BoxWithConstraints` fija
  * el tamaño de celda a partir del ancho disponible y el lado de la cuadrícula
@@ -99,7 +100,7 @@ private const val TOGGLE_FLASH_MS = 220
 @Composable
 fun GridSwitchScreen(graph: AppGraph, onExit: () -> Unit) {
     val vm: GridSwitchViewModel = viewModel {
-        GridSwitchViewModel(graph.progressRepository, graph.audio, graph.adManager)
+        GridSwitchViewModel(graph.progressRepository, graph.playerProgressRepository, graph.audio, graph.adManager)
     }
     val state by vm.state.collectAsStateWithLifecycle()
 
@@ -124,20 +125,28 @@ fun GridSwitchScreen(graph: AppGraph, onExit: () -> Unit) {
         }
     }
 
-    if (state.status == GameStatus.IDLE) {
+    if (state.phase == LeveledGamePhase.LEVEL_SELECT) {
+        // Arranca en la frontera (récord + 1) y se resetea si el récord sube.
+        var selectedStage by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
         GameIntroScreen(
             help = GameHelpContent.gridSwitch,
             title = "Neon Grid Switch",
             description = stringResource(Res.string.grid_switch_intro_description),
             accent = CategoryPalette.PatternRecognition,
             motif = GameMotif.LIGHTS_GRID,
+            levels = LevelStripState(
+                maxUnlocked = state.maxUnlocked,
+                selected = selectedStage,
+                onSelect = { selectedStage = it },
+            ),
             onStart = {
                 // Cuenta para la misión diaria en cuanto se juega, no hace falta
                 // terminar la partida (ver DailyGoalManager.markPlayed).
                 graph.dailyGoalManager.markPlayed(GameIds.NEON_GRID_SWITCH)
-                vm.onIntent(GridSwitchIntent.StartGame)
+                vm.onIntent(GridSwitchIntent.PlayStage(selectedStage))
             },
             onExit = onExit,
+            background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },
         )
         return
     }
@@ -182,6 +191,7 @@ fun GridSwitchScreen(graph: AppGraph, onExit: () -> Unit) {
                 onPlayAgain = { vm.onIntent(GridSwitchIntent.PlayAgain) },
                 onExit = onExit,
                 onNextLevel = { vm.onIntent(GridSwitchIntent.NextStage) },
+                onChooseLevel = { vm.onIntent(GridSwitchIntent.ChooseStage) },
             )
         }
 

@@ -34,6 +34,12 @@ import kotlinx.coroutines.launch
  * [HexaOrbitIntent.Tick] desde `withFrameNanos` (FASE 3). Así la simulación queda atada al ritmo
  * real de dibujo —se detiene sola si la vista deja de componerse— en vez de correr en paralelo
  * y desincronizarse de lo que el jugador ve.
+ *
+ * ## El REVIVE se enruta, no se decide aquí
+ *
+ * [HexaOrbitIntent.Revive]/[HexaOrbitIntent.DeclineRevive] llegan tras la decisión del jugador en
+ * `ReviveAdOverlay` (que vive en la pantalla y habla directo con el `AdManager`); este ViewModel
+ * solo los reenvía al motor. Ver el KDoc de [HexaOrbitEngine] para el reparto completo.
  */
 class HexaOrbitViewModel(
     private val progress: ProgressRepository,
@@ -45,7 +51,11 @@ class HexaOrbitViewModel(
     private val engine = HexaOrbitEngine(viewModelScope, audio)
 
     init {
-        engine.state.onEach { game -> setState { copy(game = game) } }.launchIn(viewModelScope)
+        // `awaitingRevive` se espeja del dominio al UiState en la misma suscripción que `game`:
+        // es el motor quien abre/cierra la oferta (ver KDoc de HexaOrbitState.awaitingRevive).
+        engine.state
+            .onEach { game -> setState { copy(game = game, awaitingRevive = game.awaitingRevive) } }
+            .launchIn(viewModelScope)
         engine.status.onEach { status -> setState { copy(status = status) } }.launchIn(viewModelScope)
         engine.outcome.onEach { result -> result?.let(::onFinished) }.launchIn(viewModelScope)
         engine.effects.onEach(::onGameEffect).launchIn(viewModelScope)
@@ -65,6 +75,8 @@ class HexaOrbitViewModel(
         when (intent) {
             is HexaOrbitIntent.Tick -> engine.onFrame(intent.frameNanos)
             is HexaOrbitIntent.RotateTile -> engine.rotateTile(intent.coord)
+            HexaOrbitIntent.Revive -> engine.grantRevive()
+            HexaOrbitIntent.DeclineRevive -> engine.declineRevive()
             HexaOrbitIntent.Pause -> engine.pause()
             HexaOrbitIntent.Resume -> engine.resume()
             HexaOrbitIntent.Start,

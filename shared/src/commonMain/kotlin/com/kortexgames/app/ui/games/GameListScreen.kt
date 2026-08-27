@@ -44,6 +44,7 @@ import com.kortexgames.app.ui.components.CategoryMotifSurface
 import com.kortexgames.app.ui.components.KortexIcons
 import com.kortexgames.app.ui.components.MotifScrim
 import com.kortexgames.app.ui.components.NeonIcon
+import com.kortexgames.app.ui.components.NewBadge
 import com.kortexgames.app.ui.navigation.Routes
 import kotlinx.coroutines.delay
 
@@ -141,6 +142,10 @@ private val TextScrimShadow = Shadow(
  * ## Reparto horizontal (izquierda → derecha)
  *
  * `[emblema] · [categoría / título / récord] · [chevrón]`
+ *
+ * La insignia [NewBadge] (juegos con `GameInfo.isNew`) no forma parte de este
+ * reparto: se superpone en la esquina superior derecha de la tarjeta, fuera de la
+ * `Row`, para no restarle ancho al título ni desplazar el chevrón.
  *
  * El motivo temático del juego queda **detrás, escorado a la derecha**
  * (`squareMotif`), donde no compite con el texto; el velo [MotifScrim.Start] apaga
@@ -297,6 +302,17 @@ private fun GameCard(
                 size = 24.dp,
                 glow = game.playable,
                 contentDescription = null,
+            )
+        }
+
+        // Insignia "NUEVO": esquina superior derecha, fuera del reparto de la fila
+        // (ver el KDoc de esta función) para no robarle ancho al título. Solo los
+        // juegos marcados GameInfo.isNew la llevan.
+        if (game.isNew) {
+            NewBadge(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 12.dp, end = 14.dp),
             )
         }
     }
