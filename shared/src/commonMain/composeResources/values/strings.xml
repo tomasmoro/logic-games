@@ -393,4 +393,30 @@
     <string name="home_new_games_title">Juegos nuevos</string>
     <string name="home_new_games_subtitle">Recién llegados al catálogo</string>
 
+    <!-- ============================================================
+         Identidad pública (nickname). Es lo ÚNICO que ven los demás
+         jugadores en el ranking mundial: `display_name` dejó de
+         publicarse en la migración 0045 porque se rellenaba solo con
+         el nombre real de Google (ver 0044 para el porqué completo).
+         ============================================================ -->
+    <string name="settings_nickname_title">Nombre público</string>
+    <string name="settings_nickname_subtitle">Así te ven en el ranking mundial</string>
+    <string name="settings_nickname_unset">Sin definir</string>
+    <string name="settings_nickname_hint">3 a 16 caracteres: letras, números, guion o guion bajo</string>
+    <string name="settings_nickname_checking">Comprobando…</string>
+    <string name="settings_nickname_free">¡Disponible!</string>
+    <string name="settings_nickname_cancel">Cancelar</string>
+    <string name="settings_nickname_save">Guardar</string>
+    <string name="settings_nickname_saving">Guardando…</string>
+    <!-- Motivos de rechazo. Cada uno mapea un valor de NicknameRejection; el
+         backend devuelve el motivo en clave y la app decide el texto. -->
+    <string name="settings_nickname_error_empty">Escribe un nombre.</string>
+    <string name="settings_nickname_error_invalid">Entre 3 y 16 caracteres, sin símbolos raros.</string>
+    <string name="settings_nickname_error_blocked">Ese nombre no está permitido.</string>
+    <string name="settings_nickname_error_taken">Ya lo tiene otro jugador. Prueba otro.</string>
+    <!-- %1$s = fecha a partir de la cual se puede volver a cambiar. Siempre %1$s
+         (nunca %1$d): la fecha se pasa ya formateada como String. -->
+    <string name="settings_nickname_error_cooldown">Solo puedes cambiarlo una vez cada 30 días. Podrás volver a hacerlo el %1$s.</string>
+    <string name="settings_nickname_error_unknown">No pudimos guardarlo. Inténtalo de nuevo.</string>
+
 </resources>

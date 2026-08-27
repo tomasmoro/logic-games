@@ -2,6 +2,8 @@ package com.kortexgames.app.data.repository
 
 import com.kortexgames.app.data.remote.auth.GoogleAuthClient
 import com.kortexgames.app.domain.model.AuthState
+import com.kortexgames.app.domain.model.NicknameOutcome
+import com.kortexgames.app.domain.model.NicknameRejection
 import com.kortexgames.app.domain.model.PlanType
 import com.kortexgames.app.domain.repository.AuthRepository
 import io.github.jan.supabase.SupabaseClient
@@ -22,7 +24,10 @@ import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
@@ -128,6 +133,61 @@ class AuthRepositoryImpl(
         }.map { }
     }
 
+    override suspend fun checkNicknameAvailable(nickname: String): Result<NicknameOutcome> =
+        runCatching {
+            val row = client.postgrest.rpc(
+                function = "check_nickname_available",
+                parameters = buildJsonObject { put("p_nickname", nickname) },
+            ).decodeAs<JsonObject>()
+
+            // La RPC responde {available, reason}; `available` manda y `reason` solo
+            // matiza el porqué, así que no hace falta mirar los dos para decidir.
+            if (row["available"]?.jsonPrimitive?.booleanOrNull == true) {
+                NicknameOutcome.Ok(nickname)
+            } else {
+                NicknameOutcome.Rejected(row.rejectionReason())
+            }
+        }
+
+    override suspend fun claimNickname(nickname: String): Result<NicknameOutcome> {
+        if (sessionState.value !is AuthState.Authenticated) {
+            return Result.failure(IllegalStateException("No hay sesión activa"))
+        }
+        return runCatching {
+            val row = client.postgrest.rpc(
+                function = "claim_nickname",
+                parameters = buildJsonObject { put("p_nickname", nickname) },
+            ).decodeAs<JsonObject>()
+
+            if (row["ok"]?.jsonPrimitive?.booleanOrNull == true) {
+                NicknameOutcome.Ok(row["nickname"]?.jsonPrimitive?.content ?: nickname)
+            } else {
+                NicknameOutcome.Rejected(
+                    reason = row.rejectionReason(),
+                    retryAfter = row["retry_after"]?.jsonPrimitive?.content
+                        ?.let { runCatching { Instant.parse(it) }.getOrNull() },
+                )
+            }
+        }
+    }
+
+    /**
+     * Traduce el campo `reason` de las RPC de nickname al enum de dominio.
+     *
+     * Un valor desconocido cae en [NicknameRejection.UNKNOWN] en vez de lanzar: así,
+     * si mañana el servidor añade un motivo nuevo, las versiones ya publicadas de la
+     * app enseñan un mensaje genérico en lugar de romperse.
+     */
+    private fun JsonObject.rejectionReason(): NicknameRejection =
+        when (this["reason"]?.jsonPrimitive?.content) {
+            "empty" -> NicknameRejection.EMPTY
+            "invalid" -> NicknameRejection.INVALID
+            "blocked" -> NicknameRejection.BLOCKED
+            "taken" -> NicknameRejection.TAKEN
+            "cooldown" -> NicknameRejection.COOLDOWN
+            else -> NicknameRejection.UNKNOWN
+        }
+
     override suspend fun deleteAccount(): Result<Unit> {
         if (sessionState.value !is AuthState.Authenticated) {
             return Result.failure(IllegalStateException("No hay sesión activa"))
@@ -155,7 +215,12 @@ class AuthRepositoryImpl(
             val userId = session.user?.id
             if (userId != null) {
                 val profile = fetchProfile(userId)
-                AuthState.Authenticated(userId, profile.toPlanType(), profile.displayName)
+                AuthState.Authenticated(
+                    userId = userId,
+                    plan = profile.toPlanType(),
+                    displayName = profile.displayName,
+                    nickname = profile.nickname,
+                )
             } else {
                 AuthState.Guest
             }
@@ -173,7 +238,7 @@ class AuthRepositoryImpl(
      */
     private suspend fun fetchProfile(userId: String): UserProfileRow = runCatching {
         client.postgrest.from("users")
-            .select(Columns.list("plan_type", "premium_until", "display_name")) {
+            .select(Columns.list("plan_type", "premium_until", "display_name", "nickname")) {
                 filter { eq("id", userId) }
             }
             .decodeSingleOrNull<UserProfileRow>()
@@ -186,6 +251,7 @@ class AuthRepositoryImpl(
         @SerialName("plan_type") val planType: String,
         @SerialName("premium_until") val premiumUntil: Instant? = null,
         @SerialName("display_name") val displayName: String? = null,
+        val nickname: String? = null,
     ) {
         /**
          * `plan_type` es la fuente, pero se **valida** contra `premium_until` (ver

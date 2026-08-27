@@ -31,3 +31,6 @@ node_modules/
 # pueden quitar sin reescribirlo.
 androidApp/release/
 *.aab
+
+# Caché del CLI de Supabase (comprobación de versión). Se regenera sola.
+supabase/.temp/

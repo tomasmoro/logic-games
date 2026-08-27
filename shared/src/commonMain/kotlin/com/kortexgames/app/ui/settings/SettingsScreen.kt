@@ -56,7 +56,23 @@ import com.kortexgames.app.ui.components.KortexIcons
 import com.kortexgames.app.ui.components.LegalLinksSection
 import com.kortexgames.app.ui.components.NeonIcon
 import com.kortexgames.app.ui.components.bounceClick
+import com.kortexgames.app.domain.model.NicknameRejection
 import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.settings_nickname_cancel
+import kortexgames.shared.generated.resources.settings_nickname_checking
+import kortexgames.shared.generated.resources.settings_nickname_error_blocked
+import kortexgames.shared.generated.resources.settings_nickname_error_cooldown
+import kortexgames.shared.generated.resources.settings_nickname_error_empty
+import kortexgames.shared.generated.resources.settings_nickname_error_invalid
+import kortexgames.shared.generated.resources.settings_nickname_error_taken
+import kortexgames.shared.generated.resources.settings_nickname_error_unknown
+import kortexgames.shared.generated.resources.settings_nickname_free
+import kortexgames.shared.generated.resources.settings_nickname_hint
+import kortexgames.shared.generated.resources.settings_nickname_save
+import kortexgames.shared.generated.resources.settings_nickname_saving
+import kortexgames.shared.generated.resources.settings_nickname_subtitle
+import kortexgames.shared.generated.resources.settings_nickname_title
+import kortexgames.shared.generated.resources.settings_nickname_unset
 import kortexgames.shared.generated.resources.settings_notifications_blocked
 import kortexgames.shared.generated.resources.settings_notifications_debug_failed
 import kortexgames.shared.generated.resources.settings_notifications_debug_scheduled
@@ -65,6 +81,9 @@ import kortexgames.shared.generated.resources.settings_notifications_section
 import kortexgames.shared.generated.resources.settings_notifications_toggle_subtitle
 import kortexgames.shared.generated.resources.settings_notifications_toggle_title
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Instant
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -123,6 +142,8 @@ fun SettingsScreen(
             when (session) {
                 is AuthState.Authenticated -> {
                     DisplayNameCard(state = account, onIntent = accountVm::onIntent)
+
+                    NicknameCard(state = account, onIntent = accountVm::onIntent)
                     DangerZoneCard(onDeleteClick = { accountVm.onIntent(AccountIntent.RequestDeleteAccount) })
                 }
                 AuthState.Guest -> GuestAccountPrompt(onSignIn = onOpenAuth)
@@ -265,6 +286,155 @@ private fun DisplayNameCard(state: AccountUiState, onIntent: (AccountIntent) -> 
             }
         }
     }
+}
+
+/**
+ * Tarjeta del **nombre público**. Misma anatomía que [DisplayNameCard] (lectura con
+ * lápiz / edición con guardar-cancelar) pero con una diferencia importante: comprueba
+ * la disponibilidad **mientras se escribe**, porque descubrir que el nombre está
+ * cogido solo al pulsar Guardar es la peor forma de enterarse.
+ *
+ * Se distingue de la tarjeta de nombre privado con el icono de ranking y el acento
+ * cian: son dos campos parecidos y conviene que se lea de un vistazo cuál es el que
+ * ven los demás.
+ */
+@Composable
+private fun NicknameCard(state: AccountUiState, onIntent: (AccountIntent) -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(LogicColors.SurfaceDark)
+            .padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            NeonIcon(icon = KortexIcons.Leaderboard, tint = LogicColors.NeonCyan, size = 24.dp)
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    stringResource(Res.string.settings_nickname_title),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = LogicColors.OnDark,
+                )
+                Text(
+                    if (state.isEditingNickname) {
+                        stringResource(Res.string.settings_nickname_subtitle)
+                    } else {
+                        state.nickname.ifBlank { stringResource(Res.string.settings_nickname_unset) }
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = LogicColors.OnDarkMuted,
+                )
+            }
+            if (!state.isEditingNickname) {
+                CircleIconButton(
+                    icon = KortexIcons.Pencil,
+                    tint = LogicColors.NeonCyan,
+                    onClick = { onIntent(AccountIntent.StartEditingNickname) },
+                    size = 36.dp,
+                )
+            }
+        }
+
+        if (state.isEditingNickname) {
+            OutlinedTextField(
+                value = state.nickname,
+                onValueChange = { onIntent(AccountIntent.NicknameChanged(it)) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = !state.isSavingNickname,
+                isError = state.nicknameRejection != null,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { onIntent(AccountIntent.SaveNickname) }),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = LogicColors.NeonCyan,
+                    unfocusedBorderColor = LogicColors.SurfaceVariantDark,
+                    cursorColor = LogicColors.NeonCyan,
+                    focusedTextColor = LogicColors.OnDark,
+                    unfocusedTextColor = LogicColors.OnDark,
+                    focusedContainerColor = LogicColors.SurfaceVariantDark,
+                    unfocusedContainerColor = LogicColors.SurfaceVariantDark,
+                ),
+            )
+
+            // Una sola línea de estado con cuatro caras posibles, en orden de
+            // prioridad: comprobando > rechazo > libre > pista. Ocupar siempre el
+            // mismo hueco evita que la tarjeta dé saltos mientras se escribe.
+            NicknameStatusLine(state)
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TextActionButton(
+                    text = stringResource(Res.string.settings_nickname_cancel),
+                    color = LogicColors.OnDarkMuted,
+                    enabled = !state.isSavingNickname,
+                    onClick = { onIntent(AccountIntent.CancelEditingNickname) },
+                    modifier = Modifier.weight(1f),
+                )
+                TextActionButton(
+                    text = if (state.isSavingNickname) {
+                        stringResource(Res.string.settings_nickname_saving)
+                    } else {
+                        stringResource(Res.string.settings_nickname_save)
+                    },
+                    color = LogicColors.NeonGreen,
+                    enabled = state.canSaveNickname,
+                    onClick = { onIntent(AccountIntent.SaveNickname) },
+                    modifier = Modifier.weight(1f),
+                    filled = true,
+                )
+            }
+        }
+    }
+}
+
+/** Línea de estado del campo de nickname: comprobando, motivo de rechazo, libre o pista. */
+@Composable
+private fun NicknameStatusLine(state: AccountUiState) {
+    val (text, color) = when {
+        state.isCheckingNickname ->
+            stringResource(Res.string.settings_nickname_checking) to LogicColors.OnDarkMuted
+
+        state.nicknameRejection != null ->
+            nicknameRejectionText(state.nicknameRejection, state.nicknameRetryAfter) to LogicColors.Error
+
+        state.nicknameAvailable ->
+            stringResource(Res.string.settings_nickname_free) to LogicColors.NeonGreen
+
+        else ->
+            stringResource(Res.string.settings_nickname_hint) to LogicColors.OnDarkMuted
+    }
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = color)
+}
+
+/**
+ * Traduce el motivo de rechazo a texto. El `when` es exhaustivo sobre el enum a
+ * propósito: si el servidor gana un motivo nuevo, el compilador obliga a decidir qué
+ * se le enseña al jugador en vez de dejar un hueco en blanco.
+ */
+@Composable
+private fun nicknameRejectionText(reason: NicknameRejection, retryAfter: Instant?): String =
+    when (reason) {
+        NicknameRejection.EMPTY -> stringResource(Res.string.settings_nickname_error_empty)
+        NicknameRejection.INVALID -> stringResource(Res.string.settings_nickname_error_invalid)
+        NicknameRejection.BLOCKED -> stringResource(Res.string.settings_nickname_error_blocked)
+        NicknameRejection.TAKEN -> stringResource(Res.string.settings_nickname_error_taken)
+        NicknameRejection.COOLDOWN -> stringResource(
+            Res.string.settings_nickname_error_cooldown,
+            retryAfter?.toShortDate().orEmpty(),
+        )
+        NicknameRejection.UNKNOWN -> stringResource(Res.string.settings_nickname_error_unknown)
+    }
+
+/**
+ * Fecha corta en la zona del dispositivo ("12/9/2026"). El cooldown lo decide el
+ * servidor en UTC, pero al jugador hay que enseñárselo en su hora local o la fecha
+ * parecerá equivocada por un día.
+ */
+private fun Instant.toShortDate(): String {
+    val date = toLocalDateTime(TimeZone.currentSystemDefault()).date
+    return "${date.dayOfMonth}/${date.monthNumber}/${date.year}"
 }
 
 /**

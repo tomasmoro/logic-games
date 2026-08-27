@@ -1,6 +1,7 @@
 package com.kortexgames.app.domain.repository
 
 import com.kortexgames.app.domain.model.AuthState
+import com.kortexgames.app.domain.model.NicknameOutcome
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -60,10 +61,36 @@ interface AuthRepository {
     suspend fun signOut()
 
     /**
-     * Cambia el nombre de usuario (`public.users.display_name`) del usuario
+     * Cambia el nombre PRIVADO (`public.users.display_name`) del usuario
      * autenticado. Falla con [IllegalStateException] si se llama en modo invitado.
+     *
+     * Ojo: esto **no** es lo que ven los demás jugadores desde la migración 0045 —
+     * para eso está [claimNickname].
      */
     suspend fun updateDisplayName(name: String): Result<Unit>
+
+    /**
+     * ¿Está libre [nickname]? Consulta la RPC `check_nickname_available`, que valida
+     * forma, lista de patrones prohibidos y unicidad contra la clave normalizada
+     * (así "K0RTEX" colisiona con "Kortex").
+     *
+     * Pensado para llamarse **con debounce mientras el usuario escribe**: es una
+     * consulta de solo lectura y barata, pero no conviene dispararla por pulsación.
+     * El veredicto es orientativo: quien manda es [claimNickname], porque entre la
+     * comprobación y la reclamación otro jugador puede haberse quedado el nombre.
+     */
+    suspend fun checkNicknameAvailable(nickname: String): Result<NicknameOutcome>
+
+    /**
+     * Reclama (o cambia) la identidad PÚBLICA del usuario autenticado vía la RPC
+     * `claim_nickname`, única vía de escritura: valida forma, blocklist, unicidad y
+     * el cooldown de 30 días entre cambios, cosas que un update directo se saltaría.
+     *
+     * Devuelve [NicknameOutcome.Rejected] para los rechazos **esperados** (nombre
+     * cogido, prohibido, cooldown): son respuestas normales del flujo, no errores.
+     * El [Result] fallido queda para lo excepcional — sin sesión o sin red.
+     */
+    suspend fun claimNickname(nickname: String): Result<NicknameOutcome>
 
     /**
      * Borra la cuenta de forma **permanente e irreversible**: delega en la Edge

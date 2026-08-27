@@ -9,8 +9,21 @@ enum class PlanType { FREE, PREMIUM }
 sealed interface AuthState {
     data object Guest : AuthState
 
-    /** @property displayName nombre de usuario (`public.users.display_name`); null si no se ha fijado. */
-    data class Authenticated(val userId: String, val plan: PlanType, val displayName: String? = null) : AuthState
+    /**
+     * @property displayName nombre PRIVADO (`public.users.display_name`); null si no
+     *   se ha fijado. Desde la migración 0045 ya **no** se publica en el ranking: se
+     *   rellena solo con el `full_name` de Google al registrarse, así que enseñarlo a
+     *   desconocidos exponía el nombre real de quien nunca lo eligió. Se sigue usando
+     *   para el saludo dentro de la app y en Ajustes.
+     * @property nickname identidad PÚBLICA (`public.users.nickname`); null hasta que
+     *   el jugador la elige. Es lo único que ven los demás en el ranking mundial.
+     */
+    data class Authenticated(
+        val userId: String,
+        val plan: PlanType,
+        val displayName: String? = null,
+        val nickname: String? = null,
+    ) : AuthState
 }
 
 /**
