@@ -25,3 +25,9 @@ captures
 !*.xcworkspace/contents.xcworkspacedata
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
+
+# Artefactos de salida de release (AAB/APK firmados). Los regenera Gradle en cada
+# build; versionarlos deja blobs de decenas de MB en el historial que ya no se
+# pueden quitar sin reescribirlo.
+androidApp/release/
+*.aab
