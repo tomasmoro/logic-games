@@ -70,7 +70,7 @@ class NeonLexiconViewModel(
                 // Breakpoint de avance de nivel (solo juegos LEVELED): cobra un
                 // intersticial pendiente sin cortar la partida. No-op si no hay ninguno.
                 adManager.onAdBreakpoint()
-                playLevel(currentState.currentLevel + 1)
+                advanceLevelOrShowCatalogCleared()
             }
 
             is NeonLexiconIntent.StartDrag -> engine.beginSelection(intent.row, intent.col)
@@ -84,6 +84,24 @@ class NeonLexiconViewModel(
             NeonLexiconIntent.ChooseLevel -> setState {
                 copy(phase = LeveledGamePhase.LEVEL_SELECT, gameOver = null, selection = null)
             }
+        }
+    }
+
+    /**
+     * Avanza al siguiente nivel, salvo que el actual sea el ÚLTIMO del catálogo
+     * finito ([NeonLexiconGenerator.levelCount]): en ese caso NO se recicla desde el
+     * nivel 1 (repetiría contenido ya jugado). Se cierra la partida volviendo a la
+     * antesala ([LeveledGamePhase.LEVEL_SELECT]), donde un cartel avisa de que no
+     * quedan niveles nuevos ("que se vea claro", petición del usuario). Es el destino
+     * del botón "Siguiente nivel" del cartel de fin de partida cuando ya no hay más.
+     */
+    private fun advanceLevelOrShowCatalogCleared() {
+        if (currentState.currentLevel >= NeonLexiconGenerator.levelCount) {
+            setState {
+                copy(phase = LeveledGamePhase.LEVEL_SELECT, gameOver = null, selection = null)
+            }
+        } else {
+            playLevel(currentState.currentLevel + 1)
         }
     }
 

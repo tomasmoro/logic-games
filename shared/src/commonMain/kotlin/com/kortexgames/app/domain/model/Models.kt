@@ -10,19 +10,16 @@ sealed interface AuthState {
     data object Guest : AuthState
 
     /**
-     * @property displayName nombre PRIVADO (`public.users.display_name`); null si no
-     *   se ha fijado. Desde la migración 0045 ya **no** se publica en el ranking: se
-     *   rellena solo con el `full_name` de Google al registrarse, así que enseñarlo a
-     *   desconocidos exponía el nombre real de quien nunca lo eligió. Se sigue usando
-     *   para el saludo dentro de la app y en Ajustes.
-     * @property nickname identidad PÚBLICA (`public.users.nickname`); null hasta que
-     *   el jugador la elige. Es lo único que ven los demás en el ranking mundial.
+     * @property displayName nombre del jugador (`public.users.display_name`); null
+     *   hasta que lo elige. Es **un único dato**: el saludo dentro de la app y lo que
+     *   ven los demás en el ranking mundial (migración 0048). El alta con Google lo
+     *   deja en null a propósito —el trigger ya no copia el `full_name` del
+     *   proveedor—, así que la app lo pide en el onboarding antes de entrar.
      */
     data class Authenticated(
         val userId: String,
         val plan: PlanType,
         val displayName: String? = null,
-        val nickname: String? = null,
     ) : AuthState
 }
 

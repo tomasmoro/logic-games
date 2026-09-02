@@ -80,13 +80,17 @@ import com.kortexgames.app.ui.components.GamePauseControls
 import com.kortexgames.app.ui.components.KortexIcons
 import com.kortexgames.app.ui.components.LevelStripState
 import com.kortexgames.app.ui.components.NeonIcon
+import com.kortexgames.app.ui.components.UPCOMING_LEVEL_TEASERS
 import com.kortexgames.app.ui.components.ResumeState
 import com.kortexgames.app.ui.components.SpaceBackdrop
 import com.kortexgames.app.ui.components.bounceClick
 import com.kortexgames.app.ui.components.collectPressGlow
 import com.kortexgames.app.ui.components.drawNeonTile
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.gameintro_levels_cleared_notice
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -149,7 +153,11 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
     val exitWithSave: () -> Unit = { vm.requestExit(onExit) }
 
     if (state.phase == LeveledGamePhase.LEVEL_SELECT) {
-        var selectedLevel by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
+        // Catálogo finito: la selección nunca apunta más allá del último nivel (si
+        // ya se superaron todos, "Empezar" rejuega el último — no hay "siguiente").
+        var selectedLevel by remember(state.maxUnlocked) {
+            mutableStateOf((state.maxUnlocked + 1).coerceAtMost(CrucigramaNeonGenerator.levelCount))
+        }
         GameIntroScreen(
             help = GameHelpContent.crucigrama,
             title = "Crucigrama Neón",
@@ -159,7 +167,16 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
                 maxUnlocked = state.maxUnlocked,
                 selected = selectedLevel,
                 onSelect = { selectedLevel = it },
+                playableLevels = CrucigramaNeonGenerator.levelCount,
+                // Un par de casillas más, con candado y "Pronto", para adelantar que
+                // habrá más niveles: así el carril no se corta en seco en el último.
+                maxLevel = CrucigramaNeonGenerator.levelCount + UPCOMING_LEVEL_TEASERS,
             ),
+            completionNotice = if (state.allLevelsCompleted) {
+                stringResource(Res.string.gameintro_levels_cleared_notice)
+            } else {
+                null
+            },
             motif = GameMotif.CROSSWORD,
             startLabel = "Empezar",
             onStart = {
@@ -275,6 +292,9 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
                 onExit = onExit,
                 onNextLevel = { vm.onIntent(CrucigramaNeonIntent.NextLevel) },
                 onChooseLevel = { vm.onIntent(CrucigramaNeonIntent.ChooseLevel) },
+                // Catálogo finito: si esta era la última, "Siguiente nivel" pasa a
+                // "Ver niveles" y lleva a la antesala con el cartel de completado.
+                hasNextLevel = state.currentLevel < CrucigramaNeonGenerator.levelCount,
             )
         }
 

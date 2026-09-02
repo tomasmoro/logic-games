@@ -57,6 +57,7 @@ import kortexgames.shared.generated.resources.gameover_badge_unlocked
 import kortexgames.shared.generated.resources.gameover_cta_back
 import kortexgames.shared.generated.resources.gameover_cta_exit
 import kortexgames.shared.generated.resources.gameover_cta_exit_link
+import kortexgames.shared.generated.resources.gameover_cta_levels_done
 import kortexgames.shared.generated.resources.gameover_cta_next_level
 import kortexgames.shared.generated.resources.gameover_cta_play_again
 import kortexgames.shared.generated.resources.gameover_cta_play_unlocked
@@ -117,6 +118,12 @@ private val TrophyGap = CardItemGap * 0.9f
  * @param onPlayUnlockedDifficulty arranca una partida nueva en el escalón que se acaba de
  *   abrir. Requerido junto a [unlockedDifficultyLabel] para que aparezca el CTA; si uno de
  *   los dos falta, el diálogo cae al layout normal (sin celebrar el desbloqueo).
+ * @param hasNextLevel solo juegos LEVELED ([onNextLevel] no nulo): `false` cuando el
+ *   catálogo es FINITO y la partida recién superada era el ÚLTIMO nivel. En ese caso el
+ *   CTA principal cambia de rótulo ("Ver niveles") y [onNextLevel] debe llevar a la
+ *   antesala —donde un cartel explica que no quedan niveles nuevos— en vez de arrancar
+ *   otra partida; además se oculta el enlace redundante de [onChooseLevel]. Por defecto
+ *   `true` (hay más niveles), que es el caso de la mayoría de juegos LEVELED.
  */
 @Composable
 fun GameOverOverlay(
@@ -127,6 +134,7 @@ fun GameOverOverlay(
     headline: String? = null,
     onNextLevel: (() -> Unit)? = null,
     onChooseLevel: (() -> Unit)? = null,
+    hasNextLevel: Boolean = true,
     unlockedDifficultyLabel: String? = null,
     onPlayUnlockedDifficulty: (() -> Unit)? = null,
     audio: AudioAndHapticManager? = null,
@@ -376,9 +384,15 @@ fun GameOverOverlay(
             } else if (onNextLevel != null) {
                 // Juego LEVELED: el CTA principal es avanzar; luego repetir el nivel
                 // y volver al selector. El único bucle (pulse) va al CTA que guía (§9.4).
+                // Catálogo finito ya agotado ([hasNextLevel] == false): no hay
+                // "siguiente" real, así que el CTA cambia a "Ver niveles" y lleva a la
+                // antesala (que muestra el cartel de niveles completados).
                 Spacer(Modifier.height(CardItemGap))
                 AnimatedGameButton(
-                    text = stringResource(Res.string.gameover_cta_next_level),
+                    text = stringResource(
+                        if (hasNextLevel) Res.string.gameover_cta_next_level
+                        else Res.string.gameover_cta_levels_done,
+                    ),
                     onClick = onNextLevel,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -392,7 +406,9 @@ fun GameOverOverlay(
                     modifier = Modifier.fillMaxWidth(),
                     gradient = LogicGradients.energy,
                 )
-                if (onChooseLevel != null) {
+                // Con el catálogo agotado, "Ver niveles" YA lleva a la antesala: el
+                // enlace de abajo haría lo mismo, así que se omite para no duplicar.
+                if (onChooseLevel != null && hasNextLevel) {
                     Spacer(Modifier.height(CardItemGap))
                     Text(
                         stringResource(Res.string.gameover_cta_exit_link),

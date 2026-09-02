@@ -160,6 +160,21 @@
     <string name="firstrun_welcome_skip">Prefiero iniciar sesión</string>
 
     <!-- ============================================================
+         GameIntroScreen — antesala común a todos los juegos. Aviso de
+         "catálogo de niveles completado": los juegos LEVELED de catálogo
+         FINITO (Crucigrama Neón, Sopa de Letras Neón) frenan el avance al
+         superar su último nivel en vez de reciclar desde el 1; el botón
+         "Siguiente nivel" del cartel de fin de partida trae aquí y este
+         texto explica el límite (solo queda rejugar). El carril muestra un
+         par de casillas con candado como adelanto de que llegarán más.
+         ============================================================ -->
+    <string name="gameintro_levels_cleared_notice">¡Completaste todos los niveles disponibles! Los que ves con candado están en camino: llegarán en una próxima actualización. Mientras tanto, puedes repetir cualquier nivel para mejorar tu marca.</string>
+    <!-- Etiqueta bajo las casillas "Próximamente" del carril de niveles (las que
+         van con candado por encima del último nivel jugable). Corta a propósito
+         para no ensanchar la casilla. -->
+    <string name="gameintro_level_upcoming">Pronto</string>
+
+    <!-- ============================================================
          Atracción Geométrica (Visión Espacial). Partida infinita por
          oleadas: cada 30 s entra una lluvia de meteoros que regala
          puntos, una vida y un color nuevo. Los textos del juego nacen
@@ -302,6 +317,10 @@
     <!-- Enlace de texto (no botón) para salir sin competir con el CTA principal. -->
     <string name="gameover_cta_exit_link">Salir</string>
     <string name="gameover_cta_next_level">SIGUIENTE NIVEL</string>
+    <!-- Sustituye a gameover_cta_next_level en juegos LEVELED de catálogo FINITO
+         cuando se acaba de superar el ÚLTIMO nivel: no hay "siguiente", el botón
+         lleva a la antesala (que muestra gameintro_levels_cleared_notice). -->
+    <string name="gameover_cta_levels_done">VER NIVELES</string>
     <string name="gameover_cta_retry_level">REPETIR NIVEL</string>
     <string name="gameover_cta_exit">SALIR</string>
     <string name="gameover_badge_new_record">¡NUEVO RÉCORD!</string>
@@ -394,29 +413,32 @@
     <string name="home_new_games_subtitle">Recién llegados al catálogo</string>
 
     <!-- ============================================================
-         Identidad pública (nickname). Es lo ÚNICO que ven los demás
-         jugadores en el ranking mundial: `display_name` dejó de
-         publicarse en la migración 0045 porque se rellenaba solo con
-         el nombre real de Google (ver 0044 para el porqué completo).
+         Nombre de jugador. Desde la migración 0048 es un ÚNICO dato
+         (`public.users.display_name`): el saludo dentro de la app y lo
+         que ven los demás en el ranking mundial. Ya no hay una
+         "identidad pública" separada.
          ============================================================ -->
-    <string name="settings_nickname_title">Nombre público</string>
-    <string name="settings_nickname_subtitle">Así te ven en el ranking mundial</string>
-    <string name="settings_nickname_unset">Sin definir</string>
-    <string name="settings_nickname_hint">3 a 16 caracteres: letras, números, guion o guion bajo</string>
-    <string name="settings_nickname_checking">Comprobando…</string>
-    <string name="settings_nickname_free">¡Disponible!</string>
-    <string name="settings_nickname_cancel">Cancelar</string>
-    <string name="settings_nickname_save">Guardar</string>
-    <string name="settings_nickname_saving">Guardando…</string>
-    <!-- Motivos de rechazo. Cada uno mapea un valor de NicknameRejection; el
-         backend devuelve el motivo en clave y la app decide el texto. -->
-    <string name="settings_nickname_error_empty">Escribe un nombre.</string>
-    <string name="settings_nickname_error_invalid">Entre 3 y 16 caracteres, sin símbolos raros.</string>
-    <string name="settings_nickname_error_blocked">Ese nombre no está permitido.</string>
-    <string name="settings_nickname_error_taken">Ya lo tiene otro jugador. Prueba otro.</string>
-    <!-- %1$s = fecha a partir de la cual se puede volver a cambiar. Siempre %1$s
-         (nunca %1$d): la fecha se pasa ya formateada como String. -->
-    <string name="settings_nickname_error_cooldown">Solo puedes cambiarlo una vez cada 30 días. Podrás volver a hacerlo el %1$s.</string>
-    <string name="settings_nickname_error_unknown">No pudimos guardarlo. Inténtalo de nuevo.</string>
+    <!-- Subtítulo de la tarjeta de nombre en Ajustes, visible mientras se edita. -->
+    <string name="settings_display_name_public_hint">Así te ven los demás en el ranking mundial</string>
+
+    <!-- Pantalla de onboarding que pide el nombre tras un alta con Google (el alta
+         por email ya lo pide en su propio formulario). -->
+    <string name="onboarding_player_name_title">Elige tu nombre de jugador</string>
+    <string name="onboarding_player_name_subtitle">Es lo que verán los demás en el ranking mundial. Podrás cambiarlo en Ajustes.</string>
+    <string name="onboarding_player_name_placeholder">Tu nombre</string>
+    <string name="onboarding_player_name_hint">Entre 3 y 20 caracteres</string>
+    <string name="onboarding_player_name_save">Continuar</string>
+    <string name="onboarding_player_name_saving">Guardando…</string>
+    <!--
+      Motivos de rechazo del nombre de jugador. Sin prefijo de pantalla a propósito:
+      los comparten la pantalla de onboarding y la edición del nombre en Ajustes,
+      que validan con las mismas reglas (DisplayNameRules + RPC set_display_name).
+    -->
+    <string name="player_name_error_too_short">Al menos 3 caracteres.</string>
+    <string name="player_name_error_too_long">Máximo 20 caracteres.</string>
+    <string name="player_name_error_invalid_chars">Usa solo letras, números, espacios, guion o guion bajo.</string>
+    <string name="player_name_error_blocked">Ese nombre no está disponible. Prueba con otro.</string>
+    <string name="player_name_error_session">Tu sesión ha caducado. Vuelve a entrar.</string>
+    <string name="player_name_error_save">No pudimos guardarlo. Inténtalo de nuevo.</string>
 
 </resources>

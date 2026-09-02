@@ -291,6 +291,29 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
       (geografía EEA forzada): que el formulario aparezca justo al salir del tercer
       juego y que el primer intersticial llegue con normalidad después.
 
+## Moderación / UGC
+
+- [ ] **Mecanismo de denuncia de nombres.** La validación ya está (migración 0049:
+      `set_display_name` con blocklist + CHECK de forma, y `authenticated` sin UPDATE
+      sobre `public.users`), pero un filtro automático no es lo mismo que moderación.
+      La política de UGC de Play y la guideline 1.2 de Apple piden además **poder
+      denunciar** el contenido de otro usuario, y el ranking muestra nombres ajenos
+      (`get_game_ranking` devuelve la ventana de vecinos con su `display_name`).
+
+      Alcance mínimo suficiente: pulsación larga sobre una fila del ranking →
+      "Denunciar nombre" → `mailto:` al soporte que ya figura en `site/index.html`,
+      con el nombre denunciado en el asunto. No hace falta tabla ni backend para la
+      primera versión; el volumen a esta escala lo absorbe el correo.
+
+      Cuando haya volumen: tabla `reported_names` con RLS (una denuncia por usuario y
+      nombre), y ampliar `blocked_display_name_patterns` en caliente desde lo
+      denunciado — la lista está pensada para eso (se lee en cada llamada, no hay
+      caché que invalidar).
+
+      Ref: `ui/components` (fila de ranking), `supabase/tests/0049_display_name.sql`
+      (correr el script tras CADA patrón nuevo: cada uno puede rechazar nombres
+      legítimos, como `pene` hacía con "Penelope").
+
 ## Técnico / limpieza
 - [ ] **La recompensa diaria no se reclama desde ningún sitio.**
   `DailyGoalManager.claimReward()` (y `DailyGoalState.canClaim`) existen y

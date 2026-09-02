@@ -9,55 +9,40 @@ import com.kortexgames.app.core.mvi.UiEffect
 import com.kortexgames.app.core.mvi.UiIntent
 import com.kortexgames.app.core.mvi.UiState
 import com.kortexgames.app.domain.model.AuthState
-import com.kortexgames.app.domain.model.NicknameOutcome
-import com.kortexgames.app.domain.model.NicknameRejection
+import com.kortexgames.app.domain.model.DisplayNameRejectedException
+import com.kortexgames.app.domain.model.DisplayNameRejection
+import com.kortexgames.app.domain.model.DisplayNameRules
 import com.kortexgames.app.domain.repository.AuthRepository
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
-import kotlin.time.Instant
 
 /**
- * Estado de la sección "Cuenta" de Ajustes: edición del nombre de usuario y
+ * Estado de la sección "Cuenta" de Ajustes: edición del nombre de jugador y
  * borrado de cuenta. Ambas acciones son independientes, así que cada una lleva
  * su propio par de flags de progreso/error.
+ *
+ * `display_name` es un único dato: sirve para el saludo dentro de la app y es lo
+ * que ven los demás en el ranking mundial (migración 0048). No hay identidad
+ * pública separada.
  */
 data class AccountUiState(
     val displayName: String = "",
     val isEditingName: Boolean = false,
     val isSavingName: Boolean = false,
-    val nameError: String? = null,
+    val nameError: DisplayNameRejection? = null,
     val showDeleteDialog: Boolean = false,
     val isDeleting: Boolean = false,
     val deleteError: String? = null,
-    // --- Identidad pública (nickname) ---
-    val nickname: String = "",
-    val isEditingNickname: Boolean = false,
-    val isSavingNickname: Boolean = false,
-    val isCheckingNickname: Boolean = false,
-    /**
-     * Veredicto del último intento (comprobación en vivo o guardado). Se guarda el
-     * ENUM y no un mensaje ya redactado para que el texto salga de `strings.xml` en
-     * la capa Compose (CLAUDE.md §10) y siga siendo traducible.
-     */
-    val nicknameRejection: NicknameRejection? = null,
-    /** Solo con [NicknameRejection.COOLDOWN]: cuándo se podrá volver a cambiar. */
-    val nicknameRetryAfter: Instant? = null,
-    /** true = la última comprobación en vivo dijo que está libre. */
-    val nicknameAvailable: Boolean = false,
 ) : UiState {
-    /** Nombre válido para guardar: no vacío tras recortar espacios. */
-    val canSaveName: Boolean get() = !isSavingName && displayName.isNotBlank()
-
     /**
-     * Solo se habilita guardar cuando la comprobación en vivo ha dicho que sí. Es una
-     * cortesía de UI, no una garantía: entre comprobar y reclamar, otro jugador puede
-     * quedarse el nombre, y de eso responde el índice único del servidor.
+     * Nombre válido para guardar. Usa [DisplayNameRules], las MISMAS reglas que la
+     * pantalla de onboarding y que el servidor: antes aquí bastaba con que no
+     * estuviera vacío, así que se podía guardar desde Ajustes un nombre que la
+     * pantalla de alta habría rechazado.
      */
-    val canSaveNickname: Boolean
-        get() = !isSavingNickname && !isCheckingNickname && nicknameAvailable
+    val canSaveName: Boolean
+        get() = !isSavingName && DisplayNameRules.validate(displayName) == null
 }
 
 sealed interface AccountIntent : UiIntent {
@@ -65,11 +50,6 @@ sealed interface AccountIntent : UiIntent {
     data object StartEditingName : AccountIntent
     data object CancelEditingName : AccountIntent
     data object SaveName : AccountIntent
-
-    data class NicknameChanged(val value: String) : AccountIntent
-    data object StartEditingNickname : AccountIntent
-    data object CancelEditingNickname : AccountIntent
-    data object SaveNickname : AccountIntent
 
     /** Abre el diálogo de confirmación (primer paso, reversible). */
     data object RequestDeleteAccount : AccountIntent
@@ -101,21 +81,13 @@ class AccountViewModel(
     private val deleteAccount: suspend () -> Result<Unit>,
 ) : MviViewModel<AccountIntent, AccountUiState, AccountEffect>(AccountUiState()) {
 
-    /** Comprobación de nickname en vuelo, para poder cancelarla al seguir escribiendo. */
-    private var nicknameCheckJob: Job? = null
-
     init {
         // Precarga el nombre actual desde la sesión; no pisa lo que el usuario ya
         // esté escribiendo si hay una edición en curso.
         authRepository.sessionState
             .onEach { session ->
-                if (session is AuthState.Authenticated) {
-                    if (!currentState.isEditingName) {
-                        setState { copy(displayName = session.displayName.orEmpty()) }
-                    }
-                    if (!currentState.isEditingNickname) {
-                        setState { copy(nickname = session.nickname.orEmpty()) }
-                    }
+                if (session is AuthState.Authenticated && !currentState.isEditingName) {
+                    setState { copy(displayName = session.displayName.orEmpty()) }
                 }
             }
             .launchIn(viewModelScope)
@@ -124,7 +96,11 @@ class AccountViewModel(
     override fun onIntent(intent: AccountIntent) {
         when (intent) {
             is AccountIntent.NameChanged ->
-                setState { copy(displayName = intent.value, nameError = null) }
+                // Se recorta al máximo al escribir, igual que en la pantalla de
+                // onboarding: el tope se nota antes de invertir esfuerzo.
+                setState {
+                    copy(displayName = intent.value.take(DisplayNameRules.MAX_LENGTH), nameError = null)
+                }
 
             AccountIntent.StartEditingName -> {
                 audio.playSound(SoundEffect.TAP)
@@ -133,16 +109,6 @@ class AccountViewModel(
 
             AccountIntent.CancelEditingName -> cancelEditingName()
             AccountIntent.SaveName -> saveName()
-
-            is AccountIntent.NicknameChanged -> onNicknameChanged(intent.value)
-
-            AccountIntent.StartEditingNickname -> {
-                audio.playSound(SoundEffect.TAP)
-                setState { copy(isEditingNickname = true, nicknameRejection = null) }
-            }
-
-            AccountIntent.CancelEditingNickname -> cancelEditingNickname()
-            AccountIntent.SaveNickname -> saveNickname()
 
             AccountIntent.RequestDeleteAccount -> {
                 audio.playSound(SoundEffect.TAP)
@@ -164,8 +130,10 @@ class AccountViewModel(
 
     private fun saveName() {
         val name = currentState.displayName.trim()
-        if (name.isEmpty()) {
-            setState { copy(nameError = "El nombre no puede estar vacío") }
+        val localRejection = DisplayNameRules.validate(name)
+        if (localRejection != null) {
+            audio.hapticFeedback(HapticFeedback.LIGHT)
+            setState { copy(nameError = localRejection) }
             return
         }
         audio.playSound(SoundEffect.TAP)
@@ -177,119 +145,13 @@ class AccountViewModel(
                     audio.hapticFeedback(HapticFeedback.LIGHT)
                     setState { copy(displayName = name, isEditingName = false, isSavingName = false) }
                 }
-                .onFailure {
+                .onFailure { cause ->
+                    // El motivo real (nombre bloqueado por la blocklist del servidor,
+                    // sin red…) viaja tipado en la excepción del repositorio.
                     audio.hapticFeedback(HapticFeedback.HEAVY)
-                    setState {
-                        copy(isSavingName = false, nameError = "No pudimos guardar el nombre. Inténtalo de nuevo.")
-                    }
-                }
-        }
-    }
-
-    /**
-     * Comprobación de disponibilidad **con debounce**: cada pulsación cancela la
-     * consulta anterior y reprograma. Sin esto, escribir "Kortex" dispararía seis
-     * RPC y las respuestas podrían llegar desordenadas, dejando el aviso de la
-     * penúltima letra sobre el nombre completo.
-     */
-    private fun onNicknameChanged(value: String) {
-        nicknameCheckJob?.cancel()
-        setState {
-            copy(
-                nickname = value,
-                nicknameRejection = null,
-                nicknameAvailable = false,
-                isCheckingNickname = value.isNotBlank(),
-            )
-        }
-        if (value.isBlank()) {
-            setState { copy(isCheckingNickname = false) }
-            return
-        }
-        nicknameCheckJob = viewModelScope.launch {
-            delay(NICKNAME_CHECK_DEBOUNCE_MS)
-            authRepository.checkNicknameAvailable(value.trim())
-                .onSuccess { outcome ->
-                    setState {
-                        copy(
-                            isCheckingNickname = false,
-                            nicknameAvailable = outcome is NicknameOutcome.Ok,
-                            nicknameRejection = (outcome as? NicknameOutcome.Rejected)?.reason,
-                        )
-                    }
-                }
-                .onFailure {
-                    // Sin red no se puede afirmar que esté libre. Se deja el guardado
-                    // deshabilitado en vez de dejar pasar algo que el servidor
-                    // rechazaría después con peor experiencia.
-                    setState {
-                        copy(isCheckingNickname = false, nicknameAvailable = false, nicknameRejection = null)
-                    }
-                }
-        }
-    }
-
-    /** Descarta cambios sin guardar y vuelve al nickname que hay en la sesión. */
-    private fun cancelEditingNickname() {
-        nicknameCheckJob?.cancel()
-        val saved = (authRepository.sessionState.value as? AuthState.Authenticated)?.nickname.orEmpty()
-        setState {
-            copy(
-                isEditingNickname = false,
-                nickname = saved,
-                nicknameRejection = null,
-                nicknameAvailable = false,
-                isCheckingNickname = false,
-            )
-        }
-    }
-
-    private fun saveNickname() {
-        val candidate = currentState.nickname.trim()
-        if (candidate.isEmpty()) {
-            setState { copy(nicknameRejection = NicknameRejection.EMPTY) }
-            return
-        }
-        nicknameCheckJob?.cancel()
-        audio.playSound(SoundEffect.TAP)
-        setState { copy(isSavingNickname = true, nicknameRejection = null, isCheckingNickname = false) }
-        viewModelScope.launch {
-            authRepository.claimNickname(candidate)
-                .onSuccess { outcome ->
-                    when (outcome) {
-                        is NicknameOutcome.Ok -> {
-                            audio.playSound(SoundEffect.SUCCESS)
-                            audio.hapticFeedback(HapticFeedback.LIGHT)
-                            setState {
-                                copy(
-                                    nickname = outcome.nickname,
-                                    isEditingNickname = false,
-                                    isSavingNickname = false,
-                                    nicknameAvailable = false,
-                                )
-                            }
-                        }
-                        // Rechazo esperado (cogido, prohibido, cooldown): no es un
-                        // error de la app, así que se queda en edición con el motivo
-                        // a la vista en vez de cerrar la tarjeta.
-                        is NicknameOutcome.Rejected -> {
-                            audio.hapticFeedback(HapticFeedback.HEAVY)
-                            setState {
-                                copy(
-                                    isSavingNickname = false,
-                                    nicknameAvailable = false,
-                                    nicknameRejection = outcome.reason,
-                                    nicknameRetryAfter = outcome.retryAfter,
-                                )
-                            }
-                        }
-                    }
-                }
-                .onFailure {
-                    audio.hapticFeedback(HapticFeedback.HEAVY)
-                    setState {
-                        copy(isSavingNickname = false, nicknameRejection = NicknameRejection.UNKNOWN)
-                    }
+                    val reason = (cause as? DisplayNameRejectedException)?.reason
+                        ?: DisplayNameRejection.UNKNOWN
+                    setState { copy(isSavingName = false, nameError = reason) }
                 }
         }
     }
@@ -311,9 +173,3 @@ class AccountViewModel(
         }
     }
 }
-
-/**
- * Espera antes de consultar la disponibilidad del nickname. 400 ms es el punto en el
- * que la comprobación se siente inmediata pero ya no se dispara a cada tecla.
- */
-private const val NICKNAME_CHECK_DEBOUNCE_MS = 400L

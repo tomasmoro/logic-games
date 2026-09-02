@@ -52,6 +52,7 @@ import com.kortexgames.app.ui.onboarding.LocalFirstRunFlow
 import kortexgames.shared.generated.resources.Res
 import kortexgames.shared.generated.resources.firstrun_age_notice
 import kortexgames.shared.generated.resources.firstrun_progress
+import kortexgames.shared.generated.resources.gameintro_level_upcoming
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -70,11 +71,17 @@ import org.jetbrains.compose.resources.stringResource
  * @property bestTimes mejor tiempo por nivel (nivel → ms, menor = mejor); vacío en
  *   juegos que no lo miden. Se muestra bajo cada nivel superado como incentivo de
  *   rejugar para mejorar la marca.
- * @property maxLevel último nivel que existe, o `null` si el juego tiene niveles
- *   ilimitados (el caso habitual: se generan sobre la marcha). Cuando el juego tiene
- *   un catálogo FINITO —p. ej. Neon Hyper-Cube, cuya rampa se detiene donde el nivel
- *   deja de ser distinguible— el carril debe cortarse ahí: mostrar niveles bloqueados
- *   que nunca llegarán prometería contenido inexistente.
+ * @property maxLevel hasta qué número llega VISUALMENTE el carril, o `null` si el juego
+ *   tiene niveles ilimitados (el caso habitual: se generan sobre la marcha). No tiene
+ *   por qué coincidir con [playableLevels]: en un catálogo FINITO se pone unas casillas
+ *   por encima del último nivel jugable para dibujarlas con candado como adelanto de
+ *   "habrá más" —así el carril no se corta en seco al terminarlo (petición del
+ *   usuario)—. Si es igual a [playableLevels] (p. ej. Neon Hyper-Cube), el carril
+ *   simplemente se detiene en el último nivel real.
+ * @property playableLevels último nivel que el jugador puede EMPEZAR de verdad (hay
+ *   contenido), o `null` si son ilimitados. Las casillas entre [playableLevels] y
+ *   [maxLevel] se pintan bloqueadas con candado y etiqueta "Pronto": son un teaser,
+ *   no se pueden tocar. `null` ⇒ cualquier casilla hasta la frontera es jugable.
  */
 data class LevelStripState(
     val maxUnlocked: Int,
@@ -83,7 +90,16 @@ data class LevelStripState(
     val lockedPreview: Int = 6,
     val bestTimes: Map<Int, Long> = emptyMap(),
     val maxLevel: Int? = null,
+    val playableLevels: Int? = null,
 )
+
+/**
+ * Cuántas casillas "Próximamente" (bloqueadas, con candado) añade el carril por
+ * encima del último nivel jugable en un juego de catálogo finito. Son un adelanto
+ * de que llegará más contenido: sin ellas el carril se cortaría justo en el último
+ * nivel y parecería que el juego "se acabó" (petición del usuario).
+ */
+const val UPCOMING_LEVEL_TEASERS: Int = 2
 
 /**
  * **Partida pendiente** detectada al abrir la antesala: el jugador salió a mitad de
@@ -148,6 +164,13 @@ data class ResumeState(
  *        solaparse con el botón — un padding fijo sí se descuadra en ese caso, porque el
  *        CTA se desplaza hacia arriba al crecer el contenido que hay debajo suyo.
  * @param background capa ambiental opcional detrás del contenido (fondo temático del juego).
+ * @param completionNotice aviso destacado que se pinta SIEMPRE VISIBLE encima del CTA
+ *        cuando el juego tiene un catálogo de niveles FINITO y el jugador ya los superó
+ *        todos: no hay "siguiente nivel" real (ver
+ *        `CrucigramaNeonGenerator.levelCount` / `NeonLexiconGenerator.levelCount`), el
+ *        botón "Siguiente nivel" del cartel de fin de partida trae aquí y este texto
+ *        explica por qué no se puede avanzar más (solo rejugar). **null** = quedan
+ *        niveles por superar o el juego tiene niveles ilimitados.
  */
 @Composable
 fun GameIntroScreen(
@@ -166,6 +189,7 @@ fun GameIntroScreen(
     resume: ResumeState? = null,
     configContent: (@Composable () -> Unit)? = null,
     background: (@Composable () -> Unit)? = null,
+    completionNotice: String? = null,
 ) {
     // Estado local de la hoja de ayuda: cuando el juego inyecta [help], el botón de la
     // cabecera abre la pantalla de ayuda genérica sin que la pantalla llamante tenga que
@@ -262,6 +286,15 @@ fun GameIntroScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                // Catálogo de niveles finito ya completado: va DENTRO del bloque de
+                // acciones (siempre visible sobre el CTA) para que quien llega aquí
+                // desde "Siguiente nivel" del cartel de fin de partida entienda al
+                // instante por qué no puede avanzar más.
+                if (completionNotice != null) {
+                    CompletionNotice(text = completionNotice, accent = accent)
+                    Spacer(Modifier.height(16.dp))
+                }
+
                 if (configContent != null) {
                     configContent()
                     Spacer(Modifier.height(16.dp))
@@ -422,6 +455,37 @@ private fun FirstRunIntroFooter(
     }
 }
 
+/**
+ * Cartel informativo de "catálogo de niveles completado" (ver
+ * [GameIntroScreen.completionNotice]). Estética neón de acento con trofeo y alto
+ * contraste para que se lea sin buscarlo ("que se vea claro", petición del usuario):
+ * no es un error, es un logro con un límite temporal de contenido nuevo.
+ */
+@Composable
+private fun CompletionNotice(text: String, accent: Color) {
+    val shape = RoundedCornerShape(20.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            // Mezcla opaca acento↔superficie (no alfa): el mismo criterio que el
+            // héroe, para que ninguna capa de fondo asome a través del cartel.
+            .background(lerp(LogicColors.SurfaceDark, accent, 0.16f))
+            .border(BorderStroke(1.5.dp, accent.copy(alpha = 0.6f)), shape)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        NeonIcon(icon = KortexIcons.Trophy, tint = accent, size = 28.dp)
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = LogicColors.OnDark,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
 /** Alcance del halo del héroe; el padding del contenedor reserva justo este espacio. */
 private val HERO_GLOW_SPREAD = 16.dp
 
@@ -481,6 +545,8 @@ private fun GameIconHero(icon: ImageVector?, motif: GameMotif?, accent: Color) {
  *  - **elegido / nivel actual** (`== selected`): tile a pleno brillo (0.8) con ▶; lanza "Comenzar".
  *  - **sin completar** (`> maxUnlocked`): tile apenas insinuado (0.1) —frontera con su número
  *    en acento, bloqueados con candado y sin interacción—.
+ *  - **próximamente** (`> playableLevels`, catálogo finito): tile con candado y etiqueta
+ *    "Pronto" en vez de número; es un adelanto de contenido futuro, nunca es jugable.
  *
  * Reutilizar `drawNeonTile` en vez de un borde propio mantiene los niveles dentro del mismo
  * lenguaje de "tubo de neón" que las teclas/celdas de los juegos (fuente única, §9.7).
@@ -490,7 +556,8 @@ private fun GameIconHero(icon: ImageVector?, motif: GameMotif?, accent: Color) {
 @Composable
 private fun LevelStrip(state: LevelStripState, accent: Color) {
     val frontier = state.maxUnlocked + 1
-    // En juegos de catálogo finito el carril se corta en su último nivel (ver `maxLevel`).
+    // `maxLevel` corta el carril: en catálogo finito llega unas casillas MÁS ALLÁ del
+    // último nivel jugable ([playableLevels]) para dibujar el adelanto de "habrá más".
     val total = (frontier + state.lockedPreview).coerceAtMost(state.maxLevel ?: Int.MAX_VALUE)
     val levels = (1..total).toList()
     val listState = rememberLazyListState()
@@ -521,6 +588,7 @@ private fun LevelStrip(state: LevelStripState, accent: Color) {
                     selected = level == state.selected,
                     accent = accent,
                     bestTimeMs = state.bestTimes[level],
+                    playableLevels = state.playableLevels,
                     onClick = { state.onSelect(level) },
                 )
             }
@@ -533,6 +601,8 @@ private fun LevelStrip(state: LevelStripState, accent: Color) {
  *
  * @param bestTimeMs mejor tiempo del jugador en este nivel (ms), o null si no aplica /
  *   aún no lo jugó. Cuando existe, se muestra bajo el número como récord de tiempo.
+ * @param playableLevels último nivel con contenido real, o null si son ilimitados.
+ *   Por encima, la casilla es "Próximamente": candado + etiqueta, nunca jugable.
  */
 @Composable
 private fun LevelDot(
@@ -541,12 +611,17 @@ private fun LevelDot(
     selected: Boolean,
     accent: Color,
     bestTimeMs: Long?,
+    playableLevels: Int?,
     onClick: () -> Unit,
 ) {
     val frontier = maxUnlocked + 1
     val completed = level <= maxUnlocked
-    val playable = level <= frontier
-    val locked = level > frontier
+    // Adelanto de contenido futuro (catálogo finito): dentro del carril pero por
+    // encima del último nivel real. Se ve bloqueado y NO se puede tocar aunque
+    // caiga justo en la frontera (no hay nivel que arrancar ahí).
+    val comingSoon = playableLevels != null && level > playableLevels
+    val playable = level <= frontier && !comingSoon
+    val locked = !completed && !playable
 
     // Grado de encendido del tile según su estado (petición del usuario): el nivel actual
     // a pleno brillo, los superados a media luz y los que faltan apenas insinuados. Así el
@@ -597,7 +672,9 @@ private fun LevelDot(
         }
         Spacer(Modifier.height(6.dp))
         Text(
-            "$level",
+            // Las casillas "Próximamente" no tienen número real: se rotulan con el
+            // adelanto ("Pronto") para que no se confundan con un nivel jugable.
+            if (comingSoon) stringResource(Res.string.gameintro_level_upcoming) else "$level",
             style = MaterialTheme.typography.labelLarge,
             color = when {
                 selected -> LogicColors.OnDark

@@ -70,8 +70,10 @@ import com.kortexgames.app.ui.components.LegalAcceptanceCheckbox
 import com.kortexgames.app.ui.components.LegalPassiveNotice
 import com.kortexgames.app.ui.components.NeonIcon
 import com.kortexgames.app.ui.components.bounceClick
+import com.kortexgames.app.ui.components.playerNameErrorKey
 import com.kortexgames.app.ui.components.pulse
 import com.kortexgames.app.ui.components.softGlow
+import org.jetbrains.compose.resources.stringResource
 import kotlinx.coroutines.flow.collectLatest
 
 /**
@@ -88,6 +90,8 @@ import kotlinx.coroutines.flow.collectLatest
  *
  * @param isOnboarding true si es la puerta de primera apertura.
  * @param onFinished se llama cuando el usuario resuelve la puerta (login o invitado).
+ * @param onNeedsPlayerName se llama tras un alta con Google sin nombre: el host debe
+ *   llevar a la pantalla de elegir nombre antes de continuar (ver migración 0048).
  * @param onBack se llama al pulsar la flecha de volver (solo en uso a demanda).
  */
 @Composable
@@ -95,6 +99,7 @@ fun AuthScreen(
     graph: AppGraph,
     isOnboarding: Boolean,
     onFinished: () -> Unit,
+    onNeedsPlayerName: () -> Unit,
     onBack: () -> Unit,
 ) {
     val vm: AuthViewModel = viewModel {
@@ -115,6 +120,7 @@ fun AuthScreen(
                 // tarde, tras la primera partida, con una antesala propia — ver
                 // `NotificationPrimingPolicy` para el porqué.
                 AuthEffect.Finished -> onFinished()
+                AuthEffect.NeedsPlayerName -> onNeedsPlayerName()
             }
         }
     }
@@ -273,7 +279,7 @@ private fun AuthForm(
                 keyboardType = KeyboardType.Text,
                 imeAction = ImeAction.Next,
                 enabled = !state.isSubmitting,
-                errorText = state.usernameError,
+                errorText = state.usernameRejection?.let { stringResource(playerNameErrorKey(it)) },
             )
         }
 

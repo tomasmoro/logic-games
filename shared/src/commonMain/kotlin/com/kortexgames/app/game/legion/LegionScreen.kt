@@ -586,6 +586,12 @@ fun LegionScreen(graph: AppGraph, onExit: () -> Unit) {
             )
         }
 
+        // El cartel "¿Salir del juego?" del atrás pausa la partida (Neon Legion es de acción:
+        // la amenaza no puede seguir avanzando mientras el jugador decide). Mientras ese cartel
+        // está en pantalla el motor queda en PAUSED, así que hay que silenciar el menú de pausa
+        // para que no aparezca por detrás (ver GameExitGuard.onPause / suppressMenu).
+        var exitPromptVisible by remember { mutableStateOf(false) }
+
         // Botón de pausa + menú (Reanudar / audio / ayuda / Salir), común a todos los juegos.
         GamePauseControls(
             status = state.status,
@@ -597,16 +603,20 @@ fun LegionScreen(graph: AppGraph, onExit: () -> Unit) {
             gameTitle = "Neon Legion",
             help = GameHelpContent.legion,
             accent = CategoryPalette.MentalSpeed,
+            suppressMenu = exitPromptVisible,
         )
 
-        // Atrás del sistema: reanuda si estaba en pausa, o pregunta antes de salir mientras se
-        // corre (la ronda alcanzada y el puntaje se guardan al confirmar, ver exitWithSave).
+        // Atrás del sistema: reanuda si estaba en pausa, o pausa y pregunta antes de salir
+        // mientras se corre (la ronda alcanzada y el puntaje se guardan al confirmar, ver
+        // exitWithSave). Si elige "SEGUIR JUGANDO", el propio guard reanuda la partida.
         GameExitGuard(
             status = state.status,
             onResume = { vm.onIntent(LegionIntent.Resume) },
             onConfirmExit = exitWithSave,
             progress = GameExitProgress.ENDS_RUN,
             accent = CategoryPalette.MentalSpeed,
+            onPause = { vm.onIntent(LegionIntent.Pause) },
+            onExitPromptVisibilityChange = { exitPromptVisible = it },
         )
     }
 }

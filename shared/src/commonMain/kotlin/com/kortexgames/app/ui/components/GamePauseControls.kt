@@ -100,6 +100,10 @@ import org.jetbrains.compose.resources.stringResource
  *        muestra plegable en el menú. Se usa solo si [help] es null; si ambos son null, no
  *        hay ayuda. Preferir [help] para el nuevo diseño estructurado.
  * @param accent color de acento de la categoría (halo del botón, secciones del menú).
+ * @param suppressMenu oculta el menú de pausa aunque [status] sea [GameStatus.PAUSED].
+ *        Lo usan los juegos en tiempo real que pausan el motor al abrir el cartel de
+ *        [GameExitGuard]: sin esto, esa pausa "de cortesía" haría aparecer este menú
+ *        por detrás del cartel de confirmación. `false` por defecto.
  * @param exitKeepsProgress si el juego guarda la partida en curso al salir (ver
  *        [com.kortexgames.app.game.ResumableGameEngine] / [GameExitGuard]): cuando
  *        es `true` se aclara bajo "SALIR" que no se pierde el progreso. `false` por
@@ -126,6 +130,7 @@ fun GamePauseControls(
     help: GameHelp? = null,
     helpText: String? = null,
     accent: Color = LogicColors.NeonCyan,
+    suppressMenu: Boolean = false,
     exitKeepsProgress: Boolean = false,
     onAdvanceLevel: (() -> Unit)? = null,
 ) {
@@ -151,7 +156,7 @@ fun GamePauseControls(
         }
 
         PauseMenu(
-            visible = status == GameStatus.PAUSED,
+            visible = status == GameStatus.PAUSED && !suppressMenu,
             settings = settings,
             audio = audio,
             gameTitle = gameTitle,

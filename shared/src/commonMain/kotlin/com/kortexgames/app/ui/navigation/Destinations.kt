@@ -42,8 +42,15 @@ object Routes {
      */
     const val FIRST_RUN_WELCOME = "onboarding/welcome"
 
-    /** Ajustes de cuenta (nombre de usuario, borrar cuenta…), abierta desde Perfil. */
+    /** Ajustes de cuenta (nombre de jugador, borrar cuenta…), abierta desde Perfil. */
     const val SETTINGS = "settings"
+
+    /**
+     * Elegir el nombre de jugador. Se muestra una sola vez, justo tras un alta con
+     * Google (el perfil nace sin nombre — migración 0048); el alta por email ya lo
+     * pide en su formulario. Al terminar, siempre a Home con la pila limpia.
+     */
+    const val PLAYER_NAME = "onboarding/player-name"
 
     const val MEMORY = "game/memory"
     const val WATER_SORT = "game/watersort"

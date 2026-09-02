@@ -86,6 +86,14 @@ data class NeonLexiconUiState(
     /** true cuando no queda ninguna palabra pendiente ⇒ nivel superado. */
     val allWordsFound: Boolean
         get() = words.isNotEmpty() && words.all { it.found }
+
+    /**
+     * true cuando el récord ([maxUnlocked]) ya alcanzó el último nivel del catálogo
+     * finito ([NeonLexiconGenerator.levelCount]): no hay "siguiente nivel" real y la
+     * antesala muestra el cartel de catálogo completado en vez de reciclar niveles.
+     */
+    val allLevelsCompleted: Boolean
+        get() = maxUnlocked >= NeonLexiconGenerator.levelCount
 }
 
 /**

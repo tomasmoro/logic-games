@@ -506,6 +506,16 @@ object NeonLexiconGenerator {
     )
 
     /**
+     * Cantidad de niveles DISTINTOS del catálogo. [generate] cicla sobre ellos
+     * ([indexFor]) para nunca quedarse sin puzzle, pero la UI usa este tope para
+     * **frenar el avance**: superado el nivel [levelCount] no existe un "siguiente"
+     * real (repetiría el nivel 1), así que el cartel de fin de partida lleva a la
+     * antesala y esta muestra el aviso de "completaste todos los niveles" (ver
+     * [NeonLexiconViewModel.advanceLevelOrShowCatalogCleared] y `GameIntroScreen`).
+     */
+    val levelCount: Int get() = levelSpecs.size
+
+    /**
      * Genera el puzzle del [level] pedido (1-based, cíclico sobre [levelSpecs]).
      *
      * @param random inyectable para tests reproducibles (semilla fija ⇒ mismo tablero).

@@ -68,6 +68,7 @@ import com.kortexgames.app.ui.navigation.TopLevelTab
 import com.kortexgames.app.ui.onboarding.FirstRunFlow
 import com.kortexgames.app.ui.onboarding.FirstRunWelcomeScreen
 import com.kortexgames.app.ui.onboarding.LocalFirstRunFlow
+import com.kortexgames.app.ui.onboarding.PlayerNameScreen
 import com.kortexgames.app.ui.profile.ProfileScreen
 import com.kortexgames.app.ui.settings.SettingsScreen
 import com.kortexgames.app.ui.splash.SplashScreen
@@ -355,6 +356,7 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean, introGamesPlay
                                 popUpTo(Routes.AUTH_ONBOARDING) { inclusive = true }
                             }
                         },
+                        onNeedsPlayerName = { navController.navigate(Routes.PLAYER_NAME) },
                         onBack = { navController.popBackStack() },
                     )
                 }
@@ -364,7 +366,21 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean, introGamesPlay
                         graph = graph,
                         isOnboarding = false,
                         onFinished = { navController.popBackStack() },
+                        onNeedsPlayerName = { navController.navigate(Routes.PLAYER_NAME) },
                         onBack = { navController.popBackStack() },
+                    )
+                }
+                // Elegir nombre tras un alta con Google sin nombre (migración 0048).
+                // Al guardar, siempre a Home con la pila limpia: da igual si se llegó
+                // desde la puerta de onboarding o desde el login a demanda.
+                composable(Routes.PLAYER_NAME) {
+                    PlayerNameScreen(
+                        graph = graph,
+                        onDone = {
+                            navController.navigate(Routes.HOME) {
+                                popUpTo(navController.graph.findStartDestination().id) { inclusive = true }
+                            }
+                        },
                     )
                 }
                 composable(Routes.HOME) {

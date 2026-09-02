@@ -12,6 +12,8 @@ import com.kortexgames.app.data.remote.auth.GoogleSignInUnavailableException
 import com.kortexgames.app.data.settings.LegalConsentStore
 import com.kortexgames.app.data.settings.OnboardingGate
 import com.kortexgames.app.domain.repository.AuthRepository
+import com.kortexgames.app.domain.model.DisplayNameRejection
+import com.kortexgames.app.domain.model.DisplayNameRules
 import kotlinx.coroutines.launch
 
 /** Modo del formulario: entrar con una cuenta existente o crear una nueva. */
@@ -57,28 +59,32 @@ data class AuthUiState(
         get() = mode == AuthMode.SignUp
 
     /**
-     * Nombre válido: entre [MIN_USERNAME_LENGTH] y [MAX_USERNAME_LENGTH] tras
-     * recortar espacios. No se exige unicidad porque `public.users.display_name`
-     * no la impone: es un nombre para mostrar, no un identificador — el id real
-     * es el UUID de la cuenta.
+     * Nombre válido según [DisplayNameRules] — longitud Y forma, las mismas reglas
+     * que aplica el servidor. La forma importa aquí y no solo la longitud: desde la
+     * migración 0049 el nombre del alta pasa por `display_name_rejection`, y un
+     * nombre con caracteres no permitidos se guardaría como NULL, dejando al recién
+     * registrado sin nombre y sin explicación.
+     *
+     * No se exige unicidad porque `public.users.display_name` no la impone: es un
+     * nombre para mostrar, no un identificador — el id real es el UUID de la cuenta.
      */
     val isUsernameValid: Boolean
-        get() = username.trim().length in MIN_USERNAME_LENGTH..MAX_USERNAME_LENGTH
+        get() = DisplayNameRules.validate(username) == null
 
     /**
-     * Error de nombre a mostrar bajo el campo. Vacío no se regaña hasta que se
-     * intentó enviar (ahí sí, porque el campo es obligatorio); una vez con texto,
-     * la longitud se valida en vivo.
+     * Motivo de rechazo del nombre, a mostrar bajo el campo. El campo vacío no se
+     * regaña hasta que se intentó enviar (ahí sí, porque es obligatorio); una vez
+     * con texto, se valida en vivo.
+     *
+     * Devuelve el motivo y no el mensaje: el texto sale de `strings.xml` vía
+     * [com.kortexgames.app.ui.components.playerNameErrorText], compartido con la
+     * pantalla de onboarding y con Ajustes para que el usuario lea siempre lo mismo.
      */
-    val usernameError: String?
+    val usernameRejection: DisplayNameRejection?
         get() = when {
             !requiresUsername -> null
-            username.isEmpty() -> if (submitAttempted) "Escribe un nombre de jugador." else null
-            username.trim().length < MIN_USERNAME_LENGTH ->
-                "Al menos $MIN_USERNAME_LENGTH caracteres."
-            username.trim().length > MAX_USERNAME_LENGTH ->
-                "Máximo $MAX_USERNAME_LENGTH caracteres."
-            else -> null
+            username.isEmpty() && !submitAttempted -> null
+            else -> DisplayNameRules.validate(username)
         }
 
     /** Error de email a mostrar bajo el campo, solo tras un intento de envío. */
@@ -113,11 +119,12 @@ data class AuthUiState(
         get() = !isSubmitting && !legalBlocksSubmit
 
     companion object {
-        /** Mínimo del nombre de jugador: evita nombres de una letra en rankings. */
-        const val MIN_USERNAME_LENGTH = 3
-
-        /** Máximo: cabe en una tarjeta de ranking sin truncarse. */
-        const val MAX_USERNAME_LENGTH = 20
+        /**
+         * Alias de [DisplayNameRules.MAX_LENGTH] para el recorte al escribir. Las
+         * reglas viven en el dominio, no aquí: tenerlas duplicadas fue justo lo que
+         * hizo que cada pantalla validara distinto.
+         */
+        const val MAX_USERNAME_LENGTH = DisplayNameRules.MAX_LENGTH
     }
 }
 
@@ -148,6 +155,13 @@ sealed interface AuthEffect : UiEffect {
      * seguir como invitado. En ambos casos la puerta ya quedó marcada como resuelta.
      */
     data object Finished : AuthEffect
+
+    /**
+     * Alta con Google de una cuenta nueva: el perfil nace sin `display_name`
+     * (migración 0048), así que el host debe llevar a la pantalla de elegir nombre
+     * antes de entrar. La puerta de onboarding ya quedó marcada como resuelta.
+     */
+    data object NeedsPlayerName : AuthEffect
 }
 
 /**
@@ -258,7 +272,13 @@ class AuthViewModel(
         setState { copy(isSubmitting = true, error = null) }
         viewModelScope.launch {
             authRepository.signInWithGoogle()
-                .onSuccess { finishSuccessfully() }
+                .onSuccess {
+                    // Un alta nueva con Google deja el perfil sin nombre (migración
+                    // 0048); el que ya lo tenía —o vuelve a entrar— no pasa por la
+                    // pantalla de nombre.
+                    val needsName = authRepository.currentDisplayName().isNullOrBlank()
+                    completeAuth(needsPlayerName = needsName)
+                }
                 .onFailure {
                     // `googleErrorMessage` oculta a propósito el detalle del SDK al usuario
                     // (mensaje genérico); este log es la única forma de ver la causa real
@@ -280,17 +300,34 @@ class AuthViewModel(
     }
 
     /**
-     * Éxito de auth: registra el consentimiento si lo hubo, marca la puerta como
-     * resuelta y cierra la pantalla.
+     * Éxito de auth por email: registra el consentimiento si lo hubo, marca la
+     * puerta como resuelta y cierra la pantalla.
+     *
+     * Comprueba el nombre igual que el camino de Google en vez de darlo por hecho.
+     * El formulario de alta exige uno, pero el servidor tiene la última palabra:
+     * `handle_new_user` pasa el nombre por `display_name_rejection` (migración
+     * 0049) y, si no lo supera —lo más probable, un nombre de la blocklist, que el
+     * cliente no puede comprobar—, crea el perfil SIN nombre. Sin esta
+     * comprobación ese usuario acabaría como "Jugador" en el ranking sin que nadie
+     * le hubiera dicho nada. Cubre además el login de una cuenta antigua que
+     * todavía no tenga nombre.
      */
-    private suspend fun finishSuccessfully() {
+    private suspend fun finishSuccessfully() =
+        completeAuth(needsPlayerName = authRepository.currentDisplayName().isNullOrBlank())
+
+    /**
+     * Cierre común de un login con éxito. [needsPlayerName] `true` —el perfil no
+     * tiene nombre: alta nueva con Google, o alta por email cuyo nombre rechazó el
+     * servidor— enruta a la pantalla de elegir nombre en vez de a Home.
+     */
+    private suspend fun completeAuth(needsPlayerName: Boolean) {
         audio.playSound(SoundEffect.SUCCESS)
         audio.hapticFeedback(HapticFeedback.MEDIUM)
         if (currentState.acceptedLegal) {
             legalConsent.accept()
         }
         onboardingGate.markDecided()
-        sendEffect(AuthEffect.Finished)
+        sendEffect(if (needsPlayerName) AuthEffect.NeedsPlayerName else AuthEffect.Finished)
     }
 
     private fun fail(message: String) {

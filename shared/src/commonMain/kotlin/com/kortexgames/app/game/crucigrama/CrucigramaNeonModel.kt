@@ -546,6 +546,16 @@ object CrucigramaNeonGenerator {
 
     private val levels: List<CrucigramaNeonLevelSpec> by lazy { levelDefs.map { buildSpec(it) } }
 
+    /**
+     * Cantidad de niveles DISTINTOS del catálogo. [generate] cicla sobre ellos
+     * ([indexFor]) para nunca quedarse sin puzzle, pero la UI usa este tope para
+     * **frenar el avance**: superado el nivel [levelCount] no existe un "siguiente"
+     * real (repetiría el nivel 1), así que el cartel de fin de partida lleva a la
+     * antesala y esta muestra el aviso de "completaste todos los niveles" (ver
+     * [CrucigramaNeonViewModel.advanceLevelOrShowCatalogCleared] y `GameIntroScreen`).
+     */
+    val levelCount: Int get() = levelDefs.size
+
     /** Genera el puzzle del nivel solicitado (1-based, cíclico). */
     fun generate(level: Int, random: Random = Random.Default): CrucigramaNeonPuzzle {
         val spec = levels[indexFor(level)]

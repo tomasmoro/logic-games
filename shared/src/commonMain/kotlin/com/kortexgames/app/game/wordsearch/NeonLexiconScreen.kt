@@ -60,10 +60,14 @@ import com.kortexgames.app.ui.components.GameOverOverlay
 import com.kortexgames.app.ui.components.GamePauseControls
 import com.kortexgames.app.ui.components.LevelStripState
 import com.kortexgames.app.ui.components.ResumeState
+import com.kortexgames.app.ui.components.UPCOMING_LEVEL_TEASERS
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.gameintro_levels_cleared_notice
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.sin
 import kotlin.random.Random
+import org.jetbrains.compose.resources.stringResource
 
 /** Lado máximo de una celda; en rejillas anchas manda el ancho disponible. */
 private val MaxCell = 44.dp
@@ -111,7 +115,11 @@ fun NeonLexiconScreen(graph: AppGraph, onExit: () -> Unit) {
 
     // Antesala: selección de nivel.
     if (state.phase == LeveledGamePhase.LEVEL_SELECT) {
-        var selectedLevel by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
+        // Catálogo finito: la selección nunca apunta más allá del último nivel (si
+        // ya se superaron todos, "Empezar" rejuega el último — no hay "siguiente").
+        var selectedLevel by remember(state.maxUnlocked) {
+            mutableStateOf((state.maxUnlocked + 1).coerceAtMost(NeonLexiconGenerator.levelCount))
+        }
         GameIntroScreen(
             help = GameHelpContent.neonLexicon,
             title = "Sopa de Letras Neón",
@@ -122,7 +130,16 @@ fun NeonLexiconScreen(graph: AppGraph, onExit: () -> Unit) {
                 maxUnlocked = state.maxUnlocked,
                 selected = selectedLevel,
                 onSelect = { selectedLevel = it },
+                playableLevels = NeonLexiconGenerator.levelCount,
+                // Un par de casillas más, con candado y "Pronto", para adelantar que
+                // habrá más niveles: así el carril no se corta en seco en el último.
+                maxLevel = NeonLexiconGenerator.levelCount + UPCOMING_LEVEL_TEASERS,
             ),
+            completionNotice = if (state.allLevelsCompleted) {
+                stringResource(Res.string.gameintro_levels_cleared_notice)
+            } else {
+                null
+            },
             startLabel = "Empezar",
             onStart = {
                 // Cuenta para la misión diaria en cuanto se juega, no hace falta terminar
@@ -197,6 +214,9 @@ fun NeonLexiconScreen(graph: AppGraph, onExit: () -> Unit) {
                 onExit = onExit,
                 onNextLevel = { vm.onIntent(NeonLexiconIntent.NextLevel) },
                 onChooseLevel = { vm.onIntent(NeonLexiconIntent.ChooseLevel) },
+                // Catálogo finito: si esta era la última, "Siguiente nivel" pasa a
+                // "Ver niveles" y lleva a la antesala con el cartel de completado.
+                hasNextLevel = state.currentLevel < NeonLexiconGenerator.levelCount,
             )
         }
 

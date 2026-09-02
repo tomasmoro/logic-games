@@ -48,7 +48,15 @@ data class CrucigramaNeonUiState(
     val gameOver: GameOverInfo? = null,
     val savedLevel: Int? = null,
     val extrasPromptDismissed: Boolean = false,
-) : UiState
+) : UiState {
+    /**
+     * true cuando el récord ([maxUnlocked]) ya alcanzó el último nivel del catálogo
+     * finito ([CrucigramaNeonGenerator.levelCount]): no hay "siguiente nivel" real y
+     * la antesala muestra el cartel de catálogo completado en vez de reciclar niveles.
+     */
+    val allLevelsCompleted: Boolean
+        get() = maxUnlocked >= CrucigramaNeonGenerator.levelCount
+}
 
 /** Intents del Crucigrama Neón. */
 sealed interface CrucigramaNeonIntent : UiIntent {
@@ -154,7 +162,7 @@ class CrucigramaNeonViewModel(
                 // la partida. Solo aplica a juegos LEVELED como este; los ENDLESS no
                 // avanzan de nivel. onAdBreakpoint es no-op si no hay anuncio pendiente.
                 adManager.onAdBreakpoint()
-                playLevel(currentState.currentLevel + 1)
+                advanceLevelOrShowCatalogCleared()
             }
             CrucigramaNeonIntent.ChooseLevel -> setState {
                 copy(phase = LeveledGamePhase.LEVEL_SELECT, gameOver = null, revealedHint = null)
@@ -172,6 +180,24 @@ class CrucigramaNeonViewModel(
                 pendingAutoAdvance = true
                 engine.finish()
             }
+        }
+    }
+
+    /**
+     * Avanza al siguiente nivel, salvo que el actual sea el ÚLTIMO del catálogo
+     * finito ([CrucigramaNeonGenerator.levelCount]): en ese caso NO se recicla desde
+     * el nivel 1 (repetiría contenido ya jugado). Se cierra la partida volviendo a
+     * la antesala ([LeveledGamePhase.LEVEL_SELECT]), donde un cartel avisa de que no
+     * quedan niveles nuevos ("que se vea claro", petición del usuario). Es el destino
+     * del botón "Siguiente nivel" del cartel de fin de partida cuando ya no hay más.
+     */
+    private fun advanceLevelOrShowCatalogCleared() {
+        if (currentState.currentLevel >= CrucigramaNeonGenerator.levelCount) {
+            setState {
+                copy(phase = LeveledGamePhase.LEVEL_SELECT, gameOver = null, revealedHint = null)
+            }
+        } else {
+            playLevel(currentState.currentLevel + 1)
         }
     }
 
@@ -262,7 +288,7 @@ class CrucigramaNeonViewModel(
                 pendingAutoAdvance = false
                 progress.saveResult(result).first()
                 adManager.onAdBreakpoint()
-                playLevel(currentState.currentLevel + 1)
+                advanceLevelOrShowCatalogCleared()
             } else {
                 progress.saveResult(result).collect { outcome ->
                     setState { copy(gameOver = outcome.toGameOverInfo(result)) }

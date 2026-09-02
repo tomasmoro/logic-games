@@ -2,8 +2,8 @@ package com.kortexgames.app.data.repository
 
 import com.kortexgames.app.data.remote.auth.GoogleAuthClient
 import com.kortexgames.app.domain.model.AuthState
-import com.kortexgames.app.domain.model.NicknameOutcome
-import com.kortexgames.app.domain.model.NicknameRejection
+import com.kortexgames.app.domain.model.DisplayNameRejectedException
+import com.kortexgames.app.domain.model.DisplayNameRejection
 import com.kortexgames.app.domain.model.PlanType
 import com.kortexgames.app.domain.repository.AuthRepository
 import io.github.jan.supabase.SupabaseClient
@@ -15,6 +15,7 @@ import io.github.jan.supabase.auth.status.SessionStatus
 import io.github.jan.supabase.functions.functions
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
+import io.github.jan.supabase.postgrest.rpc
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,10 +25,7 @@ import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
@@ -123,70 +121,61 @@ class AuthRepositoryImpl(
     }
 
     override suspend fun updateDisplayName(name: String): Result<Unit> {
-        val userId = (sessionState.value as? AuthState.Authenticated)?.userId
-            ?: return Result.failure(IllegalStateException("No hay sesión activa"))
+        // NO se comprueba la sesión aquí a propósito. `sessionState` va por detrás
+        // del SDK: su `map` es suspend y resuelve el plan con una lectura a
+        // `public.users`, así que justo tras un login sigue valiendo `Guest` durante
+        // el viaje de esa consulta — y esta pantalla aparece precisamente en ese
+        // instante. Una guarda local ahí rechazaba el guardado con "sesión caducada"
+        // aunque la sesión fuera perfectamente válida (mismo motivo por el que
+        // `currentDisplayName` lee el `sessionStatus` crudo). Quien decide es la RPC:
+        // resuelve el usuario con `auth.uid()` sobre el token que el SDK ya adjunta,
+        // y devuelve `no_session` si de verdad no hay ninguna.
+        //
+        // Vía RPC y no con un `update` directo a la tabla porque desde la migración
+        // 0049 `authenticated` ya NO tiene UPDATE sobre `public.users`: la RPC es el
+        // único camino de escritura, y es donde viven la blocklist y las reglas de
+        // forma. El PATCH directo que había aquí antes se saltaba ambas.
         return runCatching {
-            client.postgrest.from("users")
-                .update({ set("display_name", name) }) {
-                    filter { eq("id", userId) }
+            client.postgrest.rpc(
+                function = "set_display_name",
+                parameters = SetDisplayNameParams(name = name.trim()),
+            ).decodeAsOrNull<SetDisplayNameResponse>()
+        }.fold(
+            onSuccess = { response ->
+                when {
+                    response == null -> Result.failure(
+                        DisplayNameRejectedException(DisplayNameRejection.UNKNOWN)
+                    )
+                    response.ok -> Result.success(Unit)
+                    else -> {
+                        // El mensaje que ve el usuario es deliberadamente genérico,
+                        // así que este log (prefijo KORTEX, igual que en
+                        // `signInWithGoogle`) es la única forma de ver por logcat qué
+                        // código devolvió realmente la RPC.
+                        println("KORTEX set_display_name rechazó: ${response.reason}")
+                        Result.failure(
+                            DisplayNameRejectedException(DisplayNameRejection.fromCode(response.reason))
+                        )
+                    }
                 }
-        }.map { }
+            },
+            // Fallo de transporte (sin red, 5xx). Se conserva la causa original para
+            // que el log siga siendo útil aunque la UI muestre un mensaje genérico.
+            onFailure = { cause ->
+                Result.failure(DisplayNameRejectedException(DisplayNameRejection.UNKNOWN, cause))
+            },
+        )
     }
 
-    override suspend fun checkNicknameAvailable(nickname: String): Result<NicknameOutcome> =
-        runCatching {
-            val row = client.postgrest.rpc(
-                function = "check_nickname_available",
-                parameters = buildJsonObject { put("p_nickname", nickname) },
-            ).decodeAs<JsonObject>()
-
-            // La RPC responde {available, reason}; `available` manda y `reason` solo
-            // matiza el porqué, así que no hace falta mirar los dos para decidir.
-            if (row["available"]?.jsonPrimitive?.booleanOrNull == true) {
-                NicknameOutcome.Ok(nickname)
-            } else {
-                NicknameOutcome.Rejected(row.rejectionReason())
-            }
-        }
-
-    override suspend fun claimNickname(nickname: String): Result<NicknameOutcome> {
-        if (sessionState.value !is AuthState.Authenticated) {
-            return Result.failure(IllegalStateException("No hay sesión activa"))
-        }
-        return runCatching {
-            val row = client.postgrest.rpc(
-                function = "claim_nickname",
-                parameters = buildJsonObject { put("p_nickname", nickname) },
-            ).decodeAs<JsonObject>()
-
-            if (row["ok"]?.jsonPrimitive?.booleanOrNull == true) {
-                NicknameOutcome.Ok(row["nickname"]?.jsonPrimitive?.content ?: nickname)
-            } else {
-                NicknameOutcome.Rejected(
-                    reason = row.rejectionReason(),
-                    retryAfter = row["retry_after"]?.jsonPrimitive?.content
-                        ?.let { runCatching { Instant.parse(it) }.getOrNull() },
-                )
-            }
-        }
+    override suspend fun currentDisplayName(): String? {
+        // Se lee del `sessionStatus` CRUDO del SDK (actualizado sincrónicamente por
+        // `signInWith`), no de nuestro `sessionState` mapeado: este método existe
+        // precisamente para el instante en el que ese flujo aún no ha reflejado el
+        // perfil recién creado por el trigger tras un alta con Google.
+        val status = client.auth.sessionStatus.value
+        val userId = (status as? SessionStatus.Authenticated)?.session?.user?.id ?: return null
+        return runCatching { fetchProfile(userId).displayName }.getOrNull()
     }
-
-    /**
-     * Traduce el campo `reason` de las RPC de nickname al enum de dominio.
-     *
-     * Un valor desconocido cae en [NicknameRejection.UNKNOWN] en vez de lanzar: así,
-     * si mañana el servidor añade un motivo nuevo, las versiones ya publicadas de la
-     * app enseñan un mensaje genérico en lugar de romperse.
-     */
-    private fun JsonObject.rejectionReason(): NicknameRejection =
-        when (this["reason"]?.jsonPrimitive?.content) {
-            "empty" -> NicknameRejection.EMPTY
-            "invalid" -> NicknameRejection.INVALID
-            "blocked" -> NicknameRejection.BLOCKED
-            "taken" -> NicknameRejection.TAKEN
-            "cooldown" -> NicknameRejection.COOLDOWN
-            else -> NicknameRejection.UNKNOWN
-        }
 
     override suspend fun deleteAccount(): Result<Unit> {
         if (sessionState.value !is AuthState.Authenticated) {
@@ -219,7 +208,6 @@ class AuthRepositoryImpl(
                     userId = userId,
                     plan = profile.toPlanType(),
                     displayName = profile.displayName,
-                    nickname = profile.nickname,
                 )
             } else {
                 AuthState.Guest
@@ -238,7 +226,7 @@ class AuthRepositoryImpl(
      */
     private suspend fun fetchProfile(userId: String): UserProfileRow = runCatching {
         client.postgrest.from("users")
-            .select(Columns.list("plan_type", "premium_until", "display_name", "nickname")) {
+            .select(Columns.list("plan_type", "premium_until", "display_name")) {
                 filter { eq("id", userId) }
             }
             .decodeSingleOrNull<UserProfileRow>()
@@ -251,7 +239,6 @@ class AuthRepositoryImpl(
         @SerialName("plan_type") val planType: String,
         @SerialName("premium_until") val premiumUntil: Instant? = null,
         @SerialName("display_name") val displayName: String? = null,
-        val nickname: String? = null,
     ) {
         /**
          * `plan_type` es la fuente, pero se **valida** contra `premium_until` (ver
@@ -266,4 +253,24 @@ class AuthRepositoryImpl(
             return if (until > Clock.System.now()) PlanType.PREMIUM else PlanType.FREE
         }
     }
+
+    /**
+     * Parámetro de `set_display_name`. El nombre del campo tiene que coincidir con
+     * el de la función SQL (`p_name`): PostgREST casa los parámetros por nombre.
+     */
+    @Serializable
+    private data class SetDisplayNameParams(
+        @SerialName("p_name") val name: String,
+    )
+
+    /**
+     * Respuesta de `set_display_name`. `reason` solo viene cuando `ok` es false, y
+     * es un CÓDIGO (`too_short`, `blocked`…), no un mensaje: el texto de UI sale de
+     * `strings.xml` (CLAUDE.md §10).
+     */
+    @Serializable
+    private data class SetDisplayNameResponse(
+        val ok: Boolean,
+        val reason: String? = null,
+    )
 }

@@ -1,7 +1,6 @@
 package com.kortexgames.app.domain.repository
 
 import com.kortexgames.app.domain.model.AuthState
-import com.kortexgames.app.domain.model.NicknameOutcome
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -61,36 +60,32 @@ interface AuthRepository {
     suspend fun signOut()
 
     /**
-     * Cambia el nombre PRIVADO (`public.users.display_name`) del usuario
-     * autenticado. Falla con [IllegalStateException] si se llama en modo invitado.
+     * Fija (o cambia) el nombre del jugador autenticado en
+     * `public.users.display_name`.
      *
-     * Ojo: esto **no** es lo que ven los demás jugadores desde la migración 0045 —
-     * para eso está [claimNickname].
+     * Es **un único dato**: el saludo dentro de la app y lo que ven los demás en el
+     * ranking mundial (migración 0048). No hay identidad pública separada.
+     *
+     * Escribe a través de la RPC `set_display_name`, que valida longitud, forma y
+     * blocklist en el servidor. Desde la migración 0049 no hay alternativa: el
+     * cliente ya no tiene permiso de UPDATE sobre `public.users`, precisamente para
+     * que esa validación no se pueda esquivar.
+     *
+     * Falla siempre con [com.kortexgames.app.domain.model.DisplayNameRejectedException],
+     * cuyo `reason` distingue nombre rechazado de fallo de red o falta de sesión,
+     * para que la UI elija el mensaje sin interpretar texto.
      */
     suspend fun updateDisplayName(name: String): Result<Unit>
 
     /**
-     * ¿Está libre [nickname]? Consulta la RPC `check_nickname_available`, que valida
-     * forma, lista de patrones prohibidos y unicidad contra la clave normalizada
-     * (así "K0RTEX" colisiona con "Kortex").
+     * Lee el `display_name` actual del perfil **directamente de la BD**, no del
+     * [sessionState] cacheado. Se usa justo tras un alta con Google para decidir si
+     * hay que pedir el nombre en el onboarding: el perfil recién creado por el
+     * trigger `handle_new_user` puede no haberse propagado todavía al flujo.
      *
-     * Pensado para llamarse **con debounce mientras el usuario escribe**: es una
-     * consulta de solo lectura y barata, pero no conviene dispararla por pulsación.
-     * El veredicto es orientativo: quien manda es [claimNickname], porque entre la
-     * comprobación y la reclamación otro jugador puede haberse quedado el nombre.
+     * `null` si no hay sesión, si la fila aún no existe o si la lectura falla.
      */
-    suspend fun checkNicknameAvailable(nickname: String): Result<NicknameOutcome>
-
-    /**
-     * Reclama (o cambia) la identidad PÚBLICA del usuario autenticado vía la RPC
-     * `claim_nickname`, única vía de escritura: valida forma, blocklist, unicidad y
-     * el cooldown de 30 días entre cambios, cosas que un update directo se saltaría.
-     *
-     * Devuelve [NicknameOutcome.Rejected] para los rechazos **esperados** (nombre
-     * cogido, prohibido, cooldown): son respuestas normales del flujo, no errores.
-     * El [Result] fallido queda para lo excepcional — sin sesión o sin red.
-     */
-    suspend fun claimNickname(nickname: String): Result<NicknameOutcome>
+    suspend fun currentDisplayName(): String?
 
     /**
      * Borra la cuenta de forma **permanente e irreversible**: delega en la Edge
