@@ -8,6 +8,7 @@ import com.kortexgames.app.core.mvi.MviViewModel
 import com.kortexgames.app.core.mvi.UiEffect
 import com.kortexgames.app.core.mvi.UiIntent
 import com.kortexgames.app.core.mvi.UiState
+import com.kortexgames.app.data.remote.auth.AppleSignInUnavailableException
 import com.kortexgames.app.data.remote.auth.GoogleSignInUnavailableException
 import com.kortexgames.app.data.settings.LegalConsentStore
 import com.kortexgames.app.data.settings.OnboardingGate
@@ -118,6 +119,14 @@ data class AuthUiState(
     val canUseGoogle: Boolean
         get() = !isSubmitting && !legalBlocksSubmit
 
+    /**
+     * Apple está sujeto a las mismas condiciones que [canUseGoogle]: también puede
+     * acabar creando cuenta si el usuario no la tenía, así que en "Crea tu cuenta"
+     * depende igualmente de la casilla legal.
+     */
+    val canUseApple: Boolean
+        get() = canUseGoogle
+
     companion object {
         /**
          * Alias de [DisplayNameRules.MAX_LENGTH] para el recorte al escribir. Las
@@ -135,6 +144,7 @@ sealed interface AuthIntent : UiIntent {
     data object ToggleMode : AuthIntent
     data object SubmitEmail : AuthIntent
     data object SignInWithGoogle : AuthIntent
+    data object SignInWithApple : AuthIntent
 
     /** Marca/desmarca la casilla de aceptación de condiciones y privacidad. */
     data object ToggleLegalAcceptance : AuthIntent
@@ -224,6 +234,7 @@ class AuthViewModel(
 
             AuthIntent.SubmitEmail -> submitEmail()
             AuthIntent.SignInWithGoogle -> signInWithGoogle()
+            AuthIntent.SignInWithApple -> signInWithApple()
 
             AuthIntent.RequestContinueAsGuest -> {
                 audio.playSound(SoundEffect.TAP)
@@ -287,6 +298,35 @@ class AuthViewModel(
                     // poder filtrarlo, igual que en `ProgressRepositoryImpl`.
                     println("KORTEX google_sign_in FALLÓ: ${it::class.simpleName}: ${it.message}")
                     fail(googleErrorMessage(it))
+                }
+        }
+    }
+
+    /**
+     * Gemelo de [signInWithGoogle] para Apple. Se mantiene como función aparte —y no
+     * como una parametrizada por proveedor— porque el mensaje de error y el log
+     * difieren, y fundirlas obligaría a pasar textos como argumento para ahorrar seis
+     * líneas.
+     */
+    private fun signInWithApple() {
+        if (!currentState.canUseApple) return
+        audio.playSound(SoundEffect.TAP)
+        setState { copy(isSubmitting = true, error = null) }
+        viewModelScope.launch {
+            authRepository.signInWithApple()
+                .onSuccess {
+                    // Apple solo entrega el nombre en el PRIMER alta, y aun así el
+                    // usuario puede ocultarlo, así que un alta nueva llega sin nombre
+                    // más a menudo que con Google. Misma pantalla de nombre.
+                    val needsName = authRepository.currentDisplayName().isNullOrBlank()
+                    completeAuth(needsPlayerName = needsName)
+                }
+                .onFailure {
+                    // Mismo criterio que en Google: al usuario se le da un mensaje
+                    // genérico y la causa real solo se ve por log (bundle id sin
+                    // registrar en Supabase, entitlement ausente, "invalid audience").
+                    println("KORTEX apple_sign_in FALLÓ: ${it::class.simpleName}: ${it.message}")
+                    fail(appleErrorMessage(it))
                 }
         }
     }
@@ -358,5 +398,17 @@ class AuthViewModel(
             "Google no está disponible ahora. Puedes entrar con email."
         else ->
             "No pudimos entrar con Google. Inténtalo de nuevo."
+    }
+
+    /**
+     * Nota: cancelar la hoja de Apple también llega aquí como fallo (el sistema no
+     * lo distingue de un error en el callback), así que el texto está redactado para
+     * no sonar a avería cuando el usuario simplemente se echó atrás.
+     */
+    private fun appleErrorMessage(error: Throwable): String = when (error) {
+        is AppleSignInUnavailableException ->
+            "No se completó el inicio con Apple. Puedes entrar con Google o email."
+        else ->
+            "No pudimos entrar con Apple. Inténtalo de nuevo."
     }
 }

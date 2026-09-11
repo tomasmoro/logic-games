@@ -73,6 +73,9 @@ import com.kortexgames.app.ui.components.bounceClick
 import com.kortexgames.app.ui.components.playerNameErrorKey
 import com.kortexgames.app.ui.components.pulse
 import com.kortexgames.app.ui.components.softGlow
+import com.kortexgames.app.data.remote.auth.supportsAppleSignIn
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.auth_apple_button
 import org.jetbrains.compose.resources.stringResource
 import kotlinx.coroutines.flow.collectLatest
 
@@ -346,10 +349,25 @@ private fun AuthForm(
 
         DividerWithText("o continúa con")
 
-        GoogleButton(
+        SocialLoginButton(
+            label = "Continuar con Google",
             enabled = state.canUseGoogle,
             onClick = { onIntent(AuthIntent.SignInWithGoogle) },
         )
+
+        // Solo en iOS: la guideline 4.8 de App Store Review exige una alternativa al
+        // login de Google, y en Android sería un botón que no puede funcionar.
+        //
+        // Sin Spacer: el `if` no crea nodo de layout, así que el botón es un hijo más
+        // de la Column y ya hereda su `spacedBy(16.dp)`. Añadir separación aquí la
+        // sumaba a la del contenedor.
+        if (supportsAppleSignIn) {
+            SocialLoginButton(
+                label = stringResource(Res.string.auth_apple_button),
+                enabled = state.canUseApple,
+                onClick = { onIntent(AuthIntent.SignInWithApple) },
+            )
+        }
 
         // En "Inicia sesión" no hay casilla, pero Google puede acabar creando una
         // cuenta si el email no existía: el aviso deja los documentos a un toque y
@@ -532,14 +550,21 @@ private fun PrimaryButton(
 }
 
 /**
- * Botón secundario de Google: contorno neutro, icono + etiqueta.
+ * Botón secundario de login social: contorno neutro, icono + etiqueta.
+ *
+ * Lo comparten Google y Apple a propósito. Son la misma jerarquía visual —dos
+ * alternativas equivalentes al formulario de email—, así que darles estilos
+ * distintos sugeriría que una es la preferida. Con un único componente, además, un
+ * ajuste de aspecto se hace en un sitio (§9 de CLAUDE.md).
  *
  * Cuando está deshabilitado (envío en curso, o falta aceptar condiciones al
  * registrarse) se atenúa: si solo dejara de responder al toque, el usuario
  * pensaría que el botón está roto en vez de entender que le falta un paso.
+ *
+ * @param label texto visible; es también lo que distingue un proveedor de otro.
  */
 @Composable
-private fun GoogleButton(enabled: Boolean, onClick: () -> Unit) {
+private fun SocialLoginButton(label: String, enabled: Boolean, onClick: () -> Unit) {
     val contentColor = if (enabled) LogicColors.OnDark else LogicColors.OnDarkMuted
     Row(
         modifier = Modifier
@@ -560,7 +585,7 @@ private fun GoogleButton(enabled: Boolean, onClick: () -> Unit) {
         )
         Spacer(Modifier.width(12.dp))
         Text(
-            "Continuar con Google",
+            label,
             style = MaterialTheme.typography.labelLarge,
             color = contentColor,
             fontWeight = FontWeight.SemiBold,

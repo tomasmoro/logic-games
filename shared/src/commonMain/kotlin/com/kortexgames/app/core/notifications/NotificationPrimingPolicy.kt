@@ -60,12 +60,12 @@ class NotificationPrimingPolicy {
         const val MAX_ATTEMPTS = 2
 
         /** Primera oferta: en cuanto ha terminado una partida y ha visto su resultado. */
-        const val FIRST_OFFER_GAMES = 1
+        const val FIRST_OFFER_GAMES = 5
 
         /**
          * Segunda oferta: con cinco partidas ya hay racha y récords reales de por
          * medio, así que la propuesta apela a algo que el usuario puede perder.
          */
-        const val SECOND_OFFER_GAMES = 5
+        const val SECOND_OFFER_GAMES = 10
     }
 }

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements del target `iosApp`.
+
+  Vive en Configuration/ y NO en iosApp/ a propósito: la carpeta `iosApp/` es un
+  grupo sincronizado del target (objectVersion 77), así que TODO lo que se meta ahí
+  se copia dentro del .app como recurso. Un archivo de entitlements empaquetado no
+  sirve de nada y además filtra configuración de firma. `Configuration/` no está
+  sincronizada, así que aquí el archivo solo lo consume el firmador, que es su
+  único cliente legítimo. Se enlaza vía CODE_SIGN_ENTITLEMENTS en Config.xcconfig.
+-->
+<plist version="1.0">
+<dict>
+	<!--
+	  Sign in with Apple. Sin este entitlement la hoja de ASAuthorizationController
+	  ni siquiera llega a abrirse: el sistema rechaza la petición.
+
+	  "Default" = cuenta de Apple ID normal (lo que necesitamos). El valor
+	  alternativo, "office", es para cuentas gestionadas de Apple Business Manager.
+
+	  REQUISITO EMPAREJADO: la capability tiene que estar activada también en el App
+	  ID (developer.apple.com → Identifiers). El entitlement y el perfil de
+	  aprovisionamiento deben coincidir o la firma falla con "provisioning profile
+	  doesn't include the com.apple.developer.applesignin entitlement".
+	-->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
+</dict>
+</plist>

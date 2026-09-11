@@ -18,17 +18,21 @@ import UserMessagingPlatform
 /// dependencia transitiva — Xcode la lista aparte al añadir el paquete, hay que
 /// marcarla también).
 ///
-/// ⚠️ Usa los ad unit ID de **PRUEBA** de Google (públicos, seguros en el repo).
-/// Antes de publicar, sustituir por los IDs reales de la cuenta de AdMob de iOS y
-/// replicar el patrón real-solo-en-Release de `AdMobConfig`/`AdMobSecrets` de
-/// Android, que hoy no existe para iOS.
+/// Los ad unit ID **no se deciden aquí**: los resuelve `IosAdUnits` en `shared`
+/// (iosMain), que aplica la misma política que `AdMobConfig` en Android — unidad real
+/// solo si el binario es de release Y hay una configurada en `secrets.properties`; en
+/// cualquier otro caso, la de prueba. Así no hay ningún paso manual que recordar antes
+/// de publicar, y un clon del repo sin secretos sigue funcionando con anuncios de
+/// prueba.
 final class AdMobBridge: NSObject, IosAdBridge {
 
     static let shared = AdMobBridge()
 
-    // IDs de PRUEBA de Google para iOS (developers.google.com/admob/ios/test-ads).
-    private let testInterstitialUnitId = "ca-app-pub-3940256099942544/4411468910"
-    private let testRewardedUnitId = "ca-app-pub-3940256099942544/1712485313"
+    /// Ad units resueltos por `shared` (ver `IosAdUnits`). Se consultan como propiedad
+    /// calculada, no se copian a un `let`, para que la política viva en un único sitio
+    /// compartido con Android y no haya dos verdades sobre qué anuncio se pide.
+    private var interstitialUnitId: String { IosAdUnits.shared.interstitialUnitId }
+    private var rewardedUnitId: String { IosAdUnits.shared.rewardedUnitId }
 
     /// `true` cuando el SDK ya arrancó (tras resolver consentimiento). Antes de esto
     /// no se piden anuncios, igual que Android espera a `AdConsentManager`.
@@ -135,11 +139,11 @@ final class AdMobBridge: NSObject, IosAdBridge {
     // reintento/backoff — afinar es trabajo de BACKLOG "+ precarga").
 
     private func preloadInterstitial() async {
-        interstitial = try? await InterstitialAd.load(with: testInterstitialUnitId, request: Request())
+        interstitial = try? await InterstitialAd.load(with: interstitialUnitId, request: Request())
     }
 
     private func preloadRewarded() async {
-        rewarded = try? await RewardedAd.load(with: testRewardedUnitId, request: Request())
+        rewarded = try? await RewardedAd.load(with: rewardedUnitId, request: Request())
     }
 
     private static func rootViewController() -> UIViewController? {

@@ -1,5 +1,6 @@
 package com.kortexgames.app.data.repository
 
+import com.kortexgames.app.data.remote.auth.AppleAuthClient
 import com.kortexgames.app.data.remote.auth.GoogleAuthClient
 import com.kortexgames.app.domain.model.AuthState
 import com.kortexgames.app.domain.model.DisplayNameRejectedException
@@ -8,6 +9,7 @@ import com.kortexgames.app.domain.model.PlanType
 import com.kortexgames.app.domain.repository.AuthRepository
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.auth.providers.Apple
 import io.github.jan.supabase.auth.providers.Google
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.auth.providers.builtin.IDToken
@@ -51,6 +53,7 @@ import kotlinx.serialization.json.put
 class AuthRepositoryImpl(
     private val client: SupabaseClient,
     private val googleAuthClient: GoogleAuthClient,
+    private val appleAuthClient: AppleAuthClient,
     scope: CoroutineScope,
 ) : AuthRepository {
 
@@ -111,6 +114,20 @@ class AuthRepositoryImpl(
             client.auth.signInWith(IDToken) {
                 idToken = credential.idToken
                 provider = Google
+                nonce = credential.rawNonce
+            }
+        }
+    }
+
+    override suspend fun signInWithApple(): Result<Unit> {
+        // 1) Token nativo de la hoja de Apple (o fallo si se cancela / no hay soporte).
+        val credential = appleAuthClient.requestIdToken().getOrElse { return Result.failure(it) }
+        // 2) Canje por sesión de Supabase. El nonce viaja en crudo: GoTrue lo hashea y
+        //    lo compara con el que Apple incrustó en el JWT.
+        return runCatching {
+            client.auth.signInWith(IDToken) {
+                idToken = credential.idToken
+                provider = Apple
                 nonce = credential.rawNonce
             }
         }

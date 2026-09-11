@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -59,6 +60,7 @@ import com.kortexgames.app.game.wordconnect.WordConnectScreen
 import com.kortexgames.app.ui.auth.AuthScreen
 import com.kortexgames.app.ui.components.ImmersiveMode
 import com.kortexgames.app.ui.components.NotificationPrimingDialog
+import com.kortexgames.app.ui.components.ReviewPromptDialog
 import com.kortexgames.app.ui.components.RandomGameFab
 import com.kortexgames.app.ui.games.GameListScreen
 import com.kortexgames.app.ui.home.HomeScreen
@@ -256,6 +258,33 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean, introGamesPlay
             NotificationPrimingDialog(
                 onAccept = { graph.notificationsManager.acceptPriming() },
                 onDecline = { graph.notificationsManager.declinePriming() },
+            )
+        }
+
+        // Invitación a valorar la app en la tienda. Se monta aquí por lo mismo que la
+        // antesala de arriba —el momento no pertenece a ninguna pantalla— y respeta
+        // las mismas fronteras: ni durante una partida ni en la primera apertura.
+        //
+        // La condición extra es `!showPriming`: las dos peticiones no se apilan jamás.
+        // Si ambas tocan, manda la de notificaciones (es la que caduca: su diálogo del
+        // sistema solo se muestra una vez), y la de valorar se queda esperando — no
+        // pierde nada, porque su estado no avanza hasta que el jugador responde.
+        val uriHandler = LocalUriHandler.current
+        val showReviewPrompt by graph.reviewPromptManager.shouldShowPrompt
+            .collectAsStateWithLifecycle()
+        if (showReviewPrompt && !showPriming && !Routes.isGameRoute(currentRoute) && !isFirstRunScreen) {
+            ReviewPromptDialog(
+                onAccept = {
+                    // Se abre la ficha con el UriHandler de Compose (Play o App Store,
+                    // según el `actual` de `storeReviewLink`); `runCatching` cubre el
+                    // dispositivo sin nada capaz de abrir la URL, donde `openUri` lanza:
+                    // no vale estropear la sesión por un enlace que no resuelve.
+                    graph.reviewPromptManager.storeLink?.let { link ->
+                        runCatching { uriHandler.openUri(link) }
+                    }
+                    graph.reviewPromptManager.accept()
+                },
+                onDecline = { graph.reviewPromptManager.dismiss() },
             )
         }
 

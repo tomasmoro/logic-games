@@ -7,8 +7,9 @@ package com.kortexgames.app.game
  * El porqué del orden y de la selección (decisión de producto):
  *  1. **Ordena las Pociones** — reglas evidentes sin leer nada, se entiende de un
  *     vistazo; es el mejor primer contacto para alguien que aún no sabe qué es la app.
- *  2. **Pulso Neon** — cambia de registro (reflejos, partida corta e intensa) para
- *     que la bienvenida no parezca "más de lo mismo".
+ *  2. **Hexa Orbit** — cambia de registro (acción continua, se juega con un solo
+ *     gesto y no exige leer reglas) para que la bienvenida no parezca "más de lo
+ *     mismo"; además enseña de entrada que la app no es solo puzles por turnos.
  *  3. **Línea Neón** — vuelve a lo pausado y deja al jugador en modo "una más",
  *     que es justo el estado en el que conviene pedirle la cuenta.
  *
@@ -25,7 +26,7 @@ object FirstRunGames {
     /** Ids de los juegos de bienvenida, en el orden en que se presentan. */
     val sequence: List<String> = listOf(
         GameIds.WATER_SORT,
-        GameIds.NEON_PULSE,
+        GameIds.HEXA_ORBIT,
         GameIds.NEON_LINE,
     )
 

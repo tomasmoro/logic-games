@@ -27,6 +27,11 @@ val googleIosClientId: String = secretsProps.getProperty("GOOGLE_IOS_CLIENT_ID",
 // las de prueba, así que un clon del repo sin `secrets.properties` compila y funciona.
 val admobInterstitialUnitId: String = secretsProps.getProperty("ADMOB_INTERSTITIAL_UNIT_ID", "")
 val admobRewardedUnitId: String = secretsProps.getProperty("ADMOB_REWARDED_UNIT_ID", "")
+// Las unidades de iOS son OTRAS: en AdMob cada plataforma es una app distinta con sus
+// propias unidades, así que no se pueden reutilizar las de Android. Las claves de arriba
+// se quedan sin sufijo por compatibilidad con el `secrets.properties` que ya existe.
+val admobIosInterstitialUnitId: String = secretsProps.getProperty("ADMOB_IOS_INTERSTITIAL_UNIT_ID", "")
+val admobIosRewardedUnitId: String = secretsProps.getProperty("ADMOB_IOS_REWARDED_UNIT_ID", "")
 
 val generateSecrets by tasks.registering {
     // Copias locales: el `doLast` captura estos vals (no las propiedades a nivel de
@@ -36,11 +41,15 @@ val generateSecrets by tasks.registering {
     val iosId = googleIosClientId
     val interstitialId = admobInterstitialUnitId
     val rewardedId = admobRewardedUnitId
+    val iosInterstitialId = admobIosInterstitialUnitId
+    val iosRewardedId = admobIosRewardedUnitId
     // Declarar los valores como inputs → Gradle regenera solo cuando cambian.
     inputs.property("googleWebClientId", webId)
     inputs.property("googleIosClientId", iosId)
     inputs.property("admobInterstitialUnitId", interstitialId)
     inputs.property("admobRewardedUnitId", rewardedId)
+    inputs.property("admobIosInterstitialUnitId", iosInterstitialId)
+    inputs.property("admobIosRewardedUnitId", iosRewardedId)
     outputs.dir(outDir)
     doLast {
         val pkgDir = outDir.get().asFile.resolve("com/kortexgames/app/data/remote")
@@ -74,13 +83,20 @@ val generateSecrets by tasks.registering {
              * GENERADO por la tarea Gradle `generateSecrets` desde `secrets.properties`.
              * NO editar a mano ni commitear.
              *
-             * Cadena vacía = "no configurado": [AdMobConfig] lo interpreta como que aún
-             * no hay unidad real y usa la de prueba. El porqué de esa política está en
-             * el KDoc de [AdMobConfig].
+             * Cadena vacía = "no configurado": el `AdMobConfig` de cada plataforma lo
+             * interpreta como que aún no hay unidad real y usa la de prueba. El porqué
+             * de esa política está en el KDoc de `AdMobConfig` (androidMain) y de
+             * `IosAdUnits` (iosMain).
+             *
+             * Las constantes con prefijo `IOS_` son unidades DISTINTAS, no una copia:
+             * en AdMob, la app de Android y la de iOS son dos apps separadas y cada
+             * una tiene sus propios ad units.
              */
             internal object AdMobSecrets {
                 const val INTERSTITIAL_UNIT_ID: String = "$interstitialId"
                 const val REWARDED_UNIT_ID: String = "$rewardedId"
+                const val IOS_INTERSTITIAL_UNIT_ID: String = "$iosInterstitialId"
+                const val IOS_REWARDED_UNIT_ID: String = "$iosRewardedId"
             }
             """.trimIndent() + "\n",
         )

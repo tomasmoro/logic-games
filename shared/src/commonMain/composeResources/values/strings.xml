@@ -441,4 +441,25 @@
     <string name="player_name_error_session">Tu sesión ha caducado. Vuelve a entrar.</string>
     <string name="player_name_error_save">No pudimos guardarlo. Inténtalo de nuevo.</string>
 
+    <!-- ============================================================
+         Invitación a valorar la app en la tienda ([ReviewPromptDialog]).
+         Cuándo aparece lo decide `ReviewPromptPolicy`; en iOS no aparece
+         mientras no haya ficha en la App Store (`storeReviewLink`).
+         ============================================================ -->
+    <string name="review_prompt_title">¿Te gusta entrenar aquí?</string>
+    <string name="review_prompt_body">Si KortexGames te está haciendo pensar un rato cada día, cuéntalo en la tienda. Las opiniones son lo que hace que otros nos encuentren.</string>
+    <string name="review_prompt_benefit_grow">Ayudas a que más gente descubra el juego</string>
+    <string name="review_prompt_benefit_shape">Nos dices qué mejorar y qué añadir</string>
+    <string name="review_prompt_accept">Dejar mi opinión</string>
+    <string name="review_prompt_decline">Ahora no</string>
+
+    <!-- ============================================================
+         AUTENTICACIÓN
+         ============================================================ -->
+    <!-- Botón de Sign in with Apple. Solo se pinta en iOS: es donde la guideline 4.8
+         de App Store Review obliga a ofrecer una alternativa al login de Google.
+         Apple exige literalmente este texto (o su traducción oficial) en sus
+         Human Interface Guidelines; NO reformular. -->
+    <string name="auth_apple_button">Iniciar sesión con Apple</string>
+
 </resources>

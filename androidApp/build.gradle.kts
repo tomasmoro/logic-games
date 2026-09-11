@@ -125,8 +125,8 @@ android {
         applicationId = "com.kortexgames.app"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 5
-        versionName = "1.1.0"
+        versionCode = 8
+        versionName = "1.2.11"
     }
     packaging {
         resources {
@@ -155,7 +155,22 @@ android {
             manifestPlaceholders["admobAppId"] = TEST_ADMOB_APP_ID
         }
         getByName("release") {
-            isMinifyEnabled = false
+            // R8: encoge + ofusca. Play Console mide la "optimización" de la app y
+            // marcaba 0 % de ofuscación con esto en false, lo que penaliza visibilidad
+            // y capacidad de publicación. Además reduce el tamaño del AAB y dificulta
+            // el reversing del cliente (claves de AdMob/Supabase, lógica de puntuación).
+            // Las reglas propias van en proguard-rules.pro; se parte de la variante
+            // `-optimize` del archivo por defecto de AGP porque la otra desactiva las
+            // optimizaciones sin ganar nada aquí.
+            isMinifyEnabled = true
+            // Elimina del APK los recursos que R8 demuestra que ya nadie referencia
+            // tras encoger el código. Solo aplica a `res/`: los composeResources viven
+            // en `assets/` y no los toca.
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
             manifestPlaceholders["admobAppId"] = realAdmobAppId ?: TEST_ADMOB_APP_ID
             signingConfig = signingConfigs.findByName("release")
                 ?: signingConfigs.getByName("debug")

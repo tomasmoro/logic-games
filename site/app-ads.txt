@@ -1,0 +1,18 @@
+# app-ads.txt — Authorized Sellers for Apps (IAB Tech Lab)
+#
+# Declara qué redes están autorizadas a vender el inventario publicitario de
+# KortexGames. Sin este archivo, AdMob marca la app como "no verificada" y parte
+# de la demanda programática (compradores que exigen app-ads.txt) deja de pujar,
+# lo que baja el eCPM. No impide que se sirvan anuncios, pero sí ingresos.
+#
+# IMPORTANTE — dónde tiene que estar: el rastreador de Google SOLO lo busca en la
+# RAÍZ del dominio que figura como "sitio web del desarrollador" en la ficha de
+# Google Play, es decir https://tomasmoro.github.io/app-ads.txt. Esta copia se
+# publica en https://tomasmoro.github.io/logic-games/app-ads.txt (Pages de
+# proyecto), que NO sirve para la verificación: el archivo bueno vive en el repo
+# de usuario `tomasmoro/tomasmoro.github.io`. Este fichero es la fuente de verdad
+# que hay que copiar allí si cambia.
+#
+# Formato: <dominio del vendedor>, <ID de publisher>, DIRECT|RESELLER, <TAG-ID>
+# f08c47fec0942fa0 es el TAG-ID (certification authority id) de Google, fijo.
+google.com, pub-6114090257248455, DIRECT, f08c47fec0942fa0

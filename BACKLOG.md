@@ -5,6 +5,15 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
 
 ## Cuenta / sincronización
 
+- [ ] **Botón oficial de Sign in with Apple.** El login con Apple ya funciona
+  (`AppleAuthClient`), pero el botón reutiliza `SocialLoginButton` —contorno neutro
+  con un icono genérico de `Login`— para que Google y Apple se vean como hermanos.
+  Las Human Interface Guidelines de Apple piden **su marca oficial** (logotipo de la
+  manzana, fondo negro o blanco). El texto sí es el literal que exigen. Es un riesgo
+  BAJO de rechazo comparado con no ofrecer el login (guideline 4.8, ya resuelto),
+  pero si Apple lo objeta, la vía es añadir el path del logotipo como `ImageVector`
+  en `KortexIcons` — nada de emojis (§9.5) ni de imágenes rasterizadas.
+
 - [x] **Login con Google en iOS.** HECHO (código). Implementado el flujo OAuth 2.0
   *Authorization Code + PKCE* sobre `ASWebAuthenticationSession` en Kotlin/Native
   puro (sin el pod GoogleSignIn ni cocoapods): `GoogleAuthClient.ios.kt` obtiene un
@@ -205,6 +214,14 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
     `icon_key`/slug a un `ImageVector` (Material Rounded, nunca emoji, CLAUDE.md §9.5).
 
 ## Anuncios (AdMob)
+- [ ] **`app-ads.txt` en la raíz de `tomasmoro.github.io` (verificación de AdMob).**
+      AdMob no puede verificar la app: rastrea `https://tomasmoro.github.io/app-ads.txt`
+      y da 404. Causa: el sitio se publica como **Pages de proyecto**
+      (`tomasmoro.github.io/logic-games/`), y el rastreador SOLO mira la raíz del
+      dominio. El contenido ya está versionado en `site/app-ads.txt`; falta crear el
+      repo de usuario `tomasmoro/tomasmoro.github.io` (público) con ese archivo en su
+      raíz y activar Pages. Sin esto los anuncios siguen sirviéndose, pero pierden la
+      demanda programática que exige `app-ads.txt` (menor eCPM).
 - [x] **Modelo de tiempo del `AdManager` (Fase 0).** HECHO. El contador ya no cuenta
       solo el juego activo: corre **desde que la app entra a primer plano**
       (`onAppForeground`/`onAppBackground`, cableado en `MainActivity`) e incluye
@@ -277,11 +294,25 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
       `GoogleUserMessagingPlatform` (dependencia transitiva del mismo paquete, pero
       Xcode no la enlaza sola — hay que tildarla aparte). API "Swift-first" del SDK
       v13 (sin prefijo `GAD`/`UMP`, `import UserMessagingPlatform` aparte).
-      **Pendiente para publicar:** hoy usa los ad unit ID de **PRUEBA** de Google fijos
-      en `AdMobBridge.swift` (no hay `AdMobConfig`/`AdMobSecrets` equivalente para iOS);
-      replicar el patrón real-solo-en-Release de Android. También falta
-      `SKAdNetworkItems` en `Info.plist` (lista oficial de Google, no incluida aquí por
-      tamaño) y afinar la precarga (reintento/backoff) antes de publicar.
+      **Ad units reales: HECHO.** `AdMobBridge.swift` ya no fija los IDs: los pide a
+      `IosAdUnits` (`shared/iosMain/core/ads`), que aplica la misma política que
+      `AdMobConfig` de Android — unidad real solo si el binario NO es de depuración
+      (`Platform.isDebugBinary`, el análogo de `FLAG_DEBUGGABLE`) **y** hay una
+      configurada. Los valores llegan por `secrets.properties`
+      (`ADMOB_IOS_INTERSTITIAL_UNIT_ID` / `ADMOB_IOS_REWARDED_UNIT_ID`) vía la tarea
+      `generateSecrets`, que los inyecta en `AdMobSecrets`.
+
+      **App ID y SKAdNetwork: HECHO.** El `Info.plist` ya lleva el
+      `GADApplicationIdentifier` real de la app iOS y las 50 `SKAdNetworkItems` de la
+      lista oficial de Google. Esa lista crece cada cierto tiempo: conviene recopiarla
+      de `developers.google.com/admob/ios/3p-skadnetworks` antes de cada envío
+      importante (si se queda vieja no rompe nada, solo se pierde algo de demanda).
+
+      **Pendiente para publicar:**
+      - **Rellenar `ADMOB_IOS_INTERSTITIAL_UNIT_ID` y `ADMOB_IOS_REWARDED_UNIT_ID`** en
+        `secrets.properties` con las unidades reales de la app iOS de AdMob. Mientras
+        estén vacías, un release servirá anuncios de PRUEBA y no monetizará.
+      - **Afinar la precarga** (reintento/backoff).
 - [ ] **Verificar en dispositivo el consentimiento diferido.** El formulario UMP (y el
       ATT de iOS) ya no se piden al arrancar: los dispara `beginAdConsentFlow` cuando
       termina la bienvenida jugable de la primera apertura (`OnboardingGate
@@ -315,6 +346,15 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
       legítimos, como `pene` hacía con "Penelope").
 
 ## Técnico / limpieza
+- [ ] **Silenciar el warning de bundle id del framework `Shared`.** Cada build de
+  iOS avisa: *"Cannot infer a bundle ID from packages of source files and exported
+  dependencies, use the bundle name instead: Shared"*. Es **inofensivo hoy**:
+  `shared/build.gradle.kts` declara `isStatic = true`, así que `Shared` se enlaza
+  dentro del binario de la app y su `CFBundleIdentifier` nunca llega al `.app` (los
+  únicos frameworks embebidos son GoogleMobileAds y UserMessagingPlatform). Se calla
+  añadiendo `binaryOption("bundleId", "com.kortexgames.shared")` junto a `baseName`
+  en el bloque `binaries.framework`. Hacerlo si algún día `Shared` pasa a dinámico,
+  porque entonces sí sería un bundle id real dentro del paquete.
 - [ ] **La recompensa diaria no se reclama desde ningún sitio.**
   `DailyGoalManager.claimReward()` (y `DailyGoalState.canClaim`) existen y
   persisten la fecha de reclamación, pero ninguna pantalla los invoca: el antiguo
@@ -360,7 +400,7 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
       .LEVEL_UP`, y **desbloquea** la tarjeta siguiente con su propia animación de
       candado→número) → siguiente juego → hub → … → puerta de sesión. El patrón
       juego→hub→juego es el mismo sin importar cuántos haya en `FirstRunGames
-      .sequence` (hoy Ordena las Pociones, Pulso Neon y Línea Neón): añadir un
+      .sequence` (hoy Ordena las Pociones, Hexa Orbit y Línea Neón): añadir un
       cuarto juego a esa lista no toca `App.kt` ni `FirstRunWelcomeScreen`.
       Las tarjetas son interactivas (`WelcomeCardState` en `FirstRunWelcomeScreen`):
       solo la CURRENT es clicable y lleva directo al juego (mismo destino que el
@@ -493,3 +533,25 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
       aviso por tarde como mucho, y nada más allá de 14 días de inactividad). Antes
       de añadir tipos nuevos conviene tener datos de apertura: notificar de más es la
       vía rápida a que el usuario silencie la app entera.
+
+## Valoraciones (tiendas)
+
+- [ ] **iOS: activar la invitación a valorar al publicar en la App Store.** Hoy
+      `storeReviewLink` (`core/review/StoreReviewLink.ios.kt`) devuelve `null` a
+      propósito, así que en iOS el diálogo no aparece nunca: no hay ficha a la que
+      mandar al jugador. Al publicar, poner ahí la URL con sufijo de reseña
+      (`https://apps.apple.com/app/id<APP_ID>?action=write-review`) — no hace falta
+      tocar nada más: política, gestor y diálogo ya están escritos para las dos
+      plataformas.
+- [ ] **Valorar el uso de las APIs nativas de reseña in-app.** Play tiene
+      *In-App Review* (`com.google.android.play:review`) y iOS
+      `SKStoreReviewController`: puntúan sin salir de la app y convierten bastante
+      mejor que abrir la ficha. No se usan hoy porque **ambas prohíben preceder su
+      flujo con una pregunta propia** ("¿te gusta la app?"), que es justo el diálogo
+      que pidió el usuario, y porque el sistema decide si mostrarlas (cuota) sin
+      decir si aparecieron. Si algún día se prefiere conversión sobre control del
+      momento, el cambio es sustituir el `openUri` de `App.kt` por un seam
+      expect/actual y retirar el diálogo propio, no adaptarlo.
+- [ ] **Medir los umbrales de `ReviewPromptPolicy`.** 1ª oferta a las 10 partidas,
+      2ª a las 40 con 30 días de respiro y máximo dos: es una apuesta razonada, no un
+      dato. Con telemetría de "mostrada → aceptada" se pueden mover con criterio.

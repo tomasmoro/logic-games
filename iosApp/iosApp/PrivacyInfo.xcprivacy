@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Privacy manifest de KortexGames (obligatorio desde 2024).
+
+  Apple escanea el binario en la subida y compara lo que encuentra con este
+  archivo: si usas una "required reason API" sin declararla, la subida se rechaza
+  con ITMS-91053. Los SDK de terceros traen el suyo propio dentro del framework
+  (GoogleMobileAds y UserMessagingPlatform ya lo hacen), así que aquí SOLO va lo
+  que hace la app: el binario `KortexGames` — que incluye el framework estático
+  `Shared` con todo el Kotlin.
+
+  Lo declarado abajo NO es una suposición: sale de inspeccionar los símbolos
+  importados del binario compilado. Si algún día se añade una dependencia nueva,
+  hay que volver a mirar antes de subir.
+
+  Este archivo tiene que estar en "Copy Bundle Resources" del target `iosApp`
+  (queda en la raíz del .app). Si no, existe en el repo pero Apple no lo ve.
+-->
+<plist version="1.0">
+<dict>
+
+    <!--
+      true porque la app muestra anuncios de AdMob, que usan el IDFA para
+      publicidad personalizada previo consentimiento (UMP + prompt de ATT,
+      ver AdMobBridge.swift). Sin esto, el prompt de seguimiento no es coherente
+      con lo declarado y Apple lo marca.
+    -->
+    <key>NSPrivacyTracking</key>
+    <true/>
+
+    <!--
+      Vacío a propósito. El sistema fusiona los manifests de la app y los de todos
+      los frameworks embebidos: los dominios de seguimiento de Google ya vienen
+      declarados dentro de GoogleMobileAds.framework, que es la autoridad sobre los
+      suyos y quien los actualiza al subir de versión. La app en sí no abre ninguna
+      conexión de seguimiento propia — el tráfico a Supabase es funcionalidad de la
+      app (cuenta, progreso, ranking), no tracking.
+    -->
+    <key>NSPrivacyTrackingDomains</key>
+    <array/>
+
+    <key>NSPrivacyCollectedDataTypes</key>
+    <array>
+
+        <!-- Email de la cuenta (public.users.email). Necesario para iniciar sesión
+             y para recuperar el progreso; nunca se usa para publicidad. -->
+        <dict>
+            <key>NSPrivacyCollectedDataType</key>
+            <string>NSPrivacyCollectedDataTypeEmailAddress</string>
+            <key>NSPrivacyCollectedDataTypeLinked</key>
+            <true/>
+            <key>NSPrivacyCollectedDataTypeTracking</key>
+            <false/>
+            <key>NSPrivacyCollectedDataTypePurposes</key>
+            <array>
+                <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+            </array>
+        </dict>
+
+        <!-- Identificador de cuenta y nombre público del jugador
+             (public.users.id / display_name). El nombre público es el que aparece
+             en el ranking mundial; el nombre real no se expone. -->
+        <dict>
+            <key>NSPrivacyCollectedDataType</key>
+            <string>NSPrivacyCollectedDataTypeUserID</string>
+            <key>NSPrivacyCollectedDataTypeLinked</key>
+            <true/>
+            <key>NSPrivacyCollectedDataTypeTracking</key>
+            <false/>
+            <key>NSPrivacyCollectedDataTypePurposes</key>
+            <array>
+                <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+            </array>
+        </dict>
+
+        <!-- Progreso de juego: partidas, puntuaciones, niveles, rachas y logros.
+             Es funcionalidad (sincronizar entre dispositivos, ranking) y también
+             analítica: los percentiles "eres mejor que el X%" se calculan sobre
+             agregados de estas partidas. -->
+        <dict>
+            <key>NSPrivacyCollectedDataType</key>
+            <string>NSPrivacyCollectedDataTypeProductInteraction</string>
+            <key>NSPrivacyCollectedDataTypeLinked</key>
+            <true/>
+            <key>NSPrivacyCollectedDataTypeTracking</key>
+            <false/>
+            <key>NSPrivacyCollectedDataTypePurposes</key>
+            <array>
+                <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+                <string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+            </array>
+        </dict>
+
+        <!-- IDFA, recogido por el SDK de AdMob. Marcado como NO vinculado porque
+             Google no recibe la identidad de la cuenta de KortexGames: el
+             identificador es del dispositivo. Tracking = true porque ese es
+             justamente su uso, y por eso se pide ATT. -->
+        <dict>
+            <key>NSPrivacyCollectedDataType</key>
+            <string>NSPrivacyCollectedDataTypeDeviceID</string>
+            <key>NSPrivacyCollectedDataTypeLinked</key>
+            <false/>
+            <key>NSPrivacyCollectedDataTypeTracking</key>
+            <true/>
+            <key>NSPrivacyCollectedDataTypePurposes</key>
+            <array>
+                <string>NSPrivacyCollectedDataTypePurposeThirdPartyAdvertising</string>
+            </array>
+        </dict>
+
+        <!-- Interacción con los anuncios (impresiones, clics), recogida por AdMob. -->
+        <dict>
+            <key>NSPrivacyCollectedDataType</key>
+            <string>NSPrivacyCollectedDataTypeAdvertisingData</string>
+            <key>NSPrivacyCollectedDataTypeLinked</key>
+            <false/>
+            <key>NSPrivacyCollectedDataTypeTracking</key>
+            <true/>
+            <key>NSPrivacyCollectedDataTypePurposes</key>
+            <array>
+                <string>NSPrivacyCollectedDataTypePurposeThirdPartyAdvertising</string>
+            </array>
+        </dict>
+
+    </array>
+
+    <key>NSPrivacyAccessedAPITypes</key>
+    <array>
+
+        <!--
+          NSUserDefaults. Confirmado en el binario: importa la clase
+          NSUserDefaults y NSUserDefaultsDidChangeNotification.
+          Razón CA92.1 = leer/escribir SOLO datos de la propia app (ajustes,
+          preferencias), nunca de otras apps ni de un app group compartido.
+        -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>CA92.1</string>
+            </array>
+        </dict>
+
+        <!--
+          Timestamps de ficheros. Confirmado en el binario: usa
+          `attributesOfItemAtPath:error:`. Viene del almacenamiento local —
+          DataStore de ajustes (SettingsDataStore.ios.kt) y la base SQLDelight —,
+          que consulta metadatos de sus propios ficheros.
+          Razón C617.1 = ficheros DENTRO del contenedor de la app. La app no lee
+          timestamps de ficheros del usuario ni de otros contenedores.
+        -->
+        <dict>
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>C617.1</string>
+            </array>
+        </dict>
+
+    </array>
+</dict>
+</plist>

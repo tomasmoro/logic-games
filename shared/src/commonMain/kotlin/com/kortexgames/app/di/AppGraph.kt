@@ -11,6 +11,8 @@ import com.kortexgames.app.core.notifications.NotificationCopyProvider
 import com.kortexgames.app.core.notifications.NotificationStore
 import com.kortexgames.app.core.notifications.NotificationsManager
 import com.kortexgames.app.core.notifications.createNotificationScheduler
+import com.kortexgames.app.core.review.ReviewPromptManager
+import com.kortexgames.app.core.review.ReviewPromptStore
 import com.kortexgames.app.core.startup.StartupPreloader
 import com.kortexgames.app.data.local.DatabaseDriverFactory
 import com.kortexgames.app.data.local.SqlDelightLocalAchievementsDataSource
@@ -26,6 +28,7 @@ import com.kortexgames.app.data.remote.RemoteLevelTimeDataSource
 import com.kortexgames.app.data.remote.RemotePlayerProgressDataSource
 import com.kortexgames.app.data.remote.RemoteProgressDataSource
 import com.kortexgames.app.data.remote.RemoteSudokuPuzzleDataSource
+import com.kortexgames.app.data.remote.auth.AppleAuthClient
 import com.kortexgames.app.data.remote.auth.GoogleAuthClient
 import com.kortexgames.app.data.remote.buildSupabaseClient
 import com.kortexgames.app.data.repository.AchievementsRepositoryImpl
@@ -138,14 +141,18 @@ class AppGraph(context: PlatformContext) {
     private val remoteAchievements = RemoteAchievementsDataSource(supabaseClient)
     private val remoteSudokuPuzzle = RemoteSudokuPuzzleDataSource(supabaseClient)
 
-    // --- Autenticación (email + Google) -------------------------------------
+    // --- Autenticación (email + Google + Apple) -----------------------------
     /** Seam de plataforma para el login con Google (ID token nativo). */
     private val googleAuthClient = GoogleAuthClient(context)
+
+    /** Seam de plataforma para Sign in with Apple. Real solo en iOS. */
+    private val appleAuthClient = AppleAuthClient(context)
 
     /** Repositorio de auth: fuente de verdad reactiva de la sesión. */
     val authRepository: AuthRepository = AuthRepositoryImpl(
         client = supabaseClient,
         googleAuthClient = googleAuthClient,
+        appleAuthClient = appleAuthClient,
         scope = appScope,
     )
 
@@ -251,6 +258,19 @@ class AppGraph(context: PlatformContext) {
         settings = settingsRepository,
         scope = appScope,
     ).also { it.start() }
+
+    /**
+     * Invitación a valorar la app en la tienda. Se declara tras el repositorio de
+     * progreso porque su única entrada es el historial de partidas (cuánto ha jugado
+     * ya el jugador). No arranca nada: su `StateFlow` se recalcula solo, y en las
+     * plataformas sin ficha de tienda —iOS hasta que esté en la App Store— es
+     * constantemente false.
+     */
+    val reviewPromptManager = ReviewPromptManager(
+        store = ReviewPromptStore(preferences),
+        progress = progressRepository,
+        scope = appScope,
+    )
 
     /**
      * Precarga de arranque: calienta durante la splash lo que la Home necesita

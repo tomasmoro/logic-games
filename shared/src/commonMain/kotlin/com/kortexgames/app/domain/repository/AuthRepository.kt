@@ -56,6 +56,18 @@ interface AuthRepository {
      */
     suspend fun signInWithGoogle(): Result<Unit>
 
+    /**
+     * Inicia sesión con Apple. Mismo esquema que [signInWithGoogle] —token nativo
+     * canjeado por sesión de Supabase—, pero el nonce aquí es obligatorio: Apple
+     * entrega el token al cliente, así que sin nonce sería reproducible.
+     *
+     * Solo tiene implementación real en iOS, donde la guideline 4.8 de App Store
+     * Review lo exige por ofrecer también el login de Google. En Android falla de
+     * forma controlada; la UI ni siquiera muestra el botón (ver
+     * `com.kortexgames.app.data.remote.auth.supportsAppleSignIn`).
+     */
+    suspend fun signInWithApple(): Result<Unit>
+
     /** Cierra la sesión actual (vuelve a modo invitado). */
     suspend fun signOut()
 

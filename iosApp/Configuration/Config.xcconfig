@@ -1,7 +1,31 @@
+// Ajustes de build compartidos por el target `iosApp` (Debug y Release).
+
+// Team ID de Apple. Solo se usa para componer el bundle id (ver abajo); el team con
+// el que se firma vive en DEVELOPMENT_TEAM, en los ajustes del target.
 TEAM_ID=XRVAAUV9DG
 
 PRODUCT_NAME=KortexGames
+
+// ⚠️ NO "limpiar" este sufijo, por feo que parezca. Resuelve a
+// `com.kortexgames.appXRVAAUV9DG`, que es el bundle id CONGELADO en la ficha de App
+// Store Connect: Apple no permite cambiarlo una vez creada la ficha, y recrearla
+// obligaría a liberar el nombre de la app en la tienda (riesgo real) para arreglar
+// algo que el usuario no ve nunca. El sufijo viene de la plantilla de KMP, que lo
+// añade para que cada desarrollador tenga un id único mientras desarrolla.
+//
+// Quitarlo haría que el Archive dejara de coincidir con la ficha y la subida sería
+// rechazada. Este es además el id exacto que hay que usar al dar de alta la app en
+// AdMob y al crear el OAuth client de tipo iOS en Google Cloud.
 PRODUCT_BUNDLE_IDENTIFIER=com.kortexgames.app$(TEAM_ID)
+
+// Entitlements del target. La ruta es relativa a SRCROOT (= la carpeta iosApp/, la
+// que contiene el .xcodeproj), igual que INFOPLIST_FILE.
+//
+// Se declara aquí y no con "+ Capability" en Xcode a propósito: así el archivo queda
+// versionado, comentado y fuera de la carpeta sincronizada del target (si estuviera
+// dentro de iosApp/ se copiaría al .app como recurso). NO añadir además la capability
+// desde la UI de Xcode: duplicaría la declaración.
+CODE_SIGN_ENTITLEMENTS = Configuration/iosApp.entitlements
 
 CURRENT_PROJECT_VERSION=1
 MARKETING_VERSION=1.0
