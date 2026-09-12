@@ -165,15 +165,22 @@ data class LevelConfig(val colorCount: Int, val emptyTubes: Int, val capacity: I
 /**
  * Generador de niveles **garantizados resolubles**. Estrategia: repartir todos
  * los segmentos barajados y **verificar con un solver DFS**; si el reparto no
- * tiene solución, se vuelve a barajar. Con 2 tubos vacíos la probabilidad de
- * solubilidad es alta, así que basta con pocos intentos.
+ * tiene solución, se vuelve a barajar. Con 2 tubos vacíos prácticamente todo reparto es
+ * resoluble; con 1 solo tubo vacío casi ninguno lo es (ver [generateOne]).
  *
  * Es determinista dado un [Random] sembrado → los tests pueden fijar semilla.
  */
 object WaterSortGenerator {
 
-    /** Nº máximo de barajados antes de rendirse (defensivo; nunca debería agotarse). */
+    /** Nº máximo de barajados por configuración antes de relajarla (ver [generateOne]). */
     private const val MAX_SHUFFLE_ATTEMPTS = 200
+
+    /**
+     * Tubos vacíos que [generateOne] puede añadir como último recurso. Con 2 vacíos todos
+     * los repartos medidos salen resolubles (hasta 9 colores), así que 2 de margen cubre
+     * de sobra una config con 0 o 1 tubos vacíos.
+     */
+    private const val MAX_EXTRA_EMPTY_TUBES = 2
 
     /**
      * Genera un nivel resoluble para la [config] dada, con dificultad **relativa** dentro
@@ -189,7 +196,12 @@ object WaterSortGenerator {
      * más fácil del grupo). Con los valores por defecto (`hardnessPoolSize = 1`) se comporta
      * como antes de introducir este parámetro: un único reparto, sin discriminar dificultad.
      *
-     * @throws IllegalStateException si algún candidato no logra un reparto resoluble (improbable).
+     * Si la [config] no admite repartos resolubles, el nivel devuelto puede traer más tubos
+     * vacíos de los pedidos (ver [generateOne]); quien lo use debe leer `tubes.size` del
+     * nivel, no recalcularlo desde la config.
+     *
+     * @throws IllegalStateException solo si ni añadiendo [MAX_EXTRA_EMPTY_TUBES] tubos vacíos
+     *   sale un reparto resoluble (no ocurre con configs reales).
      */
     fun generate(
         config: LevelConfig,
@@ -202,8 +214,25 @@ object WaterSortGenerator {
         return pool.sortedBy { it.minMoves }[rank]
     }
 
-    /** Un único reparto barajado y verificado resoluble (sin noción de dificultad relativa). */
+    /**
+     * Un único reparto barajado y verificado resoluble (sin noción de dificultad relativa).
+     *
+     * Si la [config] no da ningún reparto resoluble en [MAX_SHUFFLE_ATTEMPTS] barajados, se
+     * **relaja** añadiendo un tubo vacío y se reintenta, en vez de lanzar. Aquí antes había
+     * un `error(...)` directo, y una curva con 1 solo tubo libre (casi nunca resoluble al
+     * barajar) cerraba la app en cada intento de entrar al nivel: preferimos un nivel algo
+     * más fácil que un crash.
+     */
     private fun generateOne(config: LevelConfig, random: Random): WaterSortLevel {
+        for (extra in 0..MAX_EXTRA_EMPTY_TUBES) {
+            val relaxed = config.copy(emptyTubes = config.emptyTubes + extra)
+            shuffleSolvable(relaxed, random)?.let { return it }
+        }
+        error("No se pudo generar un nivel resoluble para $config ni con $MAX_EXTRA_EMPTY_TUBES tubos vacíos más")
+    }
+
+    /** Hasta [MAX_SHUFFLE_ATTEMPTS] barajados de [config]: el primero resoluble, o null si ninguno. */
+    private fun shuffleSolvable(config: LevelConfig, random: Random): WaterSortLevel? {
         repeat(MAX_SHUFFLE_ATTEMPTS) {
             // Bolsa con `capacity` segmentos de cada color, barajada.
             val bag = buildList {

@@ -131,6 +131,24 @@ class WaterSortModelTest {
     }
 
     @Test
+    fun unaConfigSinRepartosResolublesNoLanzaYDevuelveUnNivelResoluble() {
+        // Regresión del crash en producción (nivel 28+): con 1 solo tubo vacío, 7 colores y
+        // capacidad 5 casi ningún reparto barajado es resoluble, y el generador lanzaba
+        // IllegalStateException al agotar los intentos. Ahora relaja la config (más tubos
+        // vacíos) y devuelve un nivel que sí se puede resolver.
+        val config = LevelConfig(colorCount = 7, emptyTubes = 1, capacity = 5)
+        val level = WaterSortGenerator.generate(
+            config = config,
+            random = Random(seed = 28L),
+            hardnessRank = 2,
+            hardnessPoolSize = 3,
+        )
+
+        assertTrue(level.tubes.size >= config.colorCount + config.emptyTubes)
+        assertNotNull(WaterSortGenerator.solve(level.tubes, level.capacity))
+    }
+
+    @Test
     fun laGeneracionEsDeterministaConLaMismaSemilla() {
         val config = LevelConfig.forDifficulty(3)
         val a = WaterSortGenerator.generate(config, Random(seed = 7L))
