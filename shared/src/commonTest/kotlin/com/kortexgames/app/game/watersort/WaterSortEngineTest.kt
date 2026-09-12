@@ -12,6 +12,7 @@ import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -120,6 +121,22 @@ class WaterSortEngineTest {
             fourthLevelSize > sizesInFirstTier.first().first,
             "El nivel 4 (nuevo tramo) debería tener más tubos que el tramo anterior",
         )
+    }
+
+    @Test
+    fun todosLosNivelesDeLaCurvaArrancanConUnTableroResoluble() {
+        // Regresión del crash en producción: desde el nivel 28 la curva quitaba el 2º tubo
+        // libre y el generador lanzaba IllegalStateException al entrar al nivel. Se recorren
+        // varios tramos más allá del último cambio de palanca, para que un ajuste futuro de
+        // configForLevel que deje tableros irresolubles falle aquí y no en manos de jugadores.
+        for (level in 1..60) {
+            val s = engineAtLevel(level).state.value
+            assertTrue(s.tubes.count { it.isEmpty } >= 2, "El nivel $level debería tener 2 tubos libres")
+            assertNotNull(
+                WaterSortGenerator.solve(s.tubes, s.capacity),
+                "El nivel $level debe ser resoluble",
+            )
+        }
     }
 
     @Test

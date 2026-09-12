@@ -144,28 +144,32 @@ class WaterSortEngine(
     /**
      * Curva de dificultad: nivel N → configuración de tablero. Sube de tramo cada
      * [LEVELS_PER_TIER] niveles; dentro del tramo el tablero no crece (la dificultad la da
-     * el reparto, ver [startCurrentLevel]). Se acota (colores ≤ 7, capacidad ≤ 5) para que
-     * el generador —con solver DFS— siga produciendo niveles resolubles en tiempo razonable.
+     * el reparto, ver [startCurrentLevel]). Se acota (colores ≤ 8, capacidad ≤ 5): 8 es el
+     * tamaño de la paleta de la pantalla (`PotionColors`) y con 10 tubos el tablero sigue
+     * cabiendo en dos filas de 5.
      *
      * Orden de las palancas, de la más barata a la más "cara" de sufrir:
      *  1. `colorCount` sube primero (5→6→7): más colores para barajar.
-     *  2. `capacity` sube después, ya con `colorCount` al tope: tubos más altos alargan
-     *     las cadenas de vertido.
-     *  3. `emptyTubes` baja el último y solo cuando el tablero ya está al máximo tamaño
-     *     que soporta el solver: quitar el 2º tubo libre es la palanca que más aprieta
-     *     (mucho menos margen de maniobra), así que se reserva para cuando ya no queda
-     *     más tablero que agrandar.
+     *  2. `capacity` sube después, ya con 7 colores: tubos más altos alargan las cadenas
+     *     de vertido.
+     *  3. El 8º color entra el último (tramo 9+, nivel 28 en adelante), ya con capacidad 5.
+     *
+     * `emptyTubes` se queda **siempre en 2**. La curva llegó a quitar el 2º tubo libre en
+     * el tramo 9 como palanca "más dura", pero con un reparto barajado eso deja el tablero
+     * prácticamente siempre irresoluble (medido: 0 de 60 repartos con 7 colores, capacidad
+     * 5 y 1 tubo libre; con 2 tubos libres, 60 de 60 hasta 9 colores). El generador agotaba
+     * sus intentos y la app se cerraba en producción al entrar al nivel 28.
      */
     private fun configForLevel(level: Int): LevelConfig {
         val tier = tierOf(level)
         val colorCount = when {
             tier <= 0 -> 5
             tier == 1 -> 6
-            else -> 7
+            tier <= 8 -> 7
+            else -> 8
         }
         val capacity = if (tier <= 2) 4 else 5
-        val emptyTubes = if (tier <= 8) 2 else 1
-        return LevelConfig(colorCount = colorCount, emptyTubes = emptyTubes, capacity = capacity)
+        return LevelConfig(colorCount = colorCount, emptyTubes = 2, capacity = capacity)
     }
 
     /**
