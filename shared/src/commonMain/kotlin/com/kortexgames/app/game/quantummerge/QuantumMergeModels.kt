@@ -205,7 +205,7 @@ enum class QuantumDifficulty(
  *   haber logrado todos los anteriores: la recompensa debe premiar la cadena completa, no el
  *   último toque. [QUARK] vale 0 porque nunca nace de una fusión (solo lo entrega el dispensador).
  * @property accent identidad de color del tier, en forma **semántica**. El dominio no conoce
- *   `androidx.compose.ui.graphics.Color`: igual que `BlockAccent` en Tetris Neón, el mapeo a los
+ *   `androidx.compose.ui.graphics.Color`: igual que `BlockAccent` en Bloques Neón, el mapeo a los
  *   tokens de `LogicColors` vive en la capa de UI (Fase 3). Así el motor sigue siendo puro y el
  *   sistema de diseño mantiene UNA sola fuente de color (CLAUDE.md §9.2).
  */

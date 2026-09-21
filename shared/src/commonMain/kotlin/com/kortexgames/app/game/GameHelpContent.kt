@@ -69,9 +69,9 @@ object GameHelpContent {
         ),
     )
 
-    /** Tetris Neón / block puzzle (Visión Espacial). */
+    /** Bloques Neón / block puzzle (Visión Espacial). */
     val blockGrid = GameHelp(
-        title = "Tetris Neón",
+        title = "Bloques Neón",
         summary = "Encaja las piezas y rompe líneas para no quedarte sin sitio.",
         accent = CategoryPalette.SpatialVision,
         art = motifHelpArt(GameMotif.TETROMINO),
@@ -644,7 +644,7 @@ object GameHelpContent {
     /** Neon Grid Switch: Lights Out con progresión de tamaño de matriz (Reconocimiento de Patrones). */
     val gridSwitch = GameHelp(
         title = "Neon Grid Switch",
-        summary = "Apaga todas las luces de la cuadrícula: cada toque conmuta esa celda y sus vecinas.",
+        summary = "Apaga todas las luces de la cuadrícula: cada toque cambia esa celda y sus vecinas.",
         accent = CategoryPalette.PatternRecognition,
         art = iconHelpArt(Icons.Rounded.GridOn),
         steps = listOf(

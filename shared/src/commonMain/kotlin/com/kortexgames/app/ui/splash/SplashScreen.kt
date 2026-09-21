@@ -214,7 +214,7 @@ fun SplashScreen(
         contentAlignment = Alignment.Center,
     ) {
         // El logo manda el tamaño de todo lo demás (halo y chispas se derivan de él).
-        val logoSize: Dp = min(maxWidth * 0.62f, 260.dp)
+        val logoSize: Dp = min(maxWidth * 0.806f, 338.dp)
 
         // Fondo de ladrillos con foco centrado en el logo: la luz cae del centro
         // hacia afuera, tal y como la irradiaría un cartel de neón colgado del muro.

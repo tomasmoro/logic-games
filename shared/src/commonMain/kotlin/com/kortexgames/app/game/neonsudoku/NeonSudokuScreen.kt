@@ -743,7 +743,7 @@ private const val SWEEP_MS = 600
  * Duración de la celebración de unidad completada (ms). Algo más larga que un
  * destello simple porque incluye el "reparto" escalonado de la onda
  * (`WAVE_STAGGER_SPAN`): el destello real de cada celda ocupa la fracción
- * restante. Mismo criterio y orden de magnitud que la limpieza de Tetris Neón.
+ * restante. Mismo criterio y orden de magnitud que la limpieza de Bloques Neón.
  *
  * `LinearEasing` en el reloj a propósito: la curva de cada celda ya la da el
  * `sin(π·p)` del destello, y encadenar dos easings aplanaría la propagación.

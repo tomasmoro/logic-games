@@ -188,7 +188,7 @@ fun FirstRunWelcomeScreen(
                     Image(
                         painter = painterResource(Res.drawable.logo_kortex),
                         contentDescription = "Kortex Games",
-                        modifier = Modifier.size(104.dp),
+                        modifier = Modifier.size(135.dp),
                     )
                 }
 

@@ -444,7 +444,7 @@ private val DIFFICULTY_OPTIONS_UI: List<DifficultyOption> = QuantumDifficulty.en
 /**
  * Traduce el acento semántico del tier al token de color del sistema de diseño.
  *
- * El mapa vive en la UI (y no en el `enum` de dominio) igual que en Tetris Neón: el motor de física
+ * El mapa vive en la UI (y no en el `enum` de dominio) igual que en Bloques Neón: el motor de física
  * no conoce `Color`, y así el sistema de diseño mantiene UNA sola fuente de color (§9.2).
  */
 private fun TierAccent.color(): Color = when (this) {

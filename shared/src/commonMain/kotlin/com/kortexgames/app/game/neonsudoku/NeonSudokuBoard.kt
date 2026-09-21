@@ -75,7 +75,7 @@ import kotlin.math.sqrt
 /**
  * Onda de celebración de una unidad completada (fila, columna o bloque 3x3).
  *
- * Réplica del lenguaje de la limpieza de línea de Tetris Neón: un **reloj único**
+ * Réplica del lenguaje de la limpieza de línea de Bloques Neón: un **reloj único**
  * ([progress], 0→1) del que cada celda deriva su propio avance restándole una
  * **demora proporcional a su distancia al epicentro** ([origin], la celda recién
  * rellenada). Así el destello se propaga como una onda desde donde el jugador
@@ -630,7 +630,7 @@ private const val SWEEP_BAND_FRACTION = 0.28f
  * arranque por distancia al epicentro: la celda más lejana empieza a destellar
  * cuando el reloj llega aquí, y el resto (1 − esto) es lo que dura el destello
  * de cada celda. Subirlo marca más la propagación; bajarlo la acerca a un
- * destello simultáneo. Mismo parámetro que la limpieza de Tetris Neón.
+ * destello simultáneo. Mismo parámetro que la limpieza de Bloques Neón.
  */
 private const val WAVE_STAGGER_SPAN = 0.5f
 

@@ -124,7 +124,7 @@ private fun BlockAccent.color(): Color = when (this) {
 }
 
 /**
- * Pantalla de "Tetris Neón".
+ * Pantalla de "Bloques Neón".
  *
  * Estructura estándar de juego ENDLESS: antesala ([GameIntroScreen]) mientras
  * está en IDLE → tablero + mano a pantalla completa → [GameOverOverlay].
@@ -211,7 +211,7 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
     if (state.status == GameStatus.IDLE) {
         GameIntroScreen(
             help = GameHelpContent.blockGrid,
-            title = "Tetris Neón",
+            title = "Bloques Neón",
             motif = GameMotif.TETROMINO,
             description = "Arrastra las piezas al tablero y completa filas o columnas para romperlas. La partida termina cuando ninguna pieza cabe.",
             accent = CategoryPalette.SpatialVision,
@@ -437,7 +437,7 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
             onPause = { vm.onIntent(BlockGridIntent.Pause) },
             onResume = { vm.onIntent(BlockGridIntent.Resume) },
             onExit = exitWithSave,
-            gameTitle = "Tetris Neón",
+            gameTitle = "Bloques Neón",
             help = GameHelpContent.blockGrid,
             accent = CategoryPalette.SpatialVision,
             exitKeepsProgress = true,
@@ -478,7 +478,7 @@ private fun BlockGridHud(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = "Tetris Neón",
+            text = "Bloques Neón",
             style = MaterialTheme.typography.headlineSmall,
             color = LogicColors.OnDark,
             fontWeight = FontWeight.ExtraBold,

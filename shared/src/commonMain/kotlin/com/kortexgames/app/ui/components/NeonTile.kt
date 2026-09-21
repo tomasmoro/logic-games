@@ -39,7 +39,7 @@ import kotlin.random.Random
  * @param rectTopLeft esquina superior izquierda del recuadro del tile dentro del
  *   `DrawScope` actual. Por defecto [Offset.Zero], que es lo correcto cuando el tile
  *   es dueño de todo su `Canvas` (Memoria, Crucigrama). Los tableros que pintan
- *   muchas celdas en un único `Canvas` compartido (p. ej. Tetris Neón) pasan aquí la
+ *   muchas celdas en un único `Canvas` compartido (p. ej. Bloques Neón) pasan aquí la
  *   posición de cada celda para reutilizar el mismo dibujo sin un `Canvas` por celda.
  * @param rectSize tamaño del recuadro del tile; por defecto el tamaño completo del
  *   `DrawScope` (mismo razonamiento que [rectTopLeft]).

@@ -312,7 +312,7 @@ sealed interface NeonSudokuEffect : UiEffect {
      * Se acaba de completar una o más **unidades** (fila, columna o bloque 3x3):
      * las 9 celdas llenas y sin choques. La UI celebra con una onda que recorre
      * esas celdas desde la recién rellenada, en el mismo lenguaje visual que la
-     * limpieza de línea de Tetris Neón (destello escalonado + chispas).
+     * limpieza de línea de Bloques Neón (destello escalonado + chispas).
      *
      * Va como efecto one-shot y no como estado porque es una celebración con
      * ciclo de vida propio: nace, se propaga y se apaga sola sin que el dominio

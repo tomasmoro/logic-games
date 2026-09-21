@@ -73,10 +73,19 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
   - **Mejor tiempo por nivel.** Está activado (`tracksLevelTime = true`) pero la
     pantalla aún no lo muestra en el carril de niveles.
 
-- [x] **Tetris Neón (antes "Neon Block Grid" — Block Puzzle 8×8, Visión Espacial).**
+- [x] **Bloques Neón (Block Puzzle 8×8, Visión Espacial).**
+
+  > ⚠️ **NO volver a llamarlo "Tetris Neón".** Se llamó así hasta el 21/09/2026 y se
+  > renombró justo antes de publicar en la App Store: *Tetris* es marca registrada de
+  > The Tetris Company, conocida por forzar la retirada de clones en ambas tiendas. La
+  > mecánica no es registrable; el nombre sí. Por el mismo motivo el cubo se llama
+  > "Hyper Cubo" y no "Cubo Rubik". El nombre visible vive en `GameCatalog`,
+  > `GameHelpContent` y **tres cadenas dentro de `BlockGridScreen`** — ese último es el
+  > que se olvida al renombrar.
+
   HECHO. Juego ENDLESS completo en `game/blockgrid/` (el paquete/ids mantienen el
-  nombre técnico `blockgrid`/`NEON_BLOCK_GRID`; solo cambió el nombre visible a
-  **"Tetris Neón"** en `GameCatalog`): dominio puro (`BlockGridModel`), motor con
+  nombre técnico `blockgrid`/`NEON_BLOCK_GRID`, que NO hay que tocar: la FK del
+  progreso de los jugadores depende de él): dominio puro (`BlockGridModel`), motor con
   líneas simultáneas y puntuación cuadrática (`BlockGridEngine` + tests), MVI
   (`BlockGridContract`/`ViewModel`) y pantalla con drag & drop, fantasma gris y
   limpieza fade+shrink (`BlockGridScreen`). Registrado en catálogo, rutas,

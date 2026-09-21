@@ -278,9 +278,9 @@
 
     <!-- ===================== Neon Grid Switch (Reconocimiento de Patrones) ===================== -->
     <!-- Antesala: qué se hace en el juego, antes de la primera partida. -->
-    <string name="grid_switch_intro_description">Apaga todas las luces del tablero. Cada toque conmuta esa celda y sus vecinas: encuentra el patrón antes de que la cuadrícula crezca.</string>
+    <string name="grid_switch_intro_description">Apaga todas las luces del tablero. Cada toque cambia esa celda y sus vecinas (las apaga o las enciende): encuentra el patrón antes de que la cuadrícula crezca.</string>
     <!-- Recordatorio del gesto, bajo el título, mientras se juega. -->
-    <string name="grid_switch_subtitle">Toca una celda para conmutarla junto a sus vecinas</string>
+    <string name="grid_switch_subtitle">Apaga todas las luces: cada toque cambia la celda y sus vecinas</string>
     <!-- Etiquetas del marcador. -->
     <string name="grid_switch_hud_stage">Etapa</string>
     <string name="grid_switch_hud_moves">Movimientos</string>

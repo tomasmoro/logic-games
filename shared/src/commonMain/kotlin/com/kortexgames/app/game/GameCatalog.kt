@@ -47,7 +47,7 @@ object GameIds {
     /** Tornillos Neón / Neon Screws & Bolts (categoría "spatial" / Visión Espacial). */
     const val NEON_SCREWS = "99999999-9999-4999-8999-999999999999"
 
-    /** Tetris Neón / Block Puzzle 8×8 (categoría "spatial" / Visión Espacial). */
+    /** Bloques Neón / Block Puzzle 8×8 (categoría "spatial" / Visión Espacial). */
     const val NEON_BLOCK_GRID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
     /** Neon Lexicon / Sopa de Letras Neón (categoría "language" / Lenguaje y Vocabulario). */
@@ -222,7 +222,7 @@ enum class GameMotif {
     /** Ordena las pociones / water sort: frasquitos de poción con líquido. */
     POTIONS,
 
-    /** Tetris / block puzzle: piezas de tetrominó (formas de 4 bloques). */
+    /** Block puzzle: piezas de tetrominó (formas de 4 bloques). */
     TETROMINO,
 
     /** Sudoku: cuadrícula 9×9 con separadores de bloque y algunos números. */
@@ -355,7 +355,7 @@ object GameCatalog {
         // Primer juego de Reconocimiento de Patrones del catálogo: la categoría deja de
         // estar vacía.
         GameInfo(GameIds.NEON_GRID_SWITCH, "Neon Grid Switch", GameCategory.PATTERNS, playable = true, motif = GameMotif.LIGHTS_GRID, isNew = true),
-        GameInfo(GameIds.NEON_BLOCK_GRID, "Tetris Neón", GameCategory.LOGIC, playable = true, motif = GameMotif.TETROMINO),
+        GameInfo(GameIds.NEON_BLOCK_GRID, "Bloques Neón", GameCategory.LOGIC, playable = true, motif = GameMotif.TETROMINO),
         GameInfo(GameIds.QUANTUM_MERGE, "Quantum Merge", GameCategory.SPATIAL, playable = true, motif = GameMotif.QUANTUM_SPHERES),
         GameInfo(GameIds.WORD_CONNECT, "Palabras Conectadas", GameCategory.LANGUAGE, playable = true, published = false, motif = GameMotif.WORD_WHEEL),
         GameInfo(GameIds.CRUCIGRAMA_NEON, "Crucigrama Neón", GameCategory.LANGUAGE, playable = true, motif = GameMotif.CROSSWORD),

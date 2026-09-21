@@ -691,7 +691,7 @@ private fun PotionsTexture(accent: Color, modifier: Modifier, intensity: Float, 
     }
 }
 
-/** Tetrominós como listas de celdas (col, fila). Las formas clásicas del Tetris. */
+/** Tetrominós como listas de celdas (col, fila). Las formas clásicas de tetrominó. */
 private val TETROMINOES = listOf(
     listOf(0 to 0, 1 to 0, 2 to 0, 1 to 1), // T
     listOf(0 to 0, 0 to 1, 0 to 2, 1 to 2), // L
@@ -717,7 +717,7 @@ private val TETRO_PLACEMENTS = listOf(
 )
 
 /**
- * **Tetris Neón**: piezas de tetrominó (T, L, S, O) esparcidas a distintos tamaños
+ * **Bloques Neón**: piezas de tetrominó (T, L, S, O) esparcidas a distintos tamaños
  * y giros, dibujadas como celdas redondeadas con relleno tenue y contorno neón —el
  * mismo lenguaje de bloque del tablero— para reflejar la mecánica del juego.
  */
