@@ -125,8 +125,8 @@ android {
         applicationId = "com.kortexgames.app"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 9
-        versionName = "1.2.12"
+        versionCode = 10
+        versionName = "1.2.13"
     }
     packaging {
         resources {
