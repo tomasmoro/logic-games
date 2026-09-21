@@ -390,6 +390,7 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
                 onPlayUnlockedDifficulty = state.justUnlockedDifficulty?.let { difficulty ->
                     { vm.onIntent(NeonSudokuIntent.PlayDifficulty(difficulty)) }
                 },
+                accent = CategoryPalette.Logic,
             )
         }
 

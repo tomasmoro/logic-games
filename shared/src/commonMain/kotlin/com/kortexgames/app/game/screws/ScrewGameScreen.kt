@@ -202,6 +202,7 @@ fun ScrewGameScreen(graph: AppGraph, onExit: () -> Unit) {
                 onExit = onExit,
                 onNextLevel = { vm.onIntent(ScrewGameIntent.NextLevel) },
                 onChooseLevel = { vm.onIntent(ScrewGameIntent.ChooseLevel) },
+                accent = CategoryPalette.SpatialVision,
             )
         }
 

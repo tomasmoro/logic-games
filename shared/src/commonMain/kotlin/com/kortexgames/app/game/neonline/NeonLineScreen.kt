@@ -217,6 +217,7 @@ fun NeonLineScreen(graph: AppGraph, onExit: () -> Unit) {
                 onExit = onExit,
                 onNextLevel = { vm.onIntent(NeonLineIntent.NextLevel) },
                 onChooseLevel = { vm.onIntent(NeonLineIntent.ChooseLevel) },
+                accent = CategoryPalette.ProblemSolving,
             )
         }
 

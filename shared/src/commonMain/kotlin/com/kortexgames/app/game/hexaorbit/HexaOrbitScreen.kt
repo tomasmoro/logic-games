@@ -252,6 +252,7 @@ fun HexaOrbitScreen(graph: AppGraph, onExit: () -> Unit) {
                 audio = graph.audio,
                 onPlayAgain = { vm.onIntent(HexaOrbitIntent.RestartGame) },
                 onExit = onExit,
+                accent = CategoryPalette.SpatialVision,
             )
         }
 

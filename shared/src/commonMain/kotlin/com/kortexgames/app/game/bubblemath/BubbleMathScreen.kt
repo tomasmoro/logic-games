@@ -292,6 +292,7 @@ fun BubbleMathScreen(graph: AppGraph, onExit: () -> Unit) {
             audio = graph.audio,
             onPlayAgain = { vm.onIntent(BubbleMathIntent.PlayAgain) },
             onExit = onExit,
+            accent = CategoryPalette.MentalMath,
         )
     }
 

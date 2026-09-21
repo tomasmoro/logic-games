@@ -583,6 +583,7 @@ fun LegionScreen(graph: AppGraph, onExit: () -> Unit) {
                 headline = stringResource(Res.string.legion_gameover_headline, game.round.toString()),
                 onPlayAgain = { vm.onIntent(LegionIntent.PlayAgain) },
                 onExit = onExit,
+                accent = CategoryPalette.MentalSpeed,
             )
         }
 

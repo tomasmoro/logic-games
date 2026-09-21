@@ -192,6 +192,7 @@ fun GridSwitchScreen(graph: AppGraph, onExit: () -> Unit) {
                 onExit = onExit,
                 onNextLevel = { vm.onIntent(GridSwitchIntent.NextStage) },
                 onChooseLevel = { vm.onIntent(GridSwitchIntent.ChooseStage) },
+                accent = CategoryPalette.PatternRecognition,
             )
         }
 

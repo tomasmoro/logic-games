@@ -328,11 +328,12 @@ data class GameInfo(
 )
 
 /**
- * Catálogo de juegos que alimenta la pantalla de lista. Hoy son jugables nueve
- * juegos (Memoria, Reflejos, Pociones, Burbujas de Cálculo, Flujo de Energía,
- * Atracción Geométrica, Crucigrama Neón, Palabras Conectadas y Tornillos Neón);
- * el resto son placeholders del roadmap para dar volumen y comunicar la visión
- * sin engañar (aparecen como "Próximamente").
+ * Catálogo de juegos que alimenta la pantalla de lista. Todas las entradas de
+ * [allGames] son juegos ya jugables ([GameInfo.playable] = true); los que faltan
+ * del roadmap de 30 (§1 de CLAUDE.md) simplemente no tienen entrada todavía —ya no
+ * se listan como placeholders "Próximamente" para no prometer contenido sin fecha—.
+ * [GameInfo.playable] sigue existiendo como mecanismo (por si se necesita en el
+ * futuro), pero hoy no lo usa ninguna entrada del catálogo.
  */
 object GameCatalog {
     /**
@@ -372,12 +373,6 @@ object GameCatalog {
         GameInfo(GameIds.NEON_CIRCUIT, "Conectores", GameCategory.PROBLEM_SOLVING, playable = true, motif = GameMotif.CIRCUIT_FLOW),
         GameInfo(GameIds.HYPERGATE, "Hypergate", GameCategory.REFLEXES, playable = true, motif = GameMotif.HYPERGATE),
         GameInfo(GameIds.NEON_LINE, "Línea Neón", GameCategory.PROBLEM_SOLVING, playable = true, motif = GameMotif.SINGLE_LINE),
-        GameInfo(null, "Parejas Relámpago", GameCategory.MEMORY, playable = false),
-        GameInfo(null, "Cadena Lógica", GameCategory.LOGIC, playable = false),
-        GameInfo(null, "Encuentra el Intruso", GameCategory.ATTENTION, playable = false),
-        GameInfo(null, "Anagramas", GameCategory.LANGUAGE, playable = false),
-        GameInfo(null, "Cambio de Regla", GameCategory.FLEXIBILITY, playable = false),
-        GameInfo(null, "Patrón Oculto", GameCategory.PATTERNS, playable = false),
     )
 
     /**

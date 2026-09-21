@@ -295,6 +295,7 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
                 // Catálogo finito: si esta era la última, "Siguiente nivel" pasa a
                 // "Ver niveles" y lleva a la antesala con el cartel de completado.
                 hasNextLevel = state.currentLevel < CrucigramaNeonGenerator.levelCount,
+                accent = CategoryPalette.Language,
             )
         }
 

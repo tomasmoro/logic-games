@@ -378,6 +378,7 @@
     <string name="gamepause_cta_resume">REANUDAR</string>
     <string name="gamepause_cta_next_level">SIGUIENTE NIVEL</string>
     <string name="gamepause_cta_exit">SALIR</string>
+    <string name="gamepause_cta_restart">REINICIAR</string>
     <string name="gamepause_exit_keeps_progress">No perderás tu progreso: podrás continuar donde lo dejaste.</string>
     <!-- Cabecera de la ayuda: se usa tanto para la fila que abre GameHelpSheet como
          para la sección plegable de legado ([HelpOpenRow]/[HelpSection]). -->

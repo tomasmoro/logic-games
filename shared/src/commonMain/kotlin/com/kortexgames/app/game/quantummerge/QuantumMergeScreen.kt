@@ -405,6 +405,7 @@ fun QuantumMergeScreen(graph: AppGraph, onExit: () -> Unit) {
                 onPlayUnlockedDifficulty = state.justUnlockedDifficulty?.let { difficulty ->
                     { vm.onIntent(QuantumMergeIntent.PlayDifficulty(difficulty)) }
                 },
+                accent = CategoryPalette.SpatialVision,
             )
         }
 

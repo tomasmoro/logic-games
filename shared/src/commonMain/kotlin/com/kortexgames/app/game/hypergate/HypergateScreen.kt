@@ -259,6 +259,7 @@ fun HypergateScreen(graph: AppGraph, onExit: () -> Unit) {
                 audio = graph.audio,
                 onPlayAgain = { vm.onIntent(HypergateIntent.PlayAgain) },
                 onExit = onExit,
+                accent = CategoryPalette.Reflexes,
             )
         }
 

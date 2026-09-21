@@ -256,6 +256,7 @@ fun WordConnectScreen(graph: AppGraph, onExit: () -> Unit) {
                 onExit = onExit,
                 onNextLevel = { vm.onIntent(WordConnectIntent.NextLevel) },
                 onChooseLevel = { vm.onIntent(WordConnectIntent.ChooseLevel) },
+                accent = accent,
             )
         }
 
