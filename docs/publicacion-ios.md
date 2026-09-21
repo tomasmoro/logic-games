@@ -43,7 +43,7 @@ No hay que volver a tocarlo, pero conviene saber por qué está como está.
 |-------|-------|----------|
 | Bundle ID | `Config.xcconfig` | Coincide con la ficha (ver arriba) |
 | Firma | `project.pbxproj` | Firma **automática**, `CODE_SIGN_IDENTITY = Apple Development` en ambas configuraciones. **Es lo correcto**: con firma automática, fijar `Apple Distribution` a mano hace que Xcode falle con *"conflicting provisioning settings"*. El archive se firma como desarrollo y el Organizer re-firma con distribución al exportar |
-| Privacy manifest | `iosApp/iosApp/PrivacyInfo.xcprivacy` | Obligatorio desde 2024. Declara tracking (IDFA/ATT), datos recogidos y las APIs de razón requerida: `UserDefaults` (CA92.1) y `FileTimestamp` (C617.1). Salen de inspeccionar los símbolos del binario, no de suponer |
+| Privacy manifest | `iosApp/iosApp/PrivacyInfo.xcprivacy` | Obligatorio desde 2024. Declara 5 tipos de datos recogidos y 2 APIs de razón requerida —`UserDefaults` (CA92.1) y `FileTimestamp` (C617.1)—, sacadas de inspeccionar los símbolos del binario, no de suponer. **`NSPrivacyTracking` es `false` y no hay `NSPrivacyTrackingDomains`**: ver el KDoc del propio archivo, que explica el rechazo ITMS-91064 que costó llegar hasta ahí |
 | Cifrado | `Info.plist` → `ITSAppUsesNonExemptEncryption = false` | Evita que App Store Connect pregunte por el cumplimiento de exportación en cada subida |
 | AdMob | `IosAdUnits` (shared/iosMain) + `AdMobBridge.swift` | Unidad real solo si el binario **no** es de depuración y hay una configurada en `secrets.properties`; si no, la de prueba. Misma política que `AdMobConfig` en Android |
 | SKAdNetwork | `Info.plist` → `SKAdNetworkItems` | 50 redes de la lista oficial de Google. Sin esto, quien rechaza el ATT no genera atribución y las redes dejan de pujar |
@@ -182,6 +182,7 @@ web y la revocación de tokens. No es una urgencia de producción.
 |---------|-------|----------|
 | `conflicting provisioning settings` al archivar | Se fijó `Apple Distribution` a mano con firma automática | Volver a `Apple Development`; el Organizer re-firma al exportar |
 | `provisioning profile doesn't include the com.apple.developer.applesignin entitlement` | La capability no está activada en el App ID | Activarla en developer.apple.com → Identifiers y volver a archivar |
+| `ITMS-91064: Invalid tracking information` | `NSPrivacyTracking` en `true` con `NSPrivacyTrackingDomains` vacío o ausente | O se declaran dominios reales, o se pone `tracking` en `false`. Ojo: los dominios listados quedan BLOQUEADOS si el usuario rechaza el ATT |
 | `ITMS-91053: Missing API declaration` | Falta una API de razón requerida en el privacy manifest | El email de Apple dice cuál; añadir su código de razón |
 | `invalid audience` al entrar con Apple o Google | El bundle id / client id no está en *Authorized Client IDs* de Supabase | Añadirlo en el proveedor correspondiente |
 | El login con Apple falla sin más detalle | Cancelación del usuario o error de configuración | Buscar `KORTEX apple_sign_in FALLÓ:` en la consola de Xcode |

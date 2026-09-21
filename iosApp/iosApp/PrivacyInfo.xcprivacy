@@ -21,24 +21,36 @@
 <dict>
 
     <!--
-      true porque la app muestra anuncios de AdMob, que usan el IDFA para
-      publicidad personalizada previo consentimiento (UMP + prompt de ATT,
-      ver AdMobBridge.swift). Sin esto, el prompt de seguimiento no es coherente
-      con lo declarado y Apple lo marca.
+      NSPrivacyTracking = false, y el porqué importa porque NO es lo obvio.
+
+      Esta clave describe lo que hace ESTE binario, no lo que declara la etiqueta de
+      App Privacy de la ficha (donde el IDFA y los datos publicitarios SÍ figuran como
+      usados para seguimiento, y así debe quedarse). El código propio de la app solo
+      abre conexiones a Supabase —cuenta, progreso, ranking: funcionalidad, no
+      seguimiento—. Quien contacta dominios de anuncios es el SDK de Google, y el
+      manifiesto que debe declararlo es el suyo.
+
+      HISTORIA (no repetir el error): se publicó primero como `true` con
+      NSPrivacyTrackingDomains como <array/> VACÍO, razonando que los SDK de Google ya
+      declaraban sus dominios. Apple rechazó con **ITMS-91064**. Al inspeccionar los
+      manifiestos de GoogleMobileAds y UserMessagingPlatform se comprobó que no
+      declaran NI la clave NI ningún dominio, y Google no publica una lista oficial
+      para esta clave: su documentación remite a su propio manifiesto.
+
+      POR QUÉ NO SE PUSO `true` CON DOMINIOS: la documentación de Apple es explícita en
+      que, si el usuario rechaza el ATT, "network requests to these domains fail".
+      Listar los dominios de anuncios dejaría SIN ANUNCIOS —no sin personalización:
+      sin anuncios— a la mayoría de usuarios, que es justo la que rechaza el prompt.
+
+      SI UN REVISOR LO CUESTIONA: la respuesta es la de arriba (el binario propio no
+      contacta dominios de seguimiento). Si Apple insistiera, la alternativa es
+      `true` + googleads.g.doubleclick.net, midiendo antes el impacto en fill rate.
+
+      El prompt de ATT y NSUserTrackingUsageDescription se quedan en el Info.plist:
+      hacen falta para que AdMob pueda pedir el IDFA, y son independientes de esta clave.
     -->
     <key>NSPrivacyTracking</key>
-    <true/>
-
-    <!--
-      Vacío a propósito. El sistema fusiona los manifests de la app y los de todos
-      los frameworks embebidos: los dominios de seguimiento de Google ya vienen
-      declarados dentro de GoogleMobileAds.framework, que es la autoridad sobre los
-      suyos y quien los actualiza al subir de versión. La app en sí no abre ninguna
-      conexión de seguimiento propia — el tráfico a Supabase es funcionalidad de la
-      app (cuenta, progreso, ranking), no tracking.
-    -->
-    <key>NSPrivacyTrackingDomains</key>
-    <array/>
+    <false/>
 
     <key>NSPrivacyCollectedDataTypes</key>
     <array>
