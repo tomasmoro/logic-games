@@ -305,6 +305,7 @@ fun HyperCubeScreen(graph: AppGraph, onExit: () -> Unit) {
                     { vm.onIntent(HyperCubeIntent.NextLevel) }
                 },
                 onChooseLevel = { vm.onIntent(HyperCubeIntent.ChooseLevel) },
+                accent = ACCENT,
             )
         }
 

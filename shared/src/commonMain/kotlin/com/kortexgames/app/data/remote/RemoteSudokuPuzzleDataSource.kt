@@ -33,6 +33,27 @@ class RemoteSudokuPuzzleDataSource(
      * Devuelve lista vacía ante cualquier problema de red para que el llamador siga
      * sirviendo desde el seed local sin romperse (local-first).
      */
+    /**
+     * Descarga UN puzzle por su id. Lo necesita el modo torneo: el evento fija el
+     * tablero y ese puzzle puede no estar en la caché local del jugador (el banco
+     * local se siembra por dificultad y se enriquece a trozos, no está completo).
+     *
+     * @return null si no existe o si la red falla; el llamador decide el respaldo.
+     */
+    suspend fun fetchById(id: String): SudokuPuzzle? =
+        client.postgrest.from("sudoku_puzzles")
+            .select { filter { eq("id", id) } }
+            .decodeList<PuzzleRow>()
+            .firstOrNull()
+            ?.let { r ->
+                SudokuPuzzle(
+                    id = r.id,
+                    difficulty = SudokuDifficulty.entries.getOrElse(r.difficulty) { SudokuDifficulty.FACIL },
+                    puzzle = r.puzzle,
+                    solution = r.solution,
+                )
+            }
+
     suspend fun fetchByDifficulty(difficulty: SudokuDifficulty, limit: Int): List<SudokuPuzzle> =
         client.postgrest.from("sudoku_puzzles")
             .select {

@@ -50,6 +50,11 @@ import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.ui.components.GameIntroScreen
 import com.kortexgames.app.ui.components.GameOverOverlay
 import com.kortexgames.app.ui.components.GamePauseControls
+import androidx.compose.foundation.layout.Arrangement
+import com.kortexgames.app.ui.components.GameExitGuard
+import com.kortexgames.app.ui.events.EventExitConfirmDialog
+import com.kortexgames.app.ui.events.EventRulesPanel
+import kortexgames.shared.generated.resources.event_intro_label
 import com.kortexgames.app.ui.components.ReviveAdOverlay
 import com.kortexgames.app.ui.components.SpaceBackdrop
 import kortexgames.shared.generated.resources.Res
@@ -113,11 +118,37 @@ import kotlin.math.sin
  */
 @Composable
 fun HexaOrbitScreen(graph: AppGraph, onExit: () -> Unit) {
-    val vm: HexaOrbitViewModel = viewModel {
-        HexaOrbitViewModel(graph.progressRepository, graph.audio)
+    // ¿Esta corrida es de torneo? Se resuelve UNA vez al montar: si la sesión se cerrara a
+    // mitad de partida, la que está en curso debe seguir siendo la del torneo hasta terminar.
+    val play = remember { graph.eventPlaySession.activeFor(GameIds.HEXA_ORBIT) }
+    val event = play?.event
+    val vm: HexaOrbitViewModel = viewModel(key = event?.id ?: VIEWMODEL_KEY_FREE_PLAY) {
+        HexaOrbitViewModel(
+            graph.progressRepository,
+            graph.audio,
+            event = event,
+            events = graph.eventsRepository,
+        )
     }
     val state by vm.state.collectAsStateWithLifecycle()
     val game = state.game
+
+    // Único punto de salida "en juego": fuera de torneo sale directo (ENDLESS, no hay corrida
+    // que guardar); en torneo pide confirmación, porque salir gasta el intento.
+    val exitInPlay: () -> Unit = { vm.requestExit(onExit) }
+
+    // Aviso de abandono del torneo. Va antes que cualquier pantalla porque la salida se puede
+    // pedir desde la partida o desde el menú de pausa, y es modal en ambos casos.
+    if (state.showEventExitConfirm) {
+        EventExitConfirmDialog(
+            // Cupo REAL (incluye los intentos extra comprados con anuncios).
+            attemptsLeftAfter = play?.attemptsAllowed?.let { allowed ->
+                (allowed - play.attemptsUsed - 1).coerceAtLeast(0)
+            },
+            onConfirm = { vm.confirmEventExit(onExit) },
+            onDismiss = { vm.dismissEventExit() },
+        )
+    }
 
     // Antesala: mientras no arranca (IDLE) se muestra la intro y NO corre el bucle de física.
     if (state.status == GameStatus.IDLE) {
@@ -135,6 +166,28 @@ fun HexaOrbitScreen(graph: AppGraph, onExit: () -> Unit) {
             },
             onExit = onExit,
             background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },
+            configContent = if (event == null) {
+                null
+            } else {
+                {
+                    // En torneo, la antesala explica las reglas del evento antes de que el
+                    // jugador gaste un intento. Hexa Orbit no tiene selector de dificultad,
+                    // así que este hueco estaba libre.
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            text = stringResource(Res.string.event_intro_label),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = LogicColors.Amber,
+                        )
+                        Text(
+                            text = event.title,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = LogicColors.OnDark,
+                        )
+                        EventRulesPanel(event = event, accent = CategoryPalette.SpatialVision)
+                    }
+                }
+            },
         )
         return
     }
@@ -252,6 +305,24 @@ fun HexaOrbitScreen(graph: AppGraph, onExit: () -> Unit) {
                 audio = graph.audio,
                 onPlayAgain = { vm.onIntent(HexaOrbitIntent.RestartGame) },
                 onExit = onExit,
+                accent = CategoryPalette.SpatialVision,
+                // En torneo, volver a jugar se decide en la pantalla del torneo: es la
+                // que sabe cuántos intentos quedan y la que ofrece el anuncio.
+                singleBackCta = event != null,
+            )
+        }
+
+        // Atrás del sistema: SOLO en torneo. Fuera de él, Hexa Orbit nunca tuvo guardia de
+        // salida (es ENDLESS y salir no cuesta nada), y añadirla ahora cambiaría el
+        // comportamiento de siempre. `confirmsExternally` evita encadenar dos diálogos: el
+        // aviso de abandono lo pone el propio juego.
+        if (event != null) {
+            GameExitGuard(
+                status = state.status,
+                onResume = { vm.onIntent(HexaOrbitIntent.Resume) },
+                onConfirmExit = exitInPlay,
+                accent = CategoryPalette.SpatialVision,
+                confirmsExternally = true,
             )
         }
 
@@ -262,7 +333,7 @@ fun HexaOrbitScreen(graph: AppGraph, onExit: () -> Unit) {
             audio = graph.audio,
             onPause = { vm.onIntent(HexaOrbitIntent.Pause) },
             onResume = { vm.onIntent(HexaOrbitIntent.Resume) },
-            onExit = onExit,
+            onExit = exitInPlay,
             gameTitle = "Hexa Orbit",
             help = GameHelpContent.hexaOrbit,
             accent = CategoryPalette.SpatialVision,
@@ -725,3 +796,10 @@ private const val BURST_SPREAD_FACTOR = 0.9f
 
 /** Chispas por estallido: suficientes para leerse como explosión, pocas para no ensuciar. */
 private const val BURST_PARTICLES = 10
+
+/**
+ * Clave del ViewModel en partida libre. Se separa de la del torneo (`event.id`) para que entrar
+ * a un torneo no reutilice el ViewModel de la partida normal —y al revés—: comparten pantalla,
+ * pero son dos corridas con reglas distintas.
+ */
+private const val VIEWMODEL_KEY_FREE_PLAY = "libre"

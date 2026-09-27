@@ -388,6 +388,7 @@ fun DefuserScreen(graph: AppGraph, onExit: () -> Unit) {
                 onPlayUnlockedDifficulty = state.justUnlockedDifficulty?.let { difficulty ->
                     { vm.onIntent(DefuserIntent.PlayDifficulty(difficulty)) }
                 },
+                accent = accent,
             )
         }
 
@@ -402,6 +403,7 @@ fun DefuserScreen(graph: AppGraph, onExit: () -> Unit) {
             help = GameHelpContent.defuser,
             accent = accent,
             exitKeepsProgress = true,
+            onRestart = { vm.onIntent(DefuserIntent.RestartGame) },
         )
 
         // Segunda oportunidad: al pisar una mina (una vez por partida) se ofrece

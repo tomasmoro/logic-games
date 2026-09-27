@@ -239,6 +239,7 @@ fun NeonCircuitScreen(graph: AppGraph, onExit: () -> Unit) {
                 onExit = onExit,
                 onNextLevel = { vm.onIntent(NeonCircuitIntent.NextLevel) },
                 onChooseLevel = { vm.onIntent(NeonCircuitIntent.ChooseLevel) },
+                accent = CategoryPalette.ProblemSolving,
             )
         }
 

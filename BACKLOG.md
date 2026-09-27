@@ -440,7 +440,141 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
       exista (Fase 7), que es de donde salieron estos tres juegos; (c) rematar la
       llegada al login con el percentil de lo que acaba de jugar ("eres mejor que el
       X%") como argumento para crear la cuenta.
-- [ ] **Crear torneos de juegos y rankings**
+- [ ] **Crear torneos de juegos y rankings** (Fase 7, EN CURSO — 21/09/2026)
+
+      **Hecho: backend completo.** Migraciones 0051–0055. `public.events` (un
+      torneo = un juego + ventana `starts_at`/`ends_at` + reglas) y
+      `public.event_entries` (mejor marca por jugador, materializada al escribir).
+      `user_progress.event_id` engancha la partida al torneo sin tocar el log.
+      RPC `submit_event_result` (valida ventana con el reloj del SERVIDOR,
+      dificultad fija y tope de intentos; SQLSTATE propios KXE01/02/03) y
+      `get_event_leaderboard` (top N + fila propia; proyecta solo `display_name`,
+      nunca `user_id`). Restricción de exclusión: no puede haber dos torneos
+      publicados solapados del mismo juego. El calendario lo ve también `anon`
+      (0055) para que el invitado se enganche; la tabla exige sesión.
+
+      **Hecho: cliente.** `domain/model/GameEvent.kt`, caché local `Event.sq` +
+      `EventsRepositoryImpl` (local-first, sin cola de subida diferida: un intento
+      fuera de ventana no vale), `ui/events/` con tarjeta de Home, pantalla de
+      detalle (reglas + clasificación + cuenta atrás adaptativa) y MVI.
+
+      **Hecho: modo torneo en la partida (Neon Sudoku Matrix).**
+      `EventPlaySession` marca que la partida en curso es de un torneo (se abre al
+      lanzar desde la pantalla del evento y se cierra al salir de la ruta de juego,
+      en el mismo hook que ya cobraba los intersticiales). Con él, el Sudoku:
+      juega el tablero que fija el evento (`puzzleId`, vía `puzzleById`, que NO cae
+      a uno aleatorio si falla — jugar otro tablero gastaría un intento en una
+      marca incomparable), clava la dificultad, no guarda ni reanuda la partida
+      (el estado guardado no sabe a qué torneo pertenece), envía el resultado con
+      `submitResult` y enseña el puesto del torneo en el cartel de fin
+      (`GameOverInfo.event`, que sustituye a la comparativa mundial).
+      Verificado contra el backend real suplantando a un usuario autenticado
+      (`request.jwt.claims` + `rollback`): mejora de marca, un intento peor NO pisa
+      la buena, dificultad equivocada → KXE03, tope de intentos → KXE02 y torneo
+      cerrado → KXE01.
+
+      **Pistas en torneo:** YA resuelto sin tocar nada — `calculateScore` de Sudoku
+      penaliza cada pista (`HINT_SCORE_PENALTY`) y el revivir. OJO con la
+      consecuencia: esa penalización es en PUNTOS, así que en un torneo con
+      `rank_by_time = true` las pistas salen gratis. Para Sudoku conviene sembrar
+      los torneos con **`rank_by_time = false`**: su score ya integra tiempo,
+      errores y ayudas, que es justo el baremo que se quiere premiar.
+
+      **Falta (y por eso NO hay ningún torneo publicado todavía):**
+      **Hecho: abandonar gasta el intento** (decisión de producto, 21/09/2026).
+      Migración 0056: `submit_event_result` acepta `p_abandoned`, que consume
+      intento SIN registrar marca (`event_entries.has_mark`). No se envía como un
+      resultado normal a propósito — en un torneo por tiempo, una partida
+      abandonada a los diez segundos tendría el mejor cronómetro de la tabla.
+      La clasificación filtra por `has_mark` y devuelve `my_attempts` aparte, para
+      que quien solo ha abandonado vea sus intentos aunque no salga en la tabla.
+      En el cliente: `EventExitConfirmDialog` (molde de `GuestRiskDialog`, ámbar y
+      no rojo —no es un error, es una decisión con consecuencia—, acción segura en
+      el CTA y la salida como texto atenuado). Cubre las dos vías de salida
+      (menú de pausa y atrás del sistema, vía el nuevo `confirmsExternally` de
+      `GameExitGuard` para no encadenar dos diálogos) y también el estado de
+      "decidir el revivir", que si no sería otra vía de intento gratis. El
+      cronómetro se para mientras el aviso está en pantalla: leerlo no puede costar
+      puntos. `exitKeepsProgress` pasa a false en torneo (salir no guarda nada).
+      - **El resto de juegos** sigue sin modo torneo: hoy solo **Neon Sudoku Matrix
+        y Hexa Orbit** leen `EventPlaySession`. Los demás ignorarían el evento y
+        jugarían como una partida normal, así que **no se debe publicar un torneo
+        de un juego que no lo tenga cableado**: la tarjeta y la tabla saldrían y
+        ninguna partida puntuaría.
+
+        Lo que hay que tocar en un juego para darle modo torneo (receta de los dos
+        ya hechos): leer `eventPlaySession.activeFor(id)` en la pantalla y pasar el
+        evento al ViewModel (con `viewModel(key = ...)` para no compartir estado con
+        la partida libre); enviar el resultado con `submitResult` tras guardar el
+        local; `singleBackCta = event != null` en `GameOverOverlay` (si no, el botón
+        de "jugar de nuevo" deja encadenar corridas saltándose el reparto de
+        intentos); `requestExit` con `EventExitConfirmDialog` y
+        `GameExitGuard(confirmsExternally = true)`; y las reglas del evento en la
+        antesala.
+      **Hecho: notificaciones del torneo.** Tres avisos (`EVENT_STARTING`,
+      `EVENT_ENDING_SOON`, `EVENT_RESULTS`) en un **canal propio** (`kortex_events`),
+      programados **en local** desde el calendario ya sincronizado — un torneo tiene
+      fecha conocida de antemano, así que no hace falta push. Reglas en
+      `NotificationPlanner` (puro, con 7 tests nuevos): solo el torneo más próximo
+      genera avisos; "últimas horas" solo a quien NO ha competido y "resultados"
+      solo a quien sí; y todo se corre a partir de las 10:00 locales para que un
+      torneo que abre a medianoche no despierte a nadie. La participación se deduce
+      del historial local (sin llamadas de red por replanificación); su limitación
+      está documentada en `NotificationsManager.playedDuring`.
+
+      **Hecho: 1 intento gratis + intentos extra por anuncio** (21/09/2026).
+      Migraciones 0057 y 0058: `events.ad_attempts_limit` (cuántos extras se pueden
+      comprar, POR EVENTO) y `event_entries.extra_attempts` (los que lleva cada
+      jugador); RPC `grant_event_attempt` (SQLSTATE nuevo KXE04 = tope de extras
+      agotado) y el cupo de `submit_event_result` pasa a ser
+      `attempts_limit + extra_attempts`. En el cliente, el CTA de la pantalla de
+      torneo tiene tres caras (login / ver anuncio / entrar) y el anuncio se
+      concede SOLO tras `RewardResult.EARNED`.
+      Hay tope de extras a propósito: con anuncios ilimitados el torneo lo ganaría
+      quien más aguante mirando publicidad, que es premiar paciencia y no cabeza.
+      **Límite asumido:** la recompensa se concede al volver del anuncio, sin
+      verificación de servidor (lo mismo que la pista y el revivir del Sudoku);
+      verificarla pediría callbacks servidor-a-servidor de AdMob. El tope sí lo
+      impone el backend, así que un cliente manipulado puede saltarse el anuncio
+      pero nunca superar el cupo del torneo.
+
+      **Pendiente de las notificaciones:** al tocarlas se abre la Home (donde está
+      la tarjeta), no el torneo. Un deep link pediría llevar payload en los
+      schedulers de ambas plataformas, que hoy solo transportan título y cuerpo.
+      **Hecho: cierre del torneo e insignia** (21/09/2026). `EventRewardManager`
+      vigila los torneos ya cerrados y, si el jugador quedó dentro de `reward_top_n`,
+      lanza `EventRewardDialog` (insignia + fuegos + puesto) UNA sola vez — nunca
+      dentro de una partida. La memoria de lo ya celebrado vive en DataStore
+      (`EventRewardStore`); se anota TODO torneo resuelto, no solo los ganados, para
+      no repetir la consulta de red en cada arranque. Un fallo de red NO anota: el
+      torneo queda pendiente y se reintenta, en vez de perder la insignia para
+      siempre. La pantalla del torneo cerrado abre ahora con un panel de resultado
+      (puesto final, o "no registraste marca" / "no participaste").
+      El puesto final sigue siendo derivable de `event_entries` sin proceso de
+      cierre: al pasar `ends_at` la tabla ya no admite escrituras.
+
+      **Hecho: vitrina de insignias en el Perfil** (27/09/2026). Migración 0059
+      (`get_my_event_awards`, SECURITY DEFINER) + caché local de solo lectura
+      (`EventAward.sq`, `8.sqm`) + sección "Torneos ganados" con medallón por puesto
+      (oro/plata/bronce). Solo con sesión: un invitado no puede competir.
+
+      **Se evaluó reutilizar la feature de logros y se descartó.** El porqué completo
+      está en la cabecera de la 0059; en corto: (1) el catálogo de logros son 16
+      filas fijas con UUID en código + seed y FK, así que cada torneo nuevo exigiría
+      una migración y una RELEASE; (2) un logro es progreso hacia un umbral y una
+      insignia es un puesto en una fecha —`threshold`/`progress`/`fraction` serían
+      relleno—; y (3) decisivo, `user_achievements` lo escribe el CLIENTE mientras
+      que un premio de torneo tiene que derivarse en el SERVIDOR: son modelos de
+      confianza opuestos. El punto de encuentro futuro es un logro tipo "gana 5
+      torneos", que sí encaja en el motor de condiciones.
+
+      **Pendiente de la vitrina:** contador de "torneos jugados" (se dejó fuera para
+      no añadir una segunda ruta de datos por un dato decorativo) y arte propio de
+      insignia — hoy `reward_badge_key` viaja hasta el cliente pero no elige nada,
+      se usan trofeo/medalla de Material.
+      - **Operativa:** hoy un torneo se crea sembrándolo a mano por migración.
+        Si se quiere cadencia semanal, el escalón siguiente es `pg_cron`.
+      - Torneos privados organizados por usuarios: FUERA de alcance por ahora.
 - [ ] **Atracción Geométrica — segunda oportunidad con anuncio.** El juego ya es
       infinito y por vidas (`PolarityConfig.INITIAL_LIVES`), así que encaja el
       mismo patrón de revivir que Burbujas de Cálculo y Neon Pulse:
@@ -537,7 +671,9 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
       `NotificationPrimingPolicy` (1ª oferta tras 1 partida, 2ª tras 5, máximo dos)
       son una apuesta razonada, no un dato. Con telemetría de "antesala mostrada →
       aceptada → permiso concedido" se pueden mover con criterio; en particular, la
-      2ª oferta a las 5 partidas es la más discutible.
+      2ª oferta a las 5 partidas es la más discutible. Al moverlos, que ninguno caiga
+      en las 10 partidas: ahí está la 1ª oferta de `ReviewPromptPolicy` y serían dos
+      diálogos al terminar la misma partida.
 - [ ] **Medir antes de subir la frecuencia.** La cadena actual es conservadora (un
       aviso por tarde como mucho, y nada más allá de 14 días de inactividad). Antes
       de añadir tipos nuevos conviene tener datos de apertura: notificar de más es la

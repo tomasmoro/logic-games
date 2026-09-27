@@ -62,12 +62,14 @@ import com.kortexgames.app.game.daily.TrainingDay
 import com.kortexgames.app.game.daily.TrainingDayStatus
 import com.kortexgames.app.game.daily.calculateStreakDays
 import com.kortexgames.app.game.daily.weeklyTrainingDays
+import com.kortexgames.app.ui.components.ArcadeBrickBackground
 import com.kortexgames.app.ui.components.CategoryMotifSurface
 import com.kortexgames.app.ui.components.GameMotifIcon
 import com.kortexgames.app.ui.components.KortexIcons
 import com.kortexgames.app.ui.components.NeonIcon
 import com.kortexgames.app.ui.components.NewBadge
 import com.kortexgames.app.ui.components.StaggeredReveal
+import com.kortexgames.app.ui.events.EventCard
 import com.kortexgames.app.ui.components.alphaIf
 import com.kortexgames.app.ui.components.bounceClick
 import com.kortexgames.app.ui.components.dashedBorder
@@ -79,6 +81,7 @@ import kortexgames.shared.generated.resources.home_new_games_subtitle
 import kortexgames.shared.generated.resources.home_new_games_title
 import kotlin.math.roundToInt
 import org.jetbrains.compose.resources.stringResource
+import kotlin.time.Clock
 
 /**
  * Pantalla de Inicio: el **centro de motivación**. Saludo con avatar, la tarjeta de
@@ -99,6 +102,7 @@ fun HomeScreen(
     onSeeGames: () -> Unit,
     onOpenGame: (String) -> Unit,
     onOpenAuth: () -> Unit,
+    onOpenEvent: (String) -> Unit,
 ) {
     val dailyGoal by graph.dailyGoalManager.state.collectAsStateWithLifecycle()
     // Historial ya precargado durante la splash y compartido por toda la app
@@ -110,6 +114,21 @@ fun HomeScreen(
     // La tira de la semana se recalcula solo cuando cambia el historial: recorre todas
     // las partidas para agrupar por día y no debe rehacerse en cada recomposición.
     val week = remember(history) { weeklyTrainingDays(history) }
+
+    // Torneos vigentes (Fase 7). Sale de la caché local, así que en el primer frame
+    // ya está resuelto: si no hay ninguno, la Home no reserva ni un pixel.
+    val events by graph.eventsRepository.observeVisible()
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+
+    // Se ordenan una vez por cambio del calendario, no por frame: para decidir el
+    // ORDEN basta con saber si un torneo está vivo ahora, y eso no cambia entre dos
+    // recomposiciones seguidas. La cuenta atrás de cada tarjeta sí late sola, aparte.
+    val visibleEvents = remember(events) {
+        val instant = Clock.System.now()
+        events
+            .sortedWith(compareBy({ !it.isLiveAt(instant) }, { it.endsAt }))
+            .take(MAX_EVENT_CARDS)
+    }
 
     // Sesión reactiva: la fuente de verdad para el saludo y el CTA de login.
     val session by graph.authRepository.sessionState.collectAsStateWithLifecycle()
@@ -124,93 +143,119 @@ fun HomeScreen(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(22.dp),
-        ) {
-            // Entrada escalonada: los bloques aparecen de arriba abajo, desfasados,
-            // en lugar de materializarse todos a la vez al salir de la splash. El
-            // índice es la posición visual, así que el desfase se mantiene aunque el
-            // banner de invitado no esté.
-            var slot = 0
-            StaggeredReveal(index = slot++) {
-                HomeHeader(name = playerName)
-            }
-
-            // Invitado: banner que invita a iniciar sesión para guardar en la nube.
-            if (isGuest) {
+        // Textura ambiental de muro arcade "neo-retro" (morado de marca, igual que la
+        // splash): la Home no pertenece a una categoría concreta, así que usa el
+        // acento de marca en vez del de un juego.
+        Box(Modifier.fillMaxSize().background(LogicColors.BackgroundDark)) {
+            ArcadeBrickBackground(modifier = Modifier.fillMaxSize(), accent = LogicColors.Violet)
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(22.dp),
+            ) {
+                // Entrada escalonada: los bloques aparecen de arriba abajo, desfasados,
+                // en lugar de materializarse todos a la vez al salir de la splash. El
+                // índice es la posición visual, así que el desfase se mantiene aunque el
+                // banner de invitado no esté.
+                var slot = 0
                 StaggeredReveal(index = slot++) {
-                    SignInBanner(onClick = onOpenAuth)
+                    HomeHeader(name = playerName)
                 }
-            }
 
-            // Tarjeta de entrenamiento: racha + semana + progreso de hoy + misión. Se
-            // muestra siempre (también con el objetivo cumplido, donde cambia a estado
-            // de celebración) para que la racha no desaparezca de la Home al completarlo.
-            StaggeredReveal(index = slot++) {
-                TrainingCard(
-                    goal = dailyGoal,
-                    streakDays = streak,
-                    week = week,
-                    // El botón de jugar de la cabecera manda a uno de los juegos que
-                    // faltan de la misión de hoy (no a un juego fijo): así el CTA
-                    // principal empuja directamente a completar el entrenamiento del
-                    // día. Solo cae a la partida rápida genérica si, por lo que sea, no
-                    // queda ningún pendiente con ruta jugable.
-                    onPlay = {
-                        val pendingGame = dailyGoal.mission.firstOrNull { !it.isDone }?.game
-                        val pendingRoute = pendingGame?.let { Routes.gameRoute(it.id) }
-                        if (pendingRoute != null) onOpenGame(pendingRoute) else onQuickPlay()
-                    },
-                    onOpenGame = { game ->
-                        Routes.gameRoute(game.id)?.let(onOpenGame) ?: onSeeGames()
-                    },
-                )
-            }
+                // Invitado: banner que invita a iniciar sesión para guardar en la nube.
+                if (isGuest) {
+                    StaggeredReveal(index = slot++) {
+                        SignInBanner(onClick = onOpenAuth)
+                    }
+                }
 
-            // Juego estrella: el más jugado. Los siguientes más jugados (excluido el
-            // estrella) alimentan "Otros juegos que te gustan" en la misma tarjeta.
-            val rankedGames = remember(history) { rankedPlayedGames(history) }
-            val starGame = rankedGames.firstOrNull()
-            if (starGame != null) {
+                // Tarjeta de entrenamiento: racha + semana + progreso de hoy + misión. Se
+                // muestra siempre (también con el objetivo cumplido, donde cambia a estado
+                // de celebración) para que la racha no desaparezca de la Home al completarlo.
                 StaggeredReveal(index = slot++) {
-                    StarGameCard(
-                        star = starGame,
-                        others = rankedGames.drop(1).take(3),
-                        onPlay = { Routes.gameRoute(starGame.game.id)?.let(onOpenGame) },
-                        onPlayOther = { other -> Routes.gameRoute(other.game.id)?.let(onOpenGame) },
+                    TrainingCard(
+                        goal = dailyGoal,
+                        streakDays = streak,
+                        week = week,
+                        // El botón de jugar de la cabecera manda a uno de los juegos que
+                        // faltan de la misión de hoy (no a un juego fijo): así el CTA
+                        // principal empuja directamente a completar el entrenamiento del
+                        // día. Solo cae a la partida rápida genérica si, por lo que sea, no
+                        // queda ningún pendiente con ruta jugable.
+                        onPlay = {
+                            val pendingGame = dailyGoal.mission.firstOrNull { !it.isDone }?.game
+                            val pendingRoute = pendingGame?.let { Routes.gameRoute(it.id) }
+                            if (pendingRoute != null) onOpenGame(pendingRoute) else onQuickPlay()
+                        },
+                        onOpenGame = { game ->
+                            Routes.gameRoute(game.id)?.let(onOpenGame) ?: onSeeGames()
+                        },
                     )
                 }
-            }
-            // Juegos nuevos: solo se muestra si hay alguna novedad vigente en el
-            // catálogo (ver GameInfo.isNew). Va después del juego estrella y antes
-            // de las categorías: primero "lo tuyo", luego "lo nuevo", y por último
-            // el mapa completo de categorías.
-            val newGames = remember { GameCatalog.newGames }
-            if (newGames.isNotEmpty()) {
-                StaggeredReveal(index = slot++) {
-                    NewGamesCard(
-                        games = newGames,
-                        onOpenGame = { game -> Routes.gameRoute(game.id)?.let(onOpenGame) ?: onSeeGames() },
+
+                // Torneos: solo si hay alguno vigente. Van DESPUÉS del entrenamiento diario
+                // y antes del juego estrella: la misión del día es el hábito que sostiene
+                // la racha y no puede quedar por debajo de un evento puntual, pero un
+                // torneo con cuenta atrás sí pesa más que "tu juego favorito".
+                //
+                // Orden y tope: primero los que están EN DIRECTO y, dentro de esos, el que
+                // cierra antes —que es el que de verdad corre prisa—; los que aún no han
+                // empezado van detrás. Se pintan como mucho [MAX_EVENT_CARDS]: el backend
+                // impide dos torneos solapados DEL MISMO juego (migración 0051), pero nada
+                // impide que convivan varios de juegos distintos, y una Home con cinco
+                // carteles deja de ser una Home.
+                visibleEvents.forEach { event ->
+                    StaggeredReveal(index = slot++) {
+                        EventCard(
+                            event = event,
+                            onOpen = { onOpenEvent(it.id) },
+                        )
+                    }
+                }
+
+                // Juego estrella: el más jugado. Los siguientes más jugados (excluido el
+                // estrella) alimentan "Otros juegos que te gustan" en la misma tarjeta.
+                val rankedGames = remember(history) { rankedPlayedGames(history) }
+                val starGame = rankedGames.firstOrNull()
+                if (starGame != null) {
+                    StaggeredReveal(index = slot++) {
+                        StarGameCard(
+                            star = starGame,
+                            others = rankedGames.drop(1).take(3),
+                            onPlay = { Routes.gameRoute(starGame.game.id)?.let(onOpenGame) },
+                            onPlayOther = { other -> Routes.gameRoute(other.game.id)?.let(onOpenGame) },
+                        )
+                    }
+                }
+                // Juegos nuevos: solo se muestra si hay alguna novedad vigente en el
+                // catálogo (ver GameInfo.isNew). Va después del juego estrella y antes
+                // de las categorías: primero "lo tuyo", luego "lo nuevo", y por último
+                // el mapa completo de categorías.
+                val newGames = remember { GameCatalog.newGames }
+                if (newGames.isNotEmpty()) {
+                    StaggeredReveal(index = slot++) {
+                        NewGamesCard(
+                            games = newGames,
+                            onOpenGame = { game -> Routes.gameRoute(game.id)?.let(onOpenGame) ?: onSeeGames() },
+                        )
+                    }
+                }
+
+                StaggeredReveal(index = slot) {
+                    CategoryRow(
+                        onOpenCategory = { category ->
+                            val route = GameCatalog.games
+                                .firstOrNull { it.category == category && it.playable }
+                                ?.let { Routes.gameRoute(it.id) }
+                            if (route != null) onOpenGame(route) else onSeeGames()
+                        },
                     )
                 }
-            }
 
-            StaggeredReveal(index = slot) {
-                CategoryRow(
-                    onOpenCategory = { category ->
-                        val route = GameCatalog.games
-                            .firstOrNull { it.category == category && it.playable }
-                            ?.let { Routes.gameRoute(it.id) }
-                        if (route != null) onOpenGame(route) else onSeeGames()
-                    },
-                )
+                Spacer(Modifier.height(4.dp))
             }
-
-            Spacer(Modifier.height(4.dp))
         }
     }
 }
@@ -1239,3 +1284,12 @@ private fun CategoryCard(category: GameCategory, onClick: () -> Unit) {
         }
     }
 }
+
+/**
+ * Cuántas tarjetas de torneo caben en la Home. Dos: la Home ya tiene su propia
+ * jerarquía (entrenamiento, juego estrella, novedades, categorías) y cada cartel
+ * más la empuja hacia abajo. Si algún día hubiera tantos torneos que dos se
+ * quedaran cortos, la respuesta no es subir este número sino una pantalla propia
+ * de torneos.
+ */
+private const val MAX_EVENT_CARDS = 2

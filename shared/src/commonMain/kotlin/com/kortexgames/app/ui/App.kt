@@ -18,6 +18,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
@@ -65,6 +66,8 @@ import com.kortexgames.app.ui.components.RandomGameFab
 import com.kortexgames.app.ui.games.GameListScreen
 import com.kortexgames.app.ui.home.HomeScreen
 import com.kortexgames.app.ui.navigation.AnimatedBottomBar
+import com.kortexgames.app.ui.events.EventRewardDialog
+import com.kortexgames.app.ui.events.EventScreen
 import com.kortexgames.app.ui.navigation.Routes
 import com.kortexgames.app.ui.navigation.TopLevelTab
 import com.kortexgames.app.ui.onboarding.FirstRunFlow
@@ -215,10 +218,21 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean, introGamesPlay
         // seguro para cobrar un intersticial pendiente sin cortar la partida: cuando la
         // ruta anterior era un juego y la nueva no (el usuario volvió al menú). Es un
         // hook central: cubre los 30 juegos vía Routes.isGameRoute, sin listas a mano.
+        // Torneo abierto desde la tarjeta de Home. Vive aquí y no en la ruta porque
+        // [Routes.EVENT] no lleva argumento (ver su KDoc); `rememberSaveable` para
+        // que sobreviva a la muerte del proceso en Android y la pantalla se reabra
+        // con el torneo correcto en vez de en blanco.
+        var openEventId by rememberSaveable { mutableStateOf<String?>(null) }
+
         var previousRoute by remember { mutableStateOf<String?>(null) }
         LaunchedEffect(currentRoute) {
             if (Routes.isGameRoute(previousRoute) && !Routes.isGameRoute(currentRoute)) {
                 graph.adManager.onAdBreakpoint()
+                // Fin del modo torneo. Se cierra aquí —el único punto que sabe que el
+                // jugador ABANDONÓ la partida, sea por el botón de salir, por el back
+                // del sistema o por el cartel de fin— para que la siguiente partida
+                // suelta del mismo juego no se cuente como intento del torneo.
+                graph.eventPlaySession.end()
             }
             previousRoute = currentRoute
         }
@@ -236,6 +250,23 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean, introGamesPlay
         // constante— y el fondo azul noche se cortaría abajo con la banda del sistema.
         // Sigue siendo recuperable con un deslizamiento desde el borde inferior.
         ImmersiveMode(enabled = true)
+
+        // Celebración de un torneo ganado. Se monta en la raíz —como la antesala de
+        // notificaciones y la invitación a valorar— porque el momento en que procede
+        // no pertenece a ninguna pantalla: el torneo se resolvió mientras la app
+        // estaba cerrada, y la noticia debe alcanzar al jugador esté donde esté...
+        // salvo dentro de una partida, que jamás se interrumpe (el estado se
+        // mantiene en el manager, así que la celebración sigue en pie y aparece al
+        // salir del juego).
+        val eventReward by graph.eventRewardManager.pending.collectAsStateWithLifecycle()
+        eventReward?.let { reward ->
+            if (!Routes.isGameRoute(currentRoute)) {
+                EventRewardDialog(
+                    reward = reward,
+                    onDismiss = { graph.eventRewardManager.dismiss() },
+                )
+            }
+        }
 
         // Antesala del permiso de notificaciones. Se monta en la raíz —y no dentro de
         // una pantalla— porque el momento en que procede ofrecerla no pertenece a
@@ -419,7 +450,40 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean, introGamesPlay
                         onSeeGames = { navController.navigateToTab(Routes.GAMES) },
                         onOpenGame = { route -> navController.navigate(route) },
                         onOpenAuth = { navController.navigate(Routes.AUTH) },
+                        onOpenEvent = { eventId ->
+                            openEventId = eventId
+                            navController.navigate(Routes.EVENT)
+                        },
                     )
+                }
+                composable(Routes.EVENT) {
+                    val eventId = openEventId
+                    if (eventId == null) {
+                        // Sin torneo seleccionado no hay pantalla que pintar (solo puede
+                        // pasar con un backstack restaurado a medias): se vuelve en vez
+                        // de dejar una pantalla vacía.
+                        LaunchedEffect(Unit) { navController.popBackStack() }
+                    } else {
+                        EventScreen(
+                            graph = graph,
+                            eventId = eventId,
+                            onBack = { navController.popBackStack() },
+                            // Modo torneo: el juego se abre por su ruta normal y es
+                            // `EventPlaySession` quien le dice que esta partida es del
+                            // torneo (tablero fijo, dificultad fija y envío del
+                            // resultado al evento).
+                            onPlay = { event, attemptsUsed, attemptsAllowed ->
+                                Routes.gameRoute(event.gameId)?.let { route ->
+                                    // Modo torneo: la partida que se abre a continuación
+                                    // juega el reto del evento y puntúa en él. Lo cierra
+                                    // el mismo hook que detecta la salida del juego.
+                                    graph.eventPlaySession.begin(event, attemptsUsed, attemptsAllowed)
+                                    navController.navigate(route)
+                                }
+                            },
+                            onSignIn = { navController.navigate(Routes.AUTH) },
+                        )
+                    }
                 }
                 composable(Routes.GAMES) {
                     GameListScreen(

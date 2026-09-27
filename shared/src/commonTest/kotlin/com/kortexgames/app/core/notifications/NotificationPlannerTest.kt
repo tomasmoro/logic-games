@@ -39,6 +39,7 @@ class NotificationPlannerTest {
         streakDays: Int = 0,
         missionRemaining: Int = 0,
         recordBeaten: RecordBeatenSignal? = null,
+        events: List<EventNotice> = emptyList(),
     ) = NotificationInputs(
         now = now,
         timeZone = tz,
@@ -46,6 +47,20 @@ class NotificationPlannerTest {
         streakDays = streakDays,
         dailyMissionRemaining = missionRemaining,
         recordBeaten = recordBeaten,
+        events = events,
+    )
+
+    /** Torneo de hoy, de [fromHour] a [toHour] en hora local. */
+    private fun event(
+        title: String = "Torneo de Sudoku",
+        fromHour: Int = 12,
+        toHour: Int = 22,
+        hasPlayed: Boolean = false,
+    ) = EventNotice(
+        title = title,
+        startsAt = at(2026, 8, 11, fromHour, 0),
+        endsAt = at(2026, 8, 11, toHour, 0),
+        hasPlayed = hasPlayed,
     )
 
     private fun List<PlannedNotification>.of(kind: NotificationKind) =
@@ -196,4 +211,102 @@ class NotificationPlannerTest {
         assertEquals(20, local.hour)
         assertEquals(30, local.minute)
     }
+
+    // --- Torneos ------------------------------------------------------------
+
+    @Test
+    fun `avisa de la apertura de un torneo a su hora de inicio`() {
+        val plan = planner.plan(inputs(events = listOf(event(fromHour = 12, toHour = 22))))
+
+        val opening = plan.of(NotificationKind.EVENT_STARTING)
+        assertTrue(opening != null, "debía anunciarse la apertura del torneo")
+        assertEquals(at(2026, 8, 11, 12, 0), opening.at)
+    }
+
+    @Test
+    fun `un torneo que abre de madrugada se anuncia a una hora decente`() {
+        // Empieza a las 00:00 del día siguiente: avisar a esa hora es la vía rápida
+        // a que el usuario silencie el canal.
+        val midnight = EventNotice(
+            title = "Torneo",
+            startsAt = at(2026, 8, 12, 0, 0),
+            endsAt = at(2026, 8, 12, 23, 59),
+            hasPlayed = false,
+        )
+
+        val opening = planner.plan(inputs(events = listOf(midnight))).of(NotificationKind.EVENT_STARTING)
+
+        assertEquals(at(2026, 8, 12, 10, 0), opening?.at)
+    }
+
+    @Test
+    fun `el empujon de ultimas horas solo va a quien no ha competido`() {
+        val sinJugar = planner.plan(inputs(events = listOf(event(hasPlayed = false))))
+        val yaJugo = planner.plan(inputs(events = listOf(event(hasPlayed = true))))
+
+        val lastCall = sinJugar.of(NotificationKind.EVENT_ENDING_SOON)
+        assertTrue(lastCall != null, "a quien no ha jugado sí se le avisa")
+        // Tres horas antes del cierre (22:00).
+        assertEquals(at(2026, 8, 11, 19, 0), lastCall.at)
+        assertNull(
+            yaJugo.of(NotificationKind.EVENT_ENDING_SOON),
+            "a quien ya tiene marca, 'se acaba el tiempo' no le dice nada nuevo",
+        )
+    }
+
+    @Test
+    fun `los resultados solo se anuncian a quien compitio`() {
+        val yaJugo = planner.plan(inputs(events = listOf(event(hasPlayed = true))))
+        val sinJugar = planner.plan(inputs(events = listOf(event(hasPlayed = false))))
+
+        val results = yaJugo.of(NotificationKind.EVENT_RESULTS)
+        assertTrue(results != null, "quien compitió quiere saber su puesto")
+        // Cierre (22:00) + el margen que deja asentarse la tabla.
+        assertEquals(at(2026, 8, 11, 22, 10), results.at)
+        assertNull(
+            sinJugar.of(NotificationKind.EVENT_RESULTS),
+            "anunciar la clasificación de una tabla en la que no estás es ruido",
+        )
+    }
+
+    @Test
+    fun `solo el torneo mas proximo genera avisos`() {
+        val hoy = event(title = "El de hoy", fromHour = 12, toHour = 22)
+        val despues = EventNotice(
+            title = "El de la semana que viene",
+            startsAt = at(2026, 8, 18, 12, 0),
+            endsAt = at(2026, 8, 18, 22, 0),
+            hasPlayed = false,
+        )
+
+        // El orden de entrada no debe importar: manda el que antes empieza.
+        val plan = planner.plan(inputs(events = listOf(despues, hoy)))
+
+        val opening = plan.of(NotificationKind.EVENT_STARTING)
+        assertEquals(at(2026, 8, 11, 12, 0), opening?.at)
+        assertEquals(
+            1,
+            plan.count { it.kind == NotificationKind.EVENT_STARTING },
+            "dos aperturas a la vez convierten el canal en un tablón de anuncios",
+        )
+    }
+
+    @Test
+    fun `un torneo mas corto que el margen no manda el aviso de ultimas horas`() {
+        // De 12:00 a 14:00: "quedan 3 horas" caería ANTES de que abriera.
+        val plan = planner.plan(inputs(events = listOf(event(fromHour = 12, toHour = 14))))
+
+        assertNull(plan.of(NotificationKind.EVENT_ENDING_SOON))
+        assertTrue(plan.of(NotificationKind.EVENT_STARTING) != null, "la apertura sí se anuncia")
+    }
+
+    @Test
+    fun `sin torneos no se programa ningun aviso de torneo`() {
+        val plan = planner.plan(inputs())
+
+        assertNull(plan.of(NotificationKind.EVENT_STARTING))
+        assertNull(plan.of(NotificationKind.EVENT_ENDING_SOON))
+        assertNull(plan.of(NotificationKind.EVENT_RESULTS))
+    }
+
 }

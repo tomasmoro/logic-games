@@ -273,6 +273,7 @@ fun EnergyFlowScreen(graph: AppGraph, onExit: () -> Unit) {
                     vm.onIntent(EnergyFlowIntent.NextLevel)
                 },
                 onChooseLevel = { vm.onIntent(EnergyFlowIntent.ChooseLevel) },
+                accent = CategoryPalette.SpatialVision,
             )
         }
 

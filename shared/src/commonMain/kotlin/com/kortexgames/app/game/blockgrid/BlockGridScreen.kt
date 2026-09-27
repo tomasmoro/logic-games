@@ -426,6 +426,7 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
                 headline = "¡Fin de la partida!",
                 onPlayAgain = { vm.onIntent(BlockGridIntent.PlayAgain) },
                 onExit = onExit,
+                accent = CategoryPalette.SpatialVision,
             )
         }
 

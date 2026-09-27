@@ -1,0 +1,10 @@
+-- Migración v7 → v8: la caché de torneos guarda cuántos intentos EXTRA se pueden
+-- desbloquear viendo un anuncio (`events.ad_attempts_limit`, migración 0057 de
+-- Supabase). Sin esto, una instalación existente leería la columna y reventaría.
+-- Mismo patrón que 1.sqm–6.sqm: toda alta de tabla o columna necesita el suyo, y
+-- el DDL debe coincidir con el de Event.sq.
+--
+-- El DEFAULT 0 es importante: las filas ya cacheadas pasan a "no se pueden comprar
+-- intentos", que es el comportamiento anterior. Se corrige solo en el siguiente
+-- refresco del calendario.
+ALTER TABLE EventEntity ADD COLUMN adAttemptsLimit INTEGER NOT NULL DEFAULT 0;

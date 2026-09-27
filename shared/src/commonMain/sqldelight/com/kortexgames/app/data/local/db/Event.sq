@@ -1,0 +1,67 @@
+-- Caché local del calendario de torneos (tabla `public.events`, migración 0051).
+-- Igual que SudokuPuzzle.sq y a diferencia de PlayerProgress.sq: es una **réplica
+-- de solo lectura**, no progreso del jugador. Nunca sube nada a Supabase.
+--
+-- Por qué cachear un calendario que cabe en una consulta: la tarjeta de torneo va
+-- en Home, la primera pantalla tras la splash. Sin caché, el cartel aparecería
+-- medio segundo tarde (o nunca, sin red) y la Home tendría un salto de layout en
+-- cada arranque. Con caché se pinta con el último calendario conocido y se
+-- refresca por detrás.
+--
+-- NO se guarda aquí la marca del propio jugador: esa llega con la tabla del torneo
+-- (`get_event_leaderboard`, que ya devuelve `me`), y duplicarla en local obligaría
+-- a invalidarla al cambiar de cuenta.
+CREATE TABLE EventEntity (
+    id               TEXT    NOT NULL PRIMARY KEY,  -- UUID de public.events
+    gameId           TEXT    NOT NULL,              -- UUID del catálogo (GameIds)
+    title            TEXT    NOT NULL,
+    subtitle         TEXT,
+    startsAt         INTEGER NOT NULL,              -- epoch millis (UTC)
+    endsAt           INTEGER NOT NULL,              -- epoch millis (UTC)
+    difficultyLevel  INTEGER,                       -- NULL = el jugador la elige
+    rankByTime       INTEGER NOT NULL,              -- 0/1: 1 = gana el más rápido
+    scoringMode      TEXT    NOT NULL,              -- EventScoringMode.name
+    attemptsLimit    INTEGER,                       -- NULL = ilimitados
+    adAttemptsLimit  INTEGER NOT NULL DEFAULT 0,    -- intentos extra comprables con anuncio
+    puzzleId         TEXT,                          -- reto fijo (payload.puzzle_id)
+    seed             INTEGER,                       -- reto fijo (payload.seed)
+    rewardTopN       INTEGER NOT NULL DEFAULT 0,
+    rewardBadgeKey   TEXT
+);
+
+-- La consulta caliente es "qué hay vivo o por empezar", que filtra por endsAt.
+CREATE INDEX idx_events_end ON EventEntity(endsAt);
+
+-- Torneos que aún interesan, en orden de comienzo: los vigentes y los que acaban de
+-- cerrar. `:cutoff` NO es "ahora" sino "ahora menos la ventana de resultados" (ver
+-- EventsRepositoryImpl.RESULTS_WINDOW): un torneo recién terminado tiene que seguir
+-- a la vista con su clasificación final, que es el momento en que el jugador quiere
+-- mirar cómo quedó. El corte va en SQL y no en Kotlin para no traer a memoria un
+-- histórico que solo crece.
+selectVisible:
+SELECT * FROM EventEntity WHERE endsAt > :cutoff ORDER BY startsAt ASC;
+
+selectById:
+SELECT * FROM EventEntity WHERE id = :id;
+
+-- INSERT OR REPLACE (y no ON CONFLICT DO UPDATE) porque el dialecto SQLite del
+-- proyecto es 3.18 y el upsert nativo llegó en 3.24 — mismo motivo que en
+-- PlayerProgress.sq. Reemplazar la fila entera es correcto aquí: TODAS las
+-- columnas vienen del servidor, no hay ningún dato local que preservar.
+upsert:
+INSERT OR REPLACE INTO EventEntity(
+    id, gameId, title, subtitle, startsAt, endsAt, difficultyLevel, rankByTime,
+    scoringMode, attemptsLimit, adAttemptsLimit, puzzleId, seed, rewardTopN, rewardBadgeKey
+) VALUES (
+    :id, :gameId, :title, :subtitle, :startsAt, :endsAt, :difficultyLevel, :rankByTime,
+    :scoringMode, :attemptsLimit, :adAttemptsLimit, :puzzleId, :seed, :rewardTopN, :rewardBadgeKey
+);
+
+-- Poda de torneos terminados hace tiempo. No se borran nada más cerrar: el cartel
+-- de "así quedó" sigue teniendo sentido unas horas después del final.
+deleteEndedBefore:
+DELETE FROM EventEntity WHERE endsAt < :cutoff;
+
+-- Vacía la caché (cierre de sesión / borrado de cuenta).
+deleteAll:
+DELETE FROM EventEntity;

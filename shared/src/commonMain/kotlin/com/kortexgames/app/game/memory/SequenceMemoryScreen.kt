@@ -194,6 +194,7 @@ fun SequenceMemoryScreen(graph: AppGraph, onExit: () -> Unit) {
                 audio = graph.audio,
                 onPlayAgain = { vm.onIntent(SequenceMemoryIntent.PlayAgain) },
                 onExit = onExit,
+                accent = CategoryPalette.Memory,
             )
         }
 

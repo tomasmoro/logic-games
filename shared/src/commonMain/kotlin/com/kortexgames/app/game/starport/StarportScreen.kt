@@ -189,6 +189,7 @@ fun StarportScreen(graph: AppGraph, onExit: () -> Unit) {
                 onExit = onExit,
                 onNextLevel = { vm.onIntent(StarportIntent.NextLevel) },
                 onChooseLevel = { vm.onIntent(StarportIntent.ChooseLevel) },
+                accent = CategoryPalette.Logic,
             )
         }
 

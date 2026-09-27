@@ -331,6 +331,7 @@ fun Neon2048Screen(graph: AppGraph, onExit: () -> Unit) {
                 onPlayUnlockedDifficulty = state.justUnlockedBoardSize?.let { size ->
                     { vm.onIntent(Neon2048Intent.PlayBoardSize(size)) }
                 },
+                accent = CategoryPalette.MentalMath,
             )
         }
 

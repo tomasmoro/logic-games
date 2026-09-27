@@ -245,6 +245,7 @@ fun NeonPulseScreen(graph: AppGraph, onExit: () -> Unit) {
                 headline = "Horda ${state.wave} alcanzada",
                 onPlayAgain = { vm.onIntent(NeonPulseIntent.PlayAgain) },
                 onExit = onExit,
+                accent = CategoryPalette.Reflexes,
             )
         }
 

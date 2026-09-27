@@ -59,13 +59,27 @@ class NotificationPrimingPolicy {
          */
         const val MAX_ATTEMPTS = 2
 
-        /** Primera oferta: en cuanto ha terminado una partida y ha visto su resultado. */
-        const val FIRST_OFFER_GAMES = 5
+        /**
+         * Primera oferta: en cuanto ha terminado una partida y ha visto su resultado.
+         *
+         * No se retrasa más porque el coste de preguntar aquí es nulo —la antesala es
+         * propia, un "ahora no" no gasta el diálogo del sistema— mientras que esperar sí
+         * cuesta: cada día sin permiso es un recordatorio de racha que no se envía, y la
+         * racha se pierde justo en los primeros días, que es cuando el hábito aún no
+         * existe.
+         */
+        const val FIRST_OFFER_GAMES = 1
 
         /**
          * Segunda oferta: con cinco partidas ya hay racha y récords reales de por
          * medio, así que la propuesta apela a algo que el usuario puede perder.
+         *
+         * Estos dos umbrales se mantienen por debajo de los de [com.kortexgames.app.core.review.ReviewPromptPolicy]
+         * (1ª oferta a las 10 partidas) a propósito: son las dos únicas interrupciones
+         * modales de la app y deben caer en partidas distintas. Si se suben, hay que
+         * comprobar que ninguno coincide con 10 — dos diálogos seguidos al terminar la
+         * misma partida se leen como acoso y se cierran los dos de un manotazo.
          */
-        const val SECOND_OFFER_GAMES = 10
+        const val SECOND_OFFER_GAMES = 5
     }
 }

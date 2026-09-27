@@ -213,9 +213,17 @@ class HexaOrbitEngineTest {
         val before = engine.state.value
         assertTrue(before.awaitingRevive)
 
-        engine.rotateTile(before.projection.upcoming.first().coord)
+        // El azulejo a girar NO puede salir de `projection.upcoming`: en el instante de la fuga
+        // esa lista está vacía por construcción. El puntero acaba de entrar en el azulejo cuya
+        // salida da al vacío, así que la proyección hecha en ese cruce se corta en el tramo
+        // actual (`steps.size == 1`) y no hay ningún tramo futuro. Se coge cualquier azulejo
+        // real distinto del que pisa el puntero, que es el único que `rotateTile` descarta por
+        // sí mismo — así el tap solo puede quedar bloqueado por `awaitingRevive`, que es lo que
+        // se quiere probar.
+        val rotable = before.board.tiles.keys.first { it != before.pointer.coord }
+        engine.rotateTile(rotable)
 
-        assertEquals(before.board, engine.state.value.board)
+        assertEquals(before, engine.state.value, "La oferta de revive congela el tablero entero")
     }
 
     @Test

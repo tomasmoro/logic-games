@@ -497,6 +497,7 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
                 onExit = onExit,
                 onNextLevel = { vm.onIntent(WaterSortIntent.NextLevel) },
                 onChooseLevel = { vm.onIntent(WaterSortIntent.ChooseLevel) },
+                accent = CategoryPalette.Logic,
             )
         }
 
@@ -512,6 +513,13 @@ fun WaterSortScreen(graph: AppGraph, onExit: () -> Unit) {
             help = GameHelpContent.waterSort,
             accent = CategoryPalette.Logic,
             exitKeepsProgress = true,
+            // Reiniciar no tiene coste de anuncio en este juego (ver el botón equivalente
+            // del HUD más arriba), así que es seguro ofrecerlo también desde la pausa;
+            // se reanuda a la vez para volver directo al tablero ya limpio.
+            onRestart = {
+                vm.onIntent(WaterSortIntent.Restart)
+                vm.onIntent(WaterSortIntent.Resume)
+            },
         )
 
         // Feedback de "cargando anuncio" mientras se resuelve el rewarded del tubo

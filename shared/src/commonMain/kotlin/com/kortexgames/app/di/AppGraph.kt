@@ -20,6 +20,8 @@ import com.kortexgames.app.data.local.SqlDelightLocalLevelTimeDataSource
 import com.kortexgames.app.data.local.SqlDelightLocalPlayerProgressDataSource
 import com.kortexgames.app.data.local.SqlDelightLocalProgressDataSource
 import com.kortexgames.app.data.local.SqlDelightLocalSavedGameStateDataSource
+import com.kortexgames.app.data.local.SqlDelightLocalEventAwardsDataSource
+import com.kortexgames.app.data.local.SqlDelightLocalEventsDataSource
 import com.kortexgames.app.data.local.SqlDelightLocalSudokuPuzzleDataSource
 import com.kortexgames.app.data.local.createDatabase
 import com.kortexgames.app.data.local.db.LogicGamesDb
@@ -27,6 +29,7 @@ import com.kortexgames.app.data.remote.RemoteAchievementsDataSource
 import com.kortexgames.app.data.remote.RemoteLevelTimeDataSource
 import com.kortexgames.app.data.remote.RemotePlayerProgressDataSource
 import com.kortexgames.app.data.remote.RemoteProgressDataSource
+import com.kortexgames.app.data.remote.RemoteEventsDataSource
 import com.kortexgames.app.data.remote.RemoteSudokuPuzzleDataSource
 import com.kortexgames.app.data.remote.auth.AppleAuthClient
 import com.kortexgames.app.data.remote.auth.GoogleAuthClient
@@ -36,11 +39,15 @@ import com.kortexgames.app.data.repository.AuthRepositoryImpl
 import com.kortexgames.app.data.repository.PlayerProgressRepositoryImpl
 import com.kortexgames.app.data.repository.ProgressRepositoryImpl
 import com.kortexgames.app.data.repository.SavedGameStateRepositoryImpl
+import com.kortexgames.app.data.repository.EventsRepositoryImpl
 import com.kortexgames.app.data.repository.SudokuPuzzleRepositoryImpl
 import com.kortexgames.app.data.settings.LegalConsentStore
 import com.kortexgames.app.data.settings.OnboardingGate
 import com.kortexgames.app.data.settings.SettingsRepository
 import com.kortexgames.app.data.settings.createSettingsDataStore
+import com.kortexgames.app.game.EventPlaySession
+import com.kortexgames.app.game.events.EventRewardManager
+import com.kortexgames.app.game.events.EventRewardStore
 import com.kortexgames.app.game.daily.DailyGoalManager
 import com.kortexgames.app.game.daily.DailyGoalStore
 import com.kortexgames.app.domain.model.AuthState
@@ -50,6 +57,7 @@ import com.kortexgames.app.domain.repository.AuthRepository
 import com.kortexgames.app.domain.repository.PlayerProgressRepository
 import com.kortexgames.app.domain.repository.ProgressRepository
 import com.kortexgames.app.domain.repository.SavedGameStateRepository
+import com.kortexgames.app.domain.repository.EventsRepository
 import com.kortexgames.app.game.neonsudoku.SudokuPuzzleRepository
 import io.github.jan.supabase.SupabaseClient
 import kotlinx.coroutines.CoroutineScope
@@ -134,12 +142,16 @@ class AppGraph(context: PlatformContext) {
         SqlDelightLocalSavedGameStateDataSource(database, Dispatchers.Default)
     private val localSudokuPuzzle =
         SqlDelightLocalSudokuPuzzleDataSource(database, Dispatchers.Default)
+    private val localEvents = SqlDelightLocalEventsDataSource(database, Dispatchers.Default)
+    private val localEventAwards =
+        SqlDelightLocalEventAwardsDataSource(database, Dispatchers.Default)
 
     private val remoteProgress = RemoteProgressDataSource(supabaseClient)
     private val remotePlayerProgress = RemotePlayerProgressDataSource(supabaseClient)
     private val remoteLevelTime = RemoteLevelTimeDataSource(supabaseClient)
     private val remoteAchievements = RemoteAchievementsDataSource(supabaseClient)
     private val remoteSudokuPuzzle = RemoteSudokuPuzzleDataSource(supabaseClient)
+    private val remoteEvents = RemoteEventsDataSource(supabaseClient)
 
     // --- Autenticación (email + Google + Apple) -----------------------------
     /** Seam de plataforma para el login con Google (ID token nativo). */
@@ -203,6 +215,42 @@ class AppGraph(context: PlatformContext) {
         scope = appScope,
     )
 
+    /**
+     * Modo torneo de la partida en curso. Sin estado propio más allá de "qué evento
+     * se está jugando"; lo abre la pantalla del torneo y lo cierra la navegación al
+     * salir del juego (ver `App.kt`).
+     */
+    val eventPlaySession = EventPlaySession()
+
+    /**
+     * Torneos (Fase 7): calendario en caché local + tabla y envío por Supabase. Se
+     * refresca al arrancar y en cada cambio de sesión (ver el `init` de abajo): un
+     * calendario es diminuto y cambia poco, así que no merece un sincronizador
+     * propio, pero sí llegar fresco a la Home.
+     */
+    val eventsRepository: EventsRepository = EventsRepositoryImpl(
+        local = localEvents,
+        localAwards = localEventAwards,
+        remote = remoteEvents,
+        authState = { authState },
+        scope = appScope,
+    )
+
+    /**
+     * Vigilante de insignias de torneo: al cerrarse un torneo, comprueba si el
+     * jugador quedó entre los premiados y lo celebra una sola vez. Se declara tras
+     * [eventsRepository] porque vive de su calendario.
+     */
+    /** Memoria de qué torneos ya se celebraron (se vacía al borrar la cuenta). */
+    private val eventRewardStore = EventRewardStore(preferences)
+
+    val eventRewardManager = EventRewardManager(
+        events = eventsRepository,
+        store = eventRewardStore,
+        authState = { authState },
+        scope = appScope,
+    ).also { it.start() }
+
     // --- Audio & Háptica (nativo, respeta settings) -------------------------
     val audio: AudioAndHapticManager =
         createAudioAndHapticManager(context, settingsRepository).apply { preload() }
@@ -256,6 +304,7 @@ class AppGraph(context: PlatformContext) {
         progress = progressRepository,
         dailyGoal = dailyGoalManager,
         settings = settingsRepository,
+        events = eventsRepository,
         scope = appScope,
     ).also { it.start() }
 
@@ -306,6 +355,15 @@ class AppGraph(context: PlatformContext) {
                     playerProgressRepository.sync()
                     achievementsRepository.sync()
                 }
+                // El calendario de torneos se refresca en CADA emisión de sesión, no
+                // solo al autenticarse: la primera emisión es la del arranque (aunque
+                // sea "invitado"), y el invitado también ve los torneos desde la
+                // migración 0055.
+                eventsRepository.refresh()
+                // La vitrina del perfil se refresca con el mismo pulso que el
+                // calendario: ambas cambian cuando un torneo cierra, y el perfil es de
+                // las primeras pantallas que el jugador abre tras ganar.
+                eventsRepository.refreshAwards()
             }
             .launchIn(appScope)
     }
@@ -331,6 +389,11 @@ class AppGraph(context: PlatformContext) {
             playerProgressRepository.clearLocal()
             achievementsRepository.clearLocal()
             savedGameStateRepository.clearAll()
+            // El calendario en sí no es dato personal, pero se vacía por higiene: la
+            // siguiente sesión lo vuelve a descargar en el arranque.
+            localEvents.clearAll()
+            eventRewardStore.clear()
+            localEventAwards.clearAll()
             dailyGoalManager.clearClaimedReward()
             // Los avisos pendientes hablan de un progreso que ya no existe ("defiende
             // tu récord de ayer"): se olvidan y se retiran del sistema.

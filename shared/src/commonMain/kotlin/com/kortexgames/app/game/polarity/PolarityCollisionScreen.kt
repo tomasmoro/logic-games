@@ -330,6 +330,7 @@ fun PolarityCollisionScreen(graph: AppGraph, onExit: () -> Unit) {
                 audio = graph.audio,
                 onPlayAgain = { vm.onIntent(PolarityCollisionIntent.PlayAgain) },
                 onExit = onExit,
+                accent = CategoryPalette.SpatialVision,
             )
         }
 

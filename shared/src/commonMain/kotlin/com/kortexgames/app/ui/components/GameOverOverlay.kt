@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -38,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -49,9 +51,22 @@ import com.kortexgames.app.core.audio.SoundEffect
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.core.theme.LogicGradients
 import com.kortexgames.app.domain.model.PercentileResult
+import com.kortexgames.app.game.EventGameOverInfo
+import com.kortexgames.app.game.EventSubmitFailure
 import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.ui.onboarding.LocalFirstRunFlow
 import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.event_attempts_last
+import kortexgames.shared.generated.resources.event_attempts_left
+import kortexgames.shared.generated.resources.event_attempts_none
+import kortexgames.shared.generated.resources.gameover_event_failed_auth
+import kortexgames.shared.generated.resources.gameover_event_failed_closed
+import kortexgames.shared.generated.resources.gameover_event_failed_generic
+import kortexgames.shared.generated.resources.gameover_event_failed_no_attempts
+import kortexgames.shared.generated.resources.gameover_event_improved
+import kortexgames.shared.generated.resources.gameover_event_label
+import kortexgames.shared.generated.resources.gameover_event_not_improved
+import kortexgames.shared.generated.resources.gameover_event_rank
 import kortexgames.shared.generated.resources.gameover_badge_new_record
 import kortexgames.shared.generated.resources.gameover_badge_unlocked
 import kortexgames.shared.generated.resources.gameover_cta_back
@@ -124,6 +139,18 @@ private val TrophyGap = CardItemGap * 0.9f
  *   antesala —donde un cartel explica que no quedan niveles nuevos— en vez de arrancar
  *   otra partida; además se oculta el enlace redundante de [onChooseLevel]. Por defecto
  *   `true` (hay más niveles), que es el caso de la mayoría de juegos LEVELED.
+ * @param singleBackCta fuerza el cartel a ofrecer SOLO "Volver", sin "jugar de
+ *        nuevo" ni sus variantes. Lo usa el **modo torneo**: cada partida gasta un
+ *        intento, y un botón de reiniciar aquí dejaría al jugador encadenar
+ *        corridas sin pasar por la pantalla del torneo —que es la única que sabe
+ *        cuántos intentos le quedan y la única que puede ofrecerle el anuncio para
+ *        conseguir otro—. Sin esto, el jugador descubre que su corrida no contaba
+ *        DESPUÉS de haberla jugado entera.
+ * @param accent color de acento de la categoría del juego (ver [CategoryPalette]), el
+ *   mismo que ya recibe [GamePauseControls] en cada pantalla. Tiñe el trofeo, el borde
+ *   de la tarjeta y el CTA principal, para que "SIGUIENTE NIVEL"/"JUGAR DE NUEVO" hable
+ *   del color propio del juego en vez de un verde fijo que ignoraría la categoría
+ *   (CLAUDE.md §9.2). Por defecto ámbar (el tono que ya tenía el trofeo).
  */
 @Composable
 fun GameOverOverlay(
@@ -138,6 +165,8 @@ fun GameOverOverlay(
     unlockedDifficultyLabel: String? = null,
     onPlayUnlockedDifficulty: (() -> Unit)? = null,
     audio: AudioAndHapticManager? = null,
+    accent: Color = LogicColors.Amber,
+    singleBackCta: Boolean = false,
 ) {
     // `visible` arranca en false: durante REVEAL_DELAY_MS no se dibuja nada y la
     // pantalla de juego queda a la vista; luego dispara scrim + entrada del card.
@@ -186,6 +215,10 @@ fun GameOverOverlay(
     // overlay igual, sea o no parte de la bienvenida, y el overlay se adapta solo.
     val duringFirstRun = LocalFirstRunFlow.current?.isActive == true
 
+    // Un solo CTA ("Volver"): lo pide la bienvenida de primera apertura y también el
+    // MODO TORNEO (ver [singleBackCta]).
+    val onlyBack = duringFirstRun || singleBackCta
+
     // Se celebra HABER BATIDO algo en ESTA partida, no ostentar un título.
     //
     // Ser el nº1 del mundo no basta: si bastara, el campeón vería fuegos artificiales
@@ -209,20 +242,32 @@ fun GameOverOverlay(
         contentAlignment = Alignment.Center,
     ) {
         val cardShape = RoundedCornerShape(28.dp)
+        // Envoltorio propio (además de la tarjeta) para anclar los acentos de esquina
+        // a las mismas coordenadas animadas que la tarjeta (escala + fundido), igual
+        // criterio que el menú de pausa (ver [PauseMenu]).
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .zIndex(0f)
+                .scale(cardScale)
+                .alpha(cardAlpha),
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                // Hacemos explícito el orden de capas para no depender del orden
-                // implícito de dibujo cuando hay varias graphics layers animadas.
-                .zIndex(0f)
-                .scale(cardScale)
-                .alpha(cardAlpha)
-                // Borde neón en degradado cian→verde: la identidad "Juego" enmarca
-                // la superficie oscura "Lógica" sin inundarla.
+                // Borde en degradado del color propio del juego ([accent]): la
+                // identidad "Juego" enmarca la superficie oscura "Lógica" sin
+                // inundarla, y ahora habla del color de la categoría (CLAUDE.md §9.2)
+                // en vez de un cian→verde fijo igual para los 30 juegos.
                 .clip(cardShape)
                 .background(LogicColors.SurfaceDark)
                 .border(
-                    BorderStroke(1.5.dp, Brush.linearGradient(LogicGradients.ring)),
+                    BorderStroke(
+                        1.5.dp,
+                        Brush.linearGradient(
+                            listOf(accent.copy(alpha = 0.55f), accent.copy(alpha = 0.12f)),
+                        ),
+                    ),
                     cardShape,
                 )
                 // Con la comparativa mundial la tarjeta ganó ~5 filas de ranking y en
@@ -255,9 +300,10 @@ fun GameOverOverlay(
             }
 
             // Trofeo con halo: remate visual de recompensa, con [TrophyGap] (10%
-            // menos que el resto de bloques) a cada lado.
+            // menos que el resto de bloques) a cada lado. Teñido con [accent] (el
+            // color propio del juego) en vez de un ámbar fijo para los 30 juegos.
             Spacer(Modifier.height(TrophyGap))
-            NeonIcon(icon = KortexIcons.Trophy, tint = LogicColors.Amber, size = 46.dp)
+            NeonIcon(icon = KortexIcons.Trophy, tint = accent, size = 46.dp)
             Spacer(Modifier.height(TrophyGap))
 
             Text(
@@ -312,7 +358,13 @@ fun GameOverOverlay(
             //      un instante después;
             //   4. aviso de guardado local (invitado / sin red / subida fallida).
             val percentile = info.percentile
+            val eventOutcome = info.event
             when {
+                // Partida de TORNEO: manda el puesto del torneo. La comparativa mundial
+                // se omite —no se apila— porque en un torneo la pregunta del jugador es
+                // "¿cómo voy AQUÍ?"; dos tablas seguidas diluyen justo la que importa,
+                // y el ranking mundial sigue a un toque en la pantalla del juego.
+                eventOutcome != null -> EventOutcomePanel(eventOutcome)
                 ranking != null -> WorldRankingPanel(
                     ranking = ranking,
                     // La marca de ESTA partida, en la unidad con la que se ordena la tabla: si el
@@ -334,19 +386,19 @@ fun GameOverOverlay(
             // rompiendo el ritmo vertical uniforme del resto del cartel.
             Spacer(Modifier.height(CardItemGap))
 
-            if (duringFirstRun) {
-                // Bienvenida de primera apertura: un único CTA. Repetir nivel, avanzar
-                // o elegir nivel no pintan nada aquí —el siguiente paso NO es seguir en
-                // este juego, es volver al hub y encadenar el siguiente de la
-                // bienvenida (ver KDoc de esta función)—, así que ninguno de esos
-                // botones se muestra: solo "Volver".
+            if (onlyBack) {
+                // Un único CTA. Repetir nivel, avanzar o elegir nivel no pintan nada
+                // aquí —el siguiente paso NO es seguir en este juego— así que ninguno
+                // de esos botones se muestra: solo "Volver". Lo piden dos situaciones:
+                // la bienvenida de primera apertura (encadena el juego siguiente) y el
+                // modo torneo (la pantalla del torneo es la que reparte intentos).
                 AnimatedGameButton(
                     text = stringResource(Res.string.gameover_cta_back),
                     onClick = onExit,
                     modifier = Modifier
                         .fillMaxWidth()
                         .pulse(),
-                    gradient = LogicGradients.play,
+                    gradient = accentCtaGradient(accent),
                 )
             } else if (unlockedDifficultyLabel != null && onPlayUnlockedDifficulty != null) {
                 // Escalón recién abierto: es el hito más "accionable" del cartel —hay un
@@ -361,15 +413,19 @@ fun GameOverOverlay(
                     modifier = Modifier
                         .fillMaxWidth()
                         .pulse(),
-                    gradient = LogicGradients.play,
+                    gradient = accentCtaGradient(accent),
                 )
                 Spacer(Modifier.height(CardItemGap))
-                AnimatedGameButton(
-                    text = stringResource(Res.string.gameover_cta_play_again),
-                    onClick = onPlayAgain,
-                    modifier = Modifier.fillMaxWidth(),
-                    gradient = LogicGradients.energy,
-                )
+                // Contorno (no relleno): segunda acción, por debajo del CTA principal
+                // en la jerarquía visual.
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    PauseOutlineButton(
+                        icon = KortexIcons.Refresh,
+                        label = stringResource(Res.string.gameover_cta_play_again),
+                        tint = LogicColors.OnDarkMuted,
+                        onClick = onPlayAgain,
+                    )
+                }
                 Spacer(Modifier.height(CardItemGap))
                 Text(
                     stringResource(Res.string.gameover_cta_exit_link),
@@ -397,15 +453,28 @@ fun GameOverOverlay(
                     modifier = Modifier
                         .fillMaxWidth()
                         .pulse(),
-                    gradient = LogicGradients.play,
+                    gradient = accentCtaGradient(accent),
                 )
                 Spacer(Modifier.height(CardItemGap))
-                AnimatedGameButton(
-                    text = stringResource(Res.string.gameover_cta_retry_level),
-                    onClick = onPlayAgain,
+                // "Repetir nivel" + "Salir" a medias, en contorno: la pareja de
+                // acciones secundarias del cartel, por debajo del CTA principal.
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    gradient = LogicGradients.energy,
-                )
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    PauseOutlineButton(
+                        icon = KortexIcons.Refresh,
+                        label = stringResource(Res.string.gameover_cta_retry_level),
+                        tint = LogicColors.OnDarkMuted,
+                        onClick = onPlayAgain,
+                    )
+                    PauseOutlineButton(
+                        icon = KortexIcons.Exit,
+                        label = stringResource(Res.string.gameover_cta_exit),
+                        tint = LogicColors.Magenta,
+                        onClick = onExit,
+                    )
+                }
                 // Con el catálogo agotado, "Ver niveles" YA lleva a la antesala: el
                 // enlace de abajo haría lo mismo, así que se omite para no duplicar.
                 if (onChooseLevel != null && hasNextLevel) {
@@ -430,17 +499,36 @@ fun GameOverOverlay(
                     modifier = Modifier
                         .fillMaxWidth()
                         .pulse(),
-                    gradient = LogicGradients.play,
+                    gradient = accentCtaGradient(accent),
                 )
                 Spacer(Modifier.height(CardItemGap))
-                AnimatedGameButton(
-                    text = stringResource(Res.string.gameover_cta_exit),
-                    onClick = onExit,
-                    modifier = Modifier.fillMaxWidth(),
-                    gradient = LogicGradients.energy,
-                )
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    PauseOutlineButton(
+                        icon = KortexIcons.Exit,
+                        label = stringResource(Res.string.gameover_cta_exit),
+                        tint = LogicColors.Magenta,
+                        onClick = onExit,
+                    )
+                }
             }
         }
+
+        // Acentos de esquina (marco tipo "visor"), en el color de acento del juego —
+        // mismo detalle decorativo que el menú de pausa (ver [CornerBracket]).
+        CornerBracket(
+            accent = accent,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .offset(x = (-6).dp, y = (-6).dp),
+        )
+        CornerBracket(
+            accent = accent,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .offset(x = 6.dp, y = 6.dp)
+                .graphicsLayer { rotationZ = 180f },
+        )
+        } // fin del envoltorio de acentos de esquina
 
         // Celebración: fuegos artificiales neón POR DELANTE de la tarjeta (se dibuja
         // al final ⇒ queda encima) con sonido/háptica arcade sincronizados a cada
@@ -622,5 +710,87 @@ private fun PercentileBanner(percentile: PercentileResult) {
             color = LogicColors.Amber,
             textAlign = TextAlign.Start,
         )
+    }
+}
+
+
+/**
+ * Cómo quedó la partida en el torneo: puesto, si mejoró la marca y qué queda.
+ *
+ * Es deliberadamente más sobrio que [WorldRankingPanel] —sin tramos ni vecinos—:
+ * la tabla completa está en la pantalla del torneo, y repetirla aquí alargaría el
+ * cartel justo cuando el jugador quiere volver a intentarlo.
+ */
+@Composable
+private fun EventOutcomePanel(outcome: EventGameOverInfo) {
+    val accent = LogicColors.Amber
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(LogicColors.SurfaceVariantDark)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = stringResource(Res.string.gameover_event_label),
+            style = MaterialTheme.typography.labelLarge,
+            color = accent,
+        )
+        Text(
+            text = outcome.title,
+            style = MaterialTheme.typography.titleMedium,
+            color = LogicColors.OnDark,
+        )
+
+        val failure = outcome.failure
+        if (failure != null) {
+            // El resultado NO entró en el torneo. Se dice explícitamente: el jugador
+            // acaba de jugar creyendo que competía, y callarlo le dejaría esperando un
+            // puesto que no va a llegar.
+            Text(
+                text = when (failure) {
+                    EventSubmitFailure.CLOSED -> stringResource(Res.string.gameover_event_failed_closed)
+                    EventSubmitFailure.NO_ATTEMPTS -> stringResource(Res.string.gameover_event_failed_no_attempts)
+                    EventSubmitFailure.NOT_AUTHENTICATED -> stringResource(Res.string.gameover_event_failed_auth)
+                    EventSubmitFailure.GENERIC -> stringResource(Res.string.gameover_event_failed_generic)
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = LogicColors.Error,
+            )
+            return@Column
+        }
+
+        outcome.rank?.let { rank ->
+            Text(
+                text = stringResource(
+                    Res.string.gameover_event_rank,
+                    rank.toString(),
+                    outcome.totalPlayers.toString(),
+                ),
+                style = MaterialTheme.typography.headlineMedium,
+                color = accent,
+            )
+        }
+        Text(
+            text = if (outcome.improved) {
+                stringResource(Res.string.gameover_event_improved)
+            } else {
+                stringResource(Res.string.gameover_event_not_improved)
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (outcome.improved) LogicColors.Success else LogicColors.OnDarkMuted,
+        )
+        outcome.attemptsLeft?.let { left ->
+            Text(
+                text = when (left) {
+                    0 -> stringResource(Res.string.event_attempts_none)
+                    1 -> stringResource(Res.string.event_attempts_last)
+                    else -> stringResource(Res.string.event_attempts_left, left.toString())
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (left == 0) LogicColors.Error else LogicColors.OnDarkMuted,
+            )
+        }
     }
 }

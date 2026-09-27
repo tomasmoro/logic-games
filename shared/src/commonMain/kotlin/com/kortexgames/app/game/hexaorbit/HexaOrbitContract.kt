@@ -57,6 +57,12 @@ import com.kortexgames.app.game.GameStatus
  * @property rankingPreviewLoading `true` mientras se pide [rankingPreview]. Arranca en `true`
  *           para no enseñar el aviso de "sin comparativa" un instante antes de la respuesta.
  */
+/**
+ * @property showEventExitConfirm solo en modo torneo: el jugador pidió salir con la
+ *   corrida en marcha y hay que avisarle de que eso gasta el intento
+ *   (`EventExitConfirmDialog`). Mientras está a true la física queda pausada:
+ *   decidir no puede costar la partida.
+ */
 data class HexaOrbitUiState(
     val game: HexaOrbitState = HexaOrbitState(),
     val status: GameStatus = GameStatus.IDLE,
@@ -64,6 +70,7 @@ data class HexaOrbitUiState(
     val gameOver: GameOverInfo? = null,
     val rankingPreview: GameRanking? = null,
     val rankingPreviewLoading: Boolean = true,
+    val showEventExitConfirm: Boolean = false,
 ) : UiState
 
 /**
