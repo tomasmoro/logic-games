@@ -8,6 +8,8 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.kortexgames.app.data.settings.SettingsRepository
+import com.kortexgames.app.domain.model.GameProgress
+import com.kortexgames.app.domain.repository.EventsRepository
 import com.kortexgames.app.domain.repository.ProgressRepository
 import com.kortexgames.app.game.GameCatalog
 import com.kortexgames.app.game.daily.DailyGoalManager
@@ -57,6 +59,9 @@ import kotlin.time.Instant
  * @param progress historial local de partidas (fuente de "última vez que jugó" y racha).
  * @param dailyGoal estado de la misión diaria (cuántos juegos faltan hoy).
  * @param settings preferencias del usuario (interruptor de recordatorios).
+ * @param events torneos vigentes (caché local). Alimentan los avisos de apertura,
+ *   últimas horas y resultados, que se programan **en local**: un torneo tiene
+ *   fecha conocida de antemano, así que no hace falta push para anunciarlo.
  * @param clock reloj inyectable: los tests fijan el "ahora" sin esperar a mañana.
  */
 class NotificationsManager(
@@ -66,6 +71,7 @@ class NotificationsManager(
     private val progress: ProgressRepository,
     private val dailyGoal: DailyGoalManager,
     private val settings: SettingsRepository,
+    private val events: EventsRepository,
     private val scope: CoroutineScope,
     private val planner: NotificationPlanner = NotificationPlanner(),
     private val primingPolicy: NotificationPrimingPolicy = NotificationPrimingPolicy(),
@@ -228,6 +234,7 @@ class NotificationsManager(
             streakDays = signal.streakDays,
             dailyMissionRemaining = signal.missionRemaining,
             recordBeaten = signal.recordBeaten,
+            events = signal.events,
         )
         for (planned in planner.plan(inputs)) {
             scheduler.schedule(copy.resolve(planned.content), planned.at)
@@ -240,15 +247,42 @@ class NotificationsManager(
         dailyGoal.state,
         settings.settings,
         store.recordBeaten,
-    ) { history, goal, userSettings, recordBeaten ->
+        events.observeVisible(),
+    ) { history, goal, userSettings, recordBeaten, liveEvents ->
         PlanSignal(
             lastPlayed = history.maxOfOrNull { it.createdAt },
             streakDays = calculateStreakDays(history, clock),
             missionRemaining = goal.remaining,
             remindersEnabled = userSettings.areRemindersEnabled,
             recordBeaten = recordBeaten,
+            events = liveEvents.map { event ->
+                EventNotice(
+                    title = event.title,
+                    startsAt = event.startsAt,
+                    endsAt = event.endsAt,
+                    hasPlayed = history.playedDuring(event.gameId, event.startsAt, event.endsAt),
+                )
+            },
         )
     }
+
+    /**
+     * ¿Hay alguna partida de [gameId] dentro de la ventana del torneo?
+     *
+     * Se deduce del historial LOCAL, que ya está en la señal, en vez de preguntar al
+     * backend por la fila del jugador: eso sería una llamada de red por cada
+     * replanificación (y hay varias al día) para decidir el tono de un recordatorio.
+     *
+     * Limitación asumida: una partida LIBRE del mismo juego durante la ventana
+     * también cuenta como "ha participado". El historial no guarda a qué torneo
+     * perteneció cada partida (eso vive en `user_progress.event_id`, en el
+     * servidor). El coste del falso positivo es pequeño y acotado —no se manda el
+     * empujón de "últimas horas" y sí el de resultados—, mientras que el falso
+     * negativo, que es el caso molesto (insistir a quien ya compitió), no puede
+     * ocurrir: toda partida de torneo queda en el historial local.
+     */
+    private fun List<GameProgress>.playedDuring(gameId: String, from: Instant, to: Instant): Boolean =
+        any { it.gameId == gameId && it.createdAt >= from && it.createdAt < to }
 
     /**
      * Entradas del plan **sin el instante actual**. Excluir "ahora" es lo que permite
@@ -260,6 +294,7 @@ class NotificationsManager(
         val missionRemaining: Int,
         val remindersEnabled: Boolean,
         val recordBeaten: RecordBeatenSignal?,
+        val events: List<EventNotice>,
     )
 }
 

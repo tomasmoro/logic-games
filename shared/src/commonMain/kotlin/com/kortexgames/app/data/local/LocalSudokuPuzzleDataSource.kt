@@ -17,6 +17,13 @@ interface LocalSudokuPuzzleDataSource {
     /** Ids ya presentes de [difficulty] (para no re-descargar lo que ya está). */
     suspend fun idsByDifficulty(difficulty: SudokuDifficulty): Set<String>
 
+    /**
+     * Un puzzle concreto de la caché, o null si no está. Lo usa el modo torneo,
+     * donde el tablero no se elige por dificultad sino que viene fijado por el
+     * evento.
+     */
+    suspend fun byId(id: String): SudokuPuzzle?
+
     /** Inserta puzzles ignorando duplicados por id (no pisa el `servedAt` local). */
     suspend fun insertAll(puzzles: List<SudokuPuzzle>)
 

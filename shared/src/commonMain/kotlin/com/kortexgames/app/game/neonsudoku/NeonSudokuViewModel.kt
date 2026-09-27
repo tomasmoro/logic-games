@@ -4,11 +4,14 @@ import androidx.lifecycle.viewModelScope
 import com.kortexgames.app.core.audio.AudioAndHapticManager
 import com.kortexgames.app.core.audio.SoundEffect
 import com.kortexgames.app.core.mvi.MviViewModel
+import com.kortexgames.app.domain.model.GameEvent
 import com.kortexgames.app.domain.model.GameResult
+import com.kortexgames.app.domain.repository.EventsRepository
 import com.kortexgames.app.domain.repository.ProgressRepository
 import com.kortexgames.app.domain.repository.SavedGameStateRepository
 import com.kortexgames.app.game.DifficultyAttempt
 import com.kortexgames.app.game.DifficultyUnlocks
+import com.kortexgames.app.game.EventGameOverInfo
 import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.toGameOverInfo
@@ -73,12 +76,21 @@ import kotlin.time.TimeSource
  * @param savedGameState partida en curso guardada al salir (back / "SALIR"): la
  *   antesala la reanuda con [NeonSudokuIntent.Start]. 100% local (ver [requestExit]).
  * @param audio manager de sonido/háptica (el feedback fino se emite como [NeonSudokuEffect]).
+ * @param event torneo que se está jugando, o null en una partida normal. Cuando
+ *   viene, cambia tres cosas: el tablero deja de sortearse y se juega el que fija
+ *   el evento, la dificultad queda clavada a la suya, y el resultado se envía
+ *   además al torneo (ver [finish]). Lo resuelve la pantalla desde
+ *   [com.kortexgames.app.game.EventPlaySession]; el ViewModel solo lo recibe ya
+ *   decidido, así no necesita saber cómo se navega hasta aquí.
+ * @param events repositorio de torneos; solo se usa si [event] no es null.
  */
 class NeonSudokuViewModel(
     private val progress: ProgressRepository,
     private val puzzles: SudokuPuzzleRepository,
     private val savedGameState: SavedGameStateRepository,
     private val audio: AudioAndHapticManager,
+    private val event: GameEvent? = null,
+    private val events: EventsRepository? = null,
 ) : MviViewModel<NeonSudokuIntent, NeonSudokuUiState, NeonSudokuEffect>(NeonSudokuUiState()) {
 
     // --- Estado interno de la simulación (NO es estado de UI) --------------------
@@ -146,10 +158,21 @@ class NeonSudokuViewModel(
     private var rankingPreviewJob: Job? = null
 
     init {
+        // Modo torneo: la dificultad la fija el evento y no se vuelve a tocar. Se
+        // marca `userSelectedDifficulty` para que el auto-select por historial (más
+        // abajo) no la pise — ese ajuste existe para la partida libre, y aquí
+        // cambiar de dificultad significaría jugar OTRO torneo.
+        eventDifficulty()?.let { fixed ->
+            userSelectedDifficulty = true
+            setState { copy(difficulty = fixed) }
+        }
+
         // La antesala ofrece "Continuar" (CTA principal, ver ResumeState) si hay
         // partida guardada: se observa (reactivo) para que el resumen desaparezca
         // solo al reanudar/terminar, igual que `savedScore` en Neon Grid 2048.
-        savedGameState.observe(GameIds.NEON_SUDOKU_MATRIX)
+        // En modo torneo NO se observa: ver `requestExit`, donde se explica por qué
+        // una partida de torneo no se guarda ni se reanuda.
+        if (event == null) savedGameState.observe(GameIds.NEON_SUDOKU_MATRIX)
             .onEach { json ->
                 val summary = json
                     ?.let { runCatching { Json.decodeFromString<NeonSudokuSavedState>(it) }.getOrNull() }
@@ -321,6 +344,14 @@ class NeonSudokuViewModel(
      * en memoria (imperceptible). El guardia [startingPuzzle] descarta un segundo
      * "Comenzar" mientras el primero aún resuelve el puzzle.
      */
+    /**
+     * Dificultad que impone el torneo, o null si no hay torneo (o si no la fija).
+     * `difficulty_level` viaja 1-based desde el backend, como en `GameResult`, así
+     * que se resta uno para indexar el `enum`.
+     */
+    private fun eventDifficulty(): SudokuDifficulty? =
+        event?.difficultyLevel?.let { SudokuDifficulty.entries.getOrNull(it - 1) }
+
     private fun startGame(difficulty: SudokuDifficulty) {
         if (startingPuzzle) return
         startingPuzzle = true
@@ -328,7 +359,20 @@ class NeonSudokuViewModel(
             // try/finally: pase lo que pase al pedir el puzzle, el guardia se libera
             // para no dejar "Comenzar" bloqueado de forma permanente.
             try {
-                val puzzle = puzzles.randomPuzzle(difficulty)
+                // Modo torneo: el tablero lo fija el evento (todos juegan el mismo).
+                // Si ese puzzle no se puede conseguir (no cacheado y sin red) NO se
+                // cae a uno aleatorio: jugar otro tablero gastaría un intento en una
+                // partida que no compite con nadie. Se aborta y la antesala se queda,
+                // que es un fallo visible y sin coste.
+                val fixedId = event?.puzzleId
+                val puzzle = if (fixedId != null) {
+                    puzzles.puzzleById(fixedId) ?: run {
+                        setState { copy(eventBoardUnavailable = true) }
+                        return@launch
+                    }
+                } else {
+                    puzzles.randomPuzzle(difficulty)
+                }
                 totalInputs = 0
                 conflictInputs = 0
                 reviveOffered = false
@@ -359,9 +403,56 @@ class NeonSudokuViewModel(
      * partida ya está en su punto de derrota; persistirla dejaría al jugador
      * reanudar justo en el borde del game over, sin sentido.
      */
+    /**
+     * El jugador confirma que abandona el torneo: se consume el intento en el
+     * servidor y se sale.
+     *
+     * El aviso al backend es "dispara y olvida" (ver
+     * [EventsRepository.abandonAttempt][com.kortexgames.app.domain.repository.EventsRepository.abandonAttempt]):
+     * la navegación no puede quedarse esperando a la red, y este ViewModel muere
+     * en cuanto se sale de la pantalla.
+     */
+    fun confirmEventExit(onExit: () -> Unit) {
+        setState { copy(showEventExitConfirm = false) }
+        event?.let { events?.abandonAttempt(it) }
+        onExit()
+    }
+
+    /** El jugador se queda: se cierra el aviso y el cronómetro vuelve a correr. */
+    fun dismissEventExit() {
+        setState { copy(showEventExitConfirm = false) }
+        // Solo se reanuda si la partida seguía en marcha: si el aviso salió desde el
+        // menú de pausa, el juego debe quedarse pausado como estaba.
+        if (currentState.status == GameStatus.RUNNING) startLoop()
+    }
+
     fun requestExit(onExit: () -> Unit) {
         val s = currentState
         val inPlay = s.status == GameStatus.RUNNING || s.status == GameStatus.PAUSED
+        // Modo torneo: abandonar GASTA el intento (migración 0056), así que la
+        // salida pasa por una confirmación. Una partida de torneo tampoco se
+        // guarda: el estado guardado no sabe a qué torneo pertenecía, y reanudarlo
+        // más tarde —quizá con el torneo ya cerrado— daría una marca imposible de
+        // atribuir.
+        if (event != null) {
+            // "Empezada y sin terminar" incluye a propósito el estado de decidir el
+            // revivir: ahí la partida ya se jugó entera y se perdió, así que salir
+            // sin más sería otra vía para no gastar el intento. Se trata como
+            // abandono —no como derrota enviada— porque una derrota enviada dejaría
+            // marca, y con el cronómetro de una partida perdida eso envenenaría un
+            // torneo por tiempo.
+            val started = s.status != GameStatus.IDLE && s.status != GameStatus.FINISHED
+            if (!started) {
+                onExit()
+                return
+            }
+            // El cronómetro se para mientras el jugador decide: el tiempo penaliza
+            // el puntaje, y leer un aviso no puede costarle puntos.
+            loopJob?.cancel()
+            loopJob = null
+            setState { copy(showEventExitConfirm = true) }
+            return
+        }
         if (!inPlay || s.awaitingRevive) {
             onExit()
             return
@@ -791,6 +882,39 @@ class NeonSudokuViewModel(
                     copy(gameOver = outcome.toGameOverInfo(result), justUnlockedDifficulty = unlockedDifficulty)
                 }
             }
+            // Torneo: se envía DESPUÉS de guardar, y no en paralelo, por dos razones.
+            // Una, el historial local es la fuente de verdad y no debe depender de
+            // que el torneo acepte. Dos, el cartel ya está en pantalla con el
+            // resultado de la partida, así que el puesto del torneo llega como un
+            // dato más que se rellena solo —igual que hace el ranking mundial— en
+            // vez de retrasar el cartel entero esperando una segunda llamada.
+            submitToEvent(result)
+        }
+    }
+
+    /**
+     * Envía el resultado al torneo, si esta partida era de torneo.
+     *
+     * Se manda **también la derrota** (score 0): un intento gastado es un intento
+     * gastado, y ocultárselo al servidor dejaría el contador de intentos del
+     * dispositivo y el del backend contando cosas distintas.
+     *
+     * El fallo no se traga: viaja al cartel dentro de [EventGameOverInfo] para que
+     * el jugador sepa que su marca no entró. Silenciarlo sería lo peor posible —
+     * acaba de jugar creyendo que competía.
+     */
+    private suspend fun submitToEvent(result: GameResult) {
+        val event = event ?: return
+        val events = events ?: return
+        val outcome = events.submitResult(
+            event = event,
+            score = result.score,
+            completionTimeMs = result.completionTimeMs,
+            accuracyPercentage = result.accuracyPercentage,
+            difficultyLevel = result.difficultyLevel,
+        )
+        setState {
+            copy(gameOver = gameOver?.copy(event = EventGameOverInfo.from(event, outcome)))
         }
     }
 

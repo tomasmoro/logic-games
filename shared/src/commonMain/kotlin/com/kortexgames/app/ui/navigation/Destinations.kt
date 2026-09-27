@@ -46,6 +46,17 @@ object Routes {
     const val SETTINGS = "settings"
 
     /**
+     * Detalle de un torneo (reglas + clasificación + entrar a jugar).
+     *
+     * Ruta **sin argumento**, como [AUTH_ONBOARDING] y por el mismo motivo: la API
+     * de argumentos de navegación difiere entre plataformas en Compose
+     * Multiplatform y el proyecto la evita. Qué torneo se abre lo lleva el estado de
+     * [com.kortexgames.app.ui.App] (`rememberSaveable`, así que sobrevive a la
+     * muerte del proceso en Android), no la cadena de la ruta.
+     */
+    const val EVENT = "event"
+
+    /**
      * Elegir el nombre de jugador. Se muestra una sola vez, justo tras un alta con
      * Google (el perfil nace sin nombre — migración 0048); el alta por email ya lo
      * pide en su formulario. Al terminar, siempre a Home con la pila limpia.

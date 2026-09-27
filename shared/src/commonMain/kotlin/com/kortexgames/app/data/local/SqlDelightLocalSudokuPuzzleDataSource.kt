@@ -28,6 +28,10 @@ class SqlDelightLocalSudokuPuzzleDataSource(
         queries.allIdsByDifficulty(difficulty.ordinal.toLong()).executeAsList().toSet()
     }
 
+    override suspend fun byId(id: String): SudokuPuzzle? = withContext(io) {
+        queries.selectById(id).executeAsOneOrNull()?.toDomain()
+    }
+
     override suspend fun insertAll(puzzles: List<SudokuPuzzle>): Unit = withContext(io) {
         // Una sola transacción: insertar decenas de filas una a una sin agruparlas
         // dispararía un fsync por fila (lento en el arranque que siembra el banco).

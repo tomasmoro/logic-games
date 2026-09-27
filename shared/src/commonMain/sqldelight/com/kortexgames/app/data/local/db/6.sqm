@@ -1,0 +1,26 @@
+-- Migración v6 → v7: añade la caché local del calendario de torneos (Fase 7).
+-- Necesaria para que las instalaciones EXISTENTES (BD en v6, sin esta tabla) la
+-- reciban vía onUpgrade; las nuevas la obtienen del CREATE de Event.sq mediante
+-- Schema.create. Este .sqm eleva Schema.version a 7, que es lo que dispara la
+-- migración en dispositivos con la BD antigua. Mismo patrón que 1.sqm–5.sqm: toda
+-- alta de tabla o columna necesita el suyo. El DDL debe coincidir EXACTAMENTE con
+-- el de Event.sq — si divergen, una instalación migrada y una nueva acabarían con
+-- esquemas distintos y solo una de las dos fallaría, que es el peor de los casos.
+CREATE TABLE EventEntity (
+    id               TEXT    NOT NULL PRIMARY KEY,
+    gameId           TEXT    NOT NULL,
+    title            TEXT    NOT NULL,
+    subtitle         TEXT,
+    startsAt         INTEGER NOT NULL,
+    endsAt           INTEGER NOT NULL,
+    difficultyLevel  INTEGER,
+    rankByTime       INTEGER NOT NULL,
+    scoringMode      TEXT    NOT NULL,
+    attemptsLimit    INTEGER,
+    puzzleId         TEXT,
+    seed             INTEGER,
+    rewardTopN       INTEGER NOT NULL DEFAULT 0,
+    rewardBadgeKey   TEXT
+);
+
+CREATE INDEX idx_events_end ON EventEntity(endsAt);

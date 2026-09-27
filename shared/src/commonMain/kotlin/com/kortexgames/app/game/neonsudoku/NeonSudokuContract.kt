@@ -90,6 +90,16 @@ import kotlinx.serialization.Serializable
  *   entrar en la antesala o cambiar de dificultad. Arranca en `true` (no en `false`)
  *   para no enseñar el aviso de "sin comparativa" un instante antes de que llegue.
  */
+/**
+ * @property eventBoardUnavailable solo en modo torneo: el tablero que fija el
+ *   evento no se pudo conseguir (no está en caché y no hay red). La partida NO
+ *   arranca —jugar otro tablero gastaría un intento en una marca que no compite
+ *   con la de nadie— y la antesala lo explica.
+ * @property showEventExitConfirm solo en modo torneo: el jugador pidió salir con la
+ *   partida en marcha y hay que avisarle de que eso gasta el intento
+ *   (`EventExitConfirmDialog`). Mientras está a true el cronómetro queda parado:
+ *   decidir no debe costar puntos.
+ */
 data class NeonSudokuUiState(
     val board: Board = Board.empty(),
     val selectedCell: CellPosition? = null,
@@ -106,6 +116,8 @@ data class NeonSudokuUiState(
     val justUnlockedDifficulty: SudokuDifficulty? = null,
     val rankingPreview: GameRanking? = null,
     val rankingPreviewLoading: Boolean = true,
+    val eventBoardUnavailable: Boolean = false,
+    val showEventExitConfirm: Boolean = false,
 ) : UiState {
 
     /**

@@ -47,6 +47,12 @@ import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.di.AppGraph
 import com.kortexgames.app.game.DifficultyUnlocks
 import com.kortexgames.app.game.GameIds
+import com.kortexgames.app.ui.events.EventExitConfirmDialog
+import com.kortexgames.app.ui.events.EventRulesPanel
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.event_intro_label
+import kortexgames.shared.generated.resources.event_intro_board_unavailable
+import org.jetbrains.compose.resources.stringResource
 import com.kortexgames.app.game.GameCategory
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
@@ -109,18 +115,26 @@ private data class DigitFireworks(val id: Int, val digit: Int)
  */
 @Composable
 fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
-    val vm: NeonSudokuViewModel = viewModel {
+    // ¿Esta partida es de torneo? Se resuelve UNA vez al montar la pantalla: si la
+    // sesión se cerrara a mitad de partida (no debería: se cierra al salir del
+    // juego), la partida en curso debe seguir siendo la del torneo hasta terminar.
+    val play = remember { graph.eventPlaySession.activeFor(GameIds.NEON_SUDOKU_MATRIX) }
+    val event = play?.event
+    val vm: NeonSudokuViewModel = viewModel(key = event?.id ?: VIEWMODEL_KEY_FREE_PLAY) {
         NeonSudokuViewModel(
             graph.progressRepository,
             graph.sudokuPuzzleRepository,
             graph.savedGameStateRepository,
             graph.audio,
+            event = event,
+            events = graph.eventsRepository,
         )
     }
     val state by vm.state.collectAsStateWithLifecycle()
 
     // Único punto de salida "en juego" (back del sistema y "SALIR" del menú de
     // pausa): guarda la partida en curso antes de navegar atrás (ver requestExit).
+    // En modo torneo no guarda: pide confirmación, porque salir gasta el intento.
     val exitWithSave: () -> Unit = { vm.requestExit(onExit) }
 
     // Sacudida de la celda infractora: qué celda y en qué punto del recorrido.
@@ -233,6 +247,24 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
         }
     }
 
+    // Aviso de abandono del torneo. Se monta antes que cualquier pantalla (y fuera
+    // del `if` de la antesala) porque la salida se puede pedir desde la partida o
+    // desde el menú de pausa, y el diálogo es modal en ambos casos.
+    if (state.showEventExitConfirm) {
+        EventExitConfirmDialog(
+            // Intentos que quedarán tras gastar este. `null` si el torneo no los
+            // limita: no hay nada escaso que advertir.
+            // Cupo REAL (incluye los intentos extra ya comprados con anuncios), no
+            // `event.attemptsLimit`: prometerle "te quedará 0" a quien acaba de ver
+            // un anuncio para tener otro sería justo el engaño que este aviso evita.
+            attemptsLeftAfter = play?.attemptsAllowed?.let { allowed ->
+                (allowed - play.attemptsUsed - 1).coerceAtLeast(0)
+            },
+            onConfirm = { vm.confirmEventExit(onExit) },
+            onDismiss = { vm.dismissEventExit() },
+        )
+    }
+
     // Antesala mientras el juego está en IDLE, igual que el resto de juegos.
     //
     // El selector de dificultad se pasa como `configContent` de `GameIntroScreen`:
@@ -282,6 +314,32 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
             },
             configContent = {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    // Modo torneo: ni selector de dificultad ni comparativa mundial.
+                    // La dificultad la fija el evento (cambiarla sería jugar otra
+                    // cosa, y el backend rechazaría la marca) y lo que el jugador
+                    // necesita leer antes de gastar un intento son las REGLAS del
+                    // torneo, no su puesto mundial de siempre.
+                    if (event != null) {
+                        Text(
+                            text = stringResource(Res.string.event_intro_label),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = LogicColors.Amber,
+                        )
+                        Text(
+                            text = event.title,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = LogicColors.OnDark,
+                        )
+                        EventRulesPanel(event = event, accent = CategoryPalette.Logic)
+                        if (state.eventBoardUnavailable) {
+                            Text(
+                                text = stringResource(Res.string.event_intro_board_unavailable),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = LogicColors.Error,
+                            )
+                        }
+                        return@Column
+                    }
                     DifficultyGateSelector(
                         title = "DIFICULTAD",
                         options = SUDOKU_DIFFICULTY_OPTIONS,
@@ -391,6 +449,9 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
                     { vm.onIntent(NeonSudokuIntent.PlayDifficulty(difficulty)) }
                 },
                 accent = CategoryPalette.Logic,
+                // En torneo, volver a jugar se decide en la pantalla del torneo: es la
+                // que sabe cuántos intentos quedan y la que ofrece el anuncio.
+                singleBackCta = event != null,
             )
         }
 
@@ -406,7 +467,10 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
             gameTitle = "Neon Sudoku Matrix",
             help = GameHelpContent.neonSudoku,
             accent = CategoryPalette.Logic,
-            exitKeepsProgress = true,
+            // En torneo salir NO guarda nada (y encima gasta el intento): prometer
+            // lo contrario bajo el botón "SALIR" sería justo el engaño que este
+            // aviso intenta evitar.
+            exitKeepsProgress = event == null,
         )
 
         // Segunda oportunidad: al agotar los errores (una vez por partida) se ofrece
@@ -438,6 +502,10 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
             onResume = { vm.onIntent(NeonSudokuIntent.Resume) },
             onConfirmExit = exitWithSave,
             accent = CategoryPalette.Logic,
+            // En torneo la confirmación la pone el propio juego
+            // (`EventExitConfirmDialog`): habla de perder el intento, que es lo que
+            // de verdad está en juego, en vez de "¿salir del juego?".
+            confirmsExternally = event != null,
         )
     }
 }
@@ -785,3 +853,11 @@ private const val KEY_IDLE_AMT = 0.3f
  *  celda válida seleccionada): por debajo del reposo normal, para que se lea
  *  como apagada y no como una acción disponible más. */
 private const val KEY_DISABLED_AMT = 0.12f
+
+/**
+ * Clave del ViewModel en partida libre. Se separa de la del torneo (`event.id`)
+ * para que entrar a un torneo NO reutilice el ViewModel de la partida normal —y al
+ * revés—: comparten pantalla, pero son dos partidas con reglas distintas y el
+ * estado de una no tiene nada que hacer en la otra.
+ */
+private const val VIEWMODEL_KEY_FREE_PLAY = "libre"

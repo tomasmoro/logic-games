@@ -1,6 +1,26 @@
 package com.kortexgames.app.core.notifications
 
 import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.notif_channel_events_description
+import kortexgames.shared.generated.resources.notif_channel_events_name
+import kortexgames.shared.generated.resources.notif_event_ending_body_1
+import kortexgames.shared.generated.resources.notif_event_ending_body_2
+import kortexgames.shared.generated.resources.notif_event_ending_body_3
+import kortexgames.shared.generated.resources.notif_event_ending_title_1
+import kortexgames.shared.generated.resources.notif_event_ending_title_2
+import kortexgames.shared.generated.resources.notif_event_ending_title_3
+import kortexgames.shared.generated.resources.notif_event_results_body_1
+import kortexgames.shared.generated.resources.notif_event_results_body_2
+import kortexgames.shared.generated.resources.notif_event_results_body_3
+import kortexgames.shared.generated.resources.notif_event_results_title_1
+import kortexgames.shared.generated.resources.notif_event_results_title_2
+import kortexgames.shared.generated.resources.notif_event_results_title_3
+import kortexgames.shared.generated.resources.notif_event_starting_body_1
+import kortexgames.shared.generated.resources.notif_event_starting_body_2
+import kortexgames.shared.generated.resources.notif_event_starting_body_3
+import kortexgames.shared.generated.resources.notif_event_starting_title_1
+import kortexgames.shared.generated.resources.notif_event_starting_title_2
+import kortexgames.shared.generated.resources.notif_event_starting_title_3
 import kortexgames.shared.generated.resources.notif_channel_records_description
 import kortexgames.shared.generated.resources.notif_channel_records_name
 import kortexgames.shared.generated.resources.notif_channel_reminders_description
@@ -95,12 +115,14 @@ class NotificationCopyProvider(private val random: Random = Random.Default) {
     suspend fun channelName(channel: NotificationChannel): String = when (channel) {
         NotificationChannel.REMINDERS -> getString(Res.string.notif_channel_reminders_name)
         NotificationChannel.RECORDS -> getString(Res.string.notif_channel_records_name)
+        NotificationChannel.EVENTS -> getString(Res.string.notif_channel_events_name)
     }
 
     /** Descripción del canal (Android la muestra bajo su nombre). */
     suspend fun channelDescription(channel: NotificationChannel): String = when (channel) {
         NotificationChannel.REMINDERS -> getString(Res.string.notif_channel_reminders_description)
         NotificationChannel.RECORDS -> getString(Res.string.notif_channel_records_description)
+        NotificationChannel.EVENTS -> getString(Res.string.notif_channel_events_description)
     }
 
     /**
@@ -114,6 +136,9 @@ class NotificationCopyProvider(private val random: Random = Random.Default) {
         is NotificationContent.RecordBroken -> arrayOf(content.gameTitle)
         is NotificationContent.StreakAtRisk -> arrayOf(content.streakDays.toString())
         is NotificationContent.DailyMissionPending -> arrayOf(content.remaining.toString())
+        is NotificationContent.EventStarting -> arrayOf(content.eventTitle)
+        is NotificationContent.EventEndingSoon -> arrayOf(content.eventTitle)
+        is NotificationContent.EventResults -> arrayOf(content.eventTitle)
         // Los mensajes de inactividad son fijos: el escalón ya elige el texto.
         is NotificationContent.Inactivity -> emptyArray()
         NotificationContent.DebugTest -> emptyArray()
@@ -126,6 +151,9 @@ class NotificationCopyProvider(private val random: Random = Random.Default) {
             is NotificationContent.RecordBroken -> RECORD_BROKEN
             is NotificationContent.StreakAtRisk -> STREAK_AT_RISK
             is NotificationContent.DailyMissionPending -> DAILY_MISSION
+            is NotificationContent.EventStarting -> EVENT_STARTING
+            is NotificationContent.EventEndingSoon -> EVENT_ENDING
+            is NotificationContent.EventResults -> EVENT_RESULTS
             is NotificationContent.Inactivity -> when (content.step) {
                 InactivityStep.DAY_3 -> INACTIVITY_3D
                 InactivityStep.DAY_7 -> INACTIVITY_7D
@@ -165,6 +193,21 @@ class NotificationCopyProvider(private val random: Random = Random.Default) {
             Res.string.notif_inactivity_7d_title_1 to Res.string.notif_inactivity_7d_body_1,
             Res.string.notif_inactivity_7d_title_2 to Res.string.notif_inactivity_7d_body_2,
             Res.string.notif_inactivity_7d_title_3 to Res.string.notif_inactivity_7d_body_3,
+        )
+        val EVENT_STARTING = listOf(
+            Res.string.notif_event_starting_title_1 to Res.string.notif_event_starting_body_1,
+            Res.string.notif_event_starting_title_2 to Res.string.notif_event_starting_body_2,
+            Res.string.notif_event_starting_title_3 to Res.string.notif_event_starting_body_3,
+        )
+        val EVENT_ENDING = listOf(
+            Res.string.notif_event_ending_title_1 to Res.string.notif_event_ending_body_1,
+            Res.string.notif_event_ending_title_2 to Res.string.notif_event_ending_body_2,
+            Res.string.notif_event_ending_title_3 to Res.string.notif_event_ending_body_3,
+        )
+        val EVENT_RESULTS = listOf(
+            Res.string.notif_event_results_title_1 to Res.string.notif_event_results_body_1,
+            Res.string.notif_event_results_title_2 to Res.string.notif_event_results_body_2,
+            Res.string.notif_event_results_title_3 to Res.string.notif_event_results_body_3,
         )
         val DEBUG_TEST = listOf(
             Res.string.notif_debug_test_title to Res.string.notif_debug_test_body,

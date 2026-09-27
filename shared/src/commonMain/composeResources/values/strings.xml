@@ -463,4 +463,138 @@
          Human Interface Guidelines; NO reformular. -->
     <string name="auth_apple_button">Iniciar sesión con Apple</string>
 
+    <!-- ============================================================
+         TORNEOS (eventos de un juego en una fecha concreta)
+         El TÍTULO y el subtítulo de cada torneo NO están aquí: vienen del
+         backend (`public.events`), igual que los nombres de los juegos vienen
+         de `GameCatalog` (CLAUDE.md §10). Aquí solo vive el envoltorio.
+         ============================================================ -->
+    <string name="event_state_live">EN DIRECTO</string>
+    <string name="event_state_upcoming">PRÓXIMO</string>
+    <string name="event_state_finished">FINALIZADO</string>
+
+    <!-- Cuenta atrás. El valor ya llega formateado como texto ("2 d 4 h"),
+         por eso %1$s y no %1$d: la app no formatea números en el recurso. -->
+    <string name="event_countdown_starts">Empieza en %1$s</string>
+    <string name="event_countdown_ends">Termina en %1$s</string>
+    <string name="event_countdown_days">%1$s d %2$s h</string>
+    <string name="event_countdown_hours">%1$s h %2$s min</string>
+    <string name="event_countdown_minutes">%1$s min</string>
+    <string name="event_countdown_seconds">menos de un minuto</string>
+
+    <string name="event_cta_play">Entrar al torneo</string>
+    <string name="event_cta_open">Ver torneo</string>
+    <string name="event_cta_results">Ver resultados</string>
+    <string name="event_cta_sign_in">Iniciar sesión para competir</string>
+    <string name="event_back">Volver</string>
+
+    <string name="event_rules_title">Cómo funciona</string>
+    <string name="event_rule_same_board">Todos juegan exactamente el mismo tablero</string>
+    <string name="event_rule_own_board">Cada partida genera su propio reto</string>
+    <string name="event_rule_rank_time">Gana quien lo resuelva en menos tiempo</string>
+    <string name="event_rule_rank_score">Gana quien consiga más puntos</string>
+    <string name="event_rule_attempts">%1$s intentos por jugador</string>
+    <string name="event_rule_attempts_unlimited">Intentos ilimitados</string>
+    <string name="event_rule_ad_attempts">Puedes desbloquear %1$s intentos más viendo un anuncio</string>
+    <string name="event_rule_ad_attempt_one">Puedes desbloquear 1 intento más viendo un anuncio</string>
+    <string name="event_rule_reward">Insignia para los %1$s primeros</string>
+
+    <string name="event_leaderboard_title">Clasificación</string>
+    <string name="event_leaderboard_players">%1$s jugadores</string>
+    <string name="event_leaderboard_empty">Aún no hay ninguna marca. Puedes ser el primero.</string>
+    <string name="event_leaderboard_guest">La clasificación es para jugadores con cuenta. Entra y compite.</string>
+    <string name="event_leaderboard_me">Tu puesto</string>
+    <string name="event_leaderboard_unknown_player">Jugador</string>
+    <string name="event_leaderboard_not_played">Aún no has jugado este torneo</string>
+
+    <string name="event_attempts_left">Te quedan %1$s intentos</string>
+    <string name="event_attempts_last">Te queda 1 intento</string>
+    <string name="event_attempts_none">Has agotado tus intentos</string>
+    <string name="event_cta_watch_ad">Ver anuncio y jugar otra vez</string>
+    <string name="event_ad_failed">El anuncio no se completó, así que no hay intento extra.</string>
+
+    <string name="event_error_closed">El torneo ya no admite partidas</string>
+    <string name="event_error_no_attempts">Te has quedado sin intentos</string>
+    <string name="event_error_generic">No pudimos cargar el torneo. Inténtalo de nuevo.</string>
+
+    <!-- Panel de torneo del cartel de fin de partida. Sustituye a la comparativa
+         mundial cuando la partida era de torneo. -->
+    <string name="gameover_event_label">TORNEO</string>
+    <string name="gameover_event_rank">Puesto %1$s de %2$s</string>
+    <string name="gameover_event_improved">¡Has mejorado tu marca del torneo!</string>
+    <string name="gameover_event_not_improved">Tu mejor marca del torneo sigue en pie</string>
+    <string name="gameover_event_failed_closed">El torneo cerró antes de que terminaras: esta partida no cuenta</string>
+    <string name="gameover_event_failed_no_attempts">Sin intentos disponibles: esta partida no cuenta</string>
+    <string name="gameover_event_failed_auth">Necesitas una cuenta para competir en el torneo</string>
+    <string name="gameover_event_failed_generic">No pudimos registrar tu marca en el torneo</string>
+
+    <!-- Antesala de un juego cuando la partida es de TORNEO. -->
+    <string name="event_intro_label">JUEGAS UN TORNEO</string>
+    <string name="event_intro_board_unavailable">No hemos podido cargar el tablero del torneo. Comprueba tu conexión e inténtalo otra vez.</string>
+
+    <!-- ============================================================
+         NOTIFICACIONES DE TORNEO
+         El título del torneo llega como argumento (%1$s) porque es contenido
+         del backend, no una cadena traducible.
+         ============================================================ -->
+    <string name="notif_channel_events_name">Torneos</string>
+    <string name="notif_channel_events_description">Aperturas, últimas horas y resultados de los torneos.</string>
+
+    <string name="notif_event_starting_title_1">Torneo abierto</string>
+    <string name="notif_event_starting_body_1">%1$s ya está en marcha. Entra y marca tu tiempo.</string>
+    <string name="notif_event_starting_title_2">Empieza el torneo</string>
+    <string name="notif_event_starting_body_2">Todos juegan el mismo tablero en %1$s. ¿Cuál es tu marca?</string>
+    <string name="notif_event_starting_title_3">Tu sitio te espera</string>
+    <string name="notif_event_starting_body_3">%1$s acaba de abrirse. La clasificación está en blanco.</string>
+
+    <string name="notif_event_ending_title_1">Últimas horas</string>
+    <string name="notif_event_ending_body_1">%1$s cierra hoy y aún no has competido.</string>
+    <string name="notif_event_ending_title_2">Se acaba el tiempo</string>
+    <string name="notif_event_ending_body_2">Te queda poco para entrar en %1$s.</string>
+    <string name="notif_event_ending_title_3">Aún estás a tiempo</string>
+    <string name="notif_event_ending_body_3">%1$s cierra pronto. Una partida y estás dentro.</string>
+
+    <string name="notif_event_results_title_1">Clasificación final</string>
+    <string name="notif_event_results_body_1">%1$s ha terminado. Mira en qué puesto has quedado.</string>
+    <string name="notif_event_results_title_2">Ya hay resultados</string>
+    <string name="notif_event_results_body_2">Se cerró %1$s. Tu puesto ya es definitivo.</string>
+    <string name="notif_event_results_title_3">Torneo cerrado</string>
+    <string name="notif_event_results_body_3">Descubre cómo has quedado en %1$s.</string>
+
+    <!-- Confirmación de salida de una partida de TORNEO: abandonar gasta el
+         intento (migración 0056), así que nunca puede ocurrir sin avisar. -->
+    <string name="event_exit_title">¿Abandonar el torneo?</string>
+    <string name="event_exit_body">Si sales ahora, este intento se da por gastado y no registrará ninguna marca.</string>
+    <string name="event_exit_attempts_left">Después te quedará %1$s intentos</string>
+    <string name="event_exit_attempts_last">Es tu último intento</string>
+    <string name="event_exit_confirm">Salir y perder el intento</string>
+    <string name="event_exit_cancel">Seguir jugando</string>
+
+    <!-- ============================================================
+         CIERRE DE UN TORNEO: celebración e insignia
+         ============================================================ -->
+    <string name="event_reward_title_champion">¡Campeón del torneo!</string>
+    <string name="event_reward_title_podium">¡Podio!</string>
+    <string name="event_reward_rank">Has quedado %1$s de %2$s jugadores</string>
+    <string name="event_reward_badge">Insignia conseguida</string>
+    <string name="event_reward_close">Genial</string>
+
+    <!-- Resultado en la pantalla de un torneo ya cerrado. -->
+    <string name="event_result_title">Torneo finalizado</string>
+    <string name="event_result_rank">Tu puesto final: %1$s de %2$s</string>
+    <string name="event_result_champion">Ganaste el torneo</string>
+    <string name="event_result_awarded">Entraste en el podio premiado</string>
+    <string name="event_result_not_awarded">Esta vez no hubo insignia. La próxima es tuya.</string>
+    <string name="event_result_no_mark">No llegaste a registrar ninguna marca</string>
+    <string name="event_result_not_played">No participaste en este torneo</string>
+
+    <!-- Vitrina de insignias de torneo en el Perfil. Separada de los logros de
+         juego a propósito: son dos sistemas distintos (ver migración 0059). -->
+    <string name="profile_awards_section">Torneos ganados</string>
+    <string name="profile_awards_empty">Aún no has ganado ningún torneo. Los que ganes se quedan aquí.</string>
+    <string name="profile_awards_position">%1$sº de %2$s</string>
+    <string name="profile_awards_champion">Campeón</string>
+    <string name="profile_awards_champion_count">%1$s veces campeón</string>
+    <string name="profile_awards_champion_count_one">1 vez campeón</string>
+
 </resources>

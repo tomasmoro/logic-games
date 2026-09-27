@@ -70,6 +70,22 @@ class SudokuPuzzleRepositoryImpl(
     }
 
     /**
+     * Puzzle fijo del torneo. Caché primero; si no está, se pide a Supabase y se
+     * guarda para que un segundo intento del mismo torneo no vuelva a la red.
+     *
+     * No cae a un puzzle aleatorio cuando falla: en un torneo, jugar OTRO tablero
+     * es peor que no jugar — la marca no sería comparable con la del resto y el
+     * jugador gastaría un intento en una partida que no compite. Devolver null deja
+     * que la pantalla lo diga.
+     */
+    override suspend fun puzzleById(id: String): SudokuPuzzle? {
+        local.byId(id)?.let { return it }
+        val remote = runCatching { remote.fetchById(id) }.getOrNull() ?: return null
+        local.insertAll(listOf(remote))
+        return remote
+    }
+
+    /**
      * Siembra la caché desde el seed empaquetado si aún no hay puzzles de
      * [difficulty]. Un fallo al leer/parsear el recurso se traga a propósito: la
      * caché se queda vacía y [randomPuzzle] cae al puzzle de emergencia — nunca

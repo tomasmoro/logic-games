@@ -70,6 +70,15 @@ enum class NotificationKind(
     /** Último escalón: dos semanas. Después de este no se insiste más. */
     INACTIVITY_14D(1007, NotificationChannel.REMINDERS),
 
+    /** Un torneo al que el jugador puede entrar acaba de abrirse. */
+    EVENT_STARTING(1008, NotificationChannel.EVENTS),
+
+    /** Quedan pocas horas de torneo y el jugador aún no ha participado. */
+    EVENT_ENDING_SOON(1009, NotificationChannel.EVENTS),
+
+    /** El torneo cerró: ya hay clasificación definitiva que mirar. */
+    EVENT_RESULTS(1010, NotificationChannel.EVENTS),
+
     /**
      * Aviso de prueba a 15 segundos, para comprobar en un dispositivo real que la
      * entrega funciona de punta a punta (permiso → programación → sistema → barra de
@@ -100,6 +109,16 @@ enum class NotificationChannel(val id: String) {
 
     /** Mejores marcas propias y ajenas. */
     RECORDS("kortex_records"),
+
+    /**
+     * Torneos: apertura, últimas horas y resultados.
+     *
+     * Canal propio por la misma razón que separa récords de recordatorios: quien se
+     * harta de los avisos diarios no debería perder los de un torneo al que se
+     * apuntó, ni al revés. Además es el canal con más probabilidad de que alguien
+     * quiera SOLO este (compite de vez en cuando, no entrena a diario).
+     */
+    EVENTS("kortex_events"),
 }
 
 /**
@@ -157,6 +176,26 @@ sealed interface NotificationContent {
      */
     data class Inactivity(val step: InactivityStep) : NotificationContent {
         override val kind get() = step.kind
+    }
+
+    /**
+     * Un torneo acaba de abrirse.
+     *
+     * @property eventTitle título del torneo (`events.title`), que es contenido del
+     *   backend y no vive en `strings.xml` — igual que los nombres de los juegos.
+     */
+    data class EventStarting(val eventTitle: String) : NotificationContent {
+        override val kind get() = NotificationKind.EVENT_STARTING
+    }
+
+    /** Últimas horas de un torneo en el que el jugador aún no ha competido. */
+    data class EventEndingSoon(val eventTitle: String) : NotificationContent {
+        override val kind get() = NotificationKind.EVENT_ENDING_SOON
+    }
+
+    /** Torneo cerrado: hay clasificación definitiva. */
+    data class EventResults(val eventTitle: String) : NotificationContent {
+        override val kind get() = NotificationKind.EVENT_RESULTS
     }
 
     /** Aviso de prueba de la herramienta de depuración (ver [NotificationKind.DEBUG_TEST]). */

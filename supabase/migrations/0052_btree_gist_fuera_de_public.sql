@@ -1,0 +1,18 @@
+-- =============================================================================
+-- 0052 — `btree_gist` sale del esquema `public`
+-- -----------------------------------------------------------------------------
+-- El security advisor de Supabase marca (lint 0014, "Extension in Public") toda
+-- extensión instalada en `public`: sus funciones quedan expuestas por PostgREST y
+-- sus nombres pueden colisionar con objetos propios. La 0051 la creó ahí porque
+-- `create extension` sin `with schema` usa el esquema actual.
+--
+-- Mover la extensión es seguro para la restricción que la usa
+-- (`events_no_overlap_per_game`): el índice GiST referencia las clases de operador
+-- por OID, no por nombre cualificado, así que el constraint sigue vigente sin
+-- reconstruirse.
+--
+-- `citext` (0001) sigue en `public` y el advisor la seguirá marcando: moverla es
+-- otra decisión —afecta al tipo de `users.email`, que ya está en uso— y no se
+-- arrastra aquí.
+-- =============================================================================
+alter extension btree_gist set schema extensions;

@@ -49,6 +49,7 @@ import com.kortexgames.app.game.GameCatalog
 import com.kortexgames.app.game.GameCategory
 import com.kortexgames.app.game.GameInfo
 import com.kortexgames.app.game.GameProgressions
+import com.kortexgames.app.ui.components.ArcadeBrickBackground
 import com.kortexgames.app.ui.components.CategoryMotifSurface
 import com.kortexgames.app.ui.components.KortexIcons
 import com.kortexgames.app.ui.components.MotifScrim
@@ -117,83 +118,87 @@ fun GameListScreen(
     var selectedCategory by remember { mutableStateOf<GameCategory?>(null) }
     val sections = if (selectedCategory == null) categoriesWithGames else listOf(selectedCategory!!)
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-        contentPadding = PaddingValues(vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(22.dp),
-    ) {
-        item {
-            Column(
-                modifier = Modifier.padding(horizontal = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text("Catálogo", style = MaterialTheme.typography.headlineLarge, color = LogicColors.OnDark)
-                Text(
-                    "Elige un juego y entrena una habilidad",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = LogicColors.OnDarkMuted,
-                )
-            }
-        }
-
-        // Pills de filtro: "Todos" + una por categoría CON juegos (filtrar antes de
-        // pintar, no al pulsar, evita un pill que llevaría a una sección vacía).
-        item {
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                item(key = "all") {
-                    CategoryFilterPill(
-                        label = "Todos",
-                        // Sin categoría propia a la que asociarse, toma el morado de
-                        // marca secundaria (CLAUDE.md §9.2) en vez de un color robado
-                        // a una categoría concreta.
-                        color = LogicColors.Violet,
-                        selected = selectedCategory == null,
-                        onClick = { selectedCategory = null },
-                    )
-                }
-                items(categoriesWithGames, key = { it.name }) { category ->
-                    CategoryFilterPill(
-                        label = category.displayName,
-                        color = category.accent,
-                        selected = selectedCategory == category,
-                        onClick = { selectedCategory = category },
-                    )
-                }
-            }
-        }
-
-        sections.forEach { category ->
-            val categoryGames = gamesByCategory.getValue(category)
-            item(key = "header-${category.name}") {
-                CategorySectionHeader(
-                    category = category,
-                    count = categoryGames.size,
+    // Textura ambiental de muro arcade "neo-retro" (morado de marca, igual que la Home
+    // y la splash): el catálogo agrupa TODAS las categorías, así que no toma el acento
+    // de ninguna en particular.
+    Box(Modifier.fillMaxSize().background(LogicColors.BackgroundDark)) {
+        ArcadeBrickBackground(modifier = Modifier.fillMaxSize(), accent = LogicColors.Violet)
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(22.dp),
+        ) {
+            item {
+                Column(
                     modifier = Modifier.padding(horizontal = 20.dp),
-                )
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text("Catálogo", style = MaterialTheme.typography.headlineLarge, color = LogicColors.OnDark)
+                    Text(
+                        "Elige un juego y entrena una habilidad",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = LogicColors.OnDarkMuted,
+                    )
+                }
             }
-            item(key = "row-${category.name}") {
+
+            // Pills de filtro: "Todos" + una por categoría CON juegos (filtrar antes de
+            // pintar, no al pulsar, evita un pill que llevaría a una sección vacía).
+            item {
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    // Clave estable para no heredar el estado de cascada de otra
-                    // tarjeta al reciclar (los títulos son únicos en el catálogo).
-                    itemsIndexed(categoryGames, key = { _, game -> game.id ?: game.title }) { index, game ->
-                        val key = game.id ?: game.title
-                        CompactGameCard(
-                            game = game,
-                            index = index,
-                            recordText = game.id
-                                ?.let { id -> bestByGame[id]?.let { GameProgressions.forId(id)?.formatRecord(it) } },
-                            alreadyRevealed = key in revealed,
-                            onRevealed = { revealed += key },
-                            onOpen = { Routes.gameRoute(game.id)?.let(onOpenGame) },
+                    item(key = "all") {
+                        CategoryFilterPill(
+                            label = "Todos",
+                            // Sin categoría propia a la que asociarse, toma el morado de
+                            // marca secundaria (CLAUDE.md §9.2) en vez de un color robado
+                            // a una categoría concreta.
+                            color = LogicColors.Violet,
+                            selected = selectedCategory == null,
+                            onClick = { selectedCategory = null },
                         )
+                    }
+                    items(categoriesWithGames, key = { it.name }) { category ->
+                        CategoryFilterPill(
+                            label = category.displayName,
+                            color = category.accent,
+                            selected = selectedCategory == category,
+                            onClick = { selectedCategory = category },
+                        )
+                    }
+                }
+            }
+
+            sections.forEach { category ->
+                val categoryGames = gamesByCategory.getValue(category)
+                item(key = "header-${category.name}") {
+                    CategorySectionHeader(
+                        category = category,
+                        count = categoryGames.size,
+                        modifier = Modifier.padding(horizontal = 20.dp),
+                    )
+                }
+                item(key = "row-${category.name}") {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        // Clave estable para no heredar el estado de cascada de otra
+                        // tarjeta al reciclar (los títulos son únicos en el catálogo).
+                        itemsIndexed(categoryGames, key = { _, game -> game.id ?: game.title }) { index, game ->
+                            val key = game.id ?: game.title
+                            CompactGameCard(
+                                game = game,
+                                index = index,
+                                recordText = game.id
+                                    ?.let { id -> bestByGame[id]?.let { GameProgressions.forId(id)?.formatRecord(it) } },
+                                alreadyRevealed = key in revealed,
+                                onRevealed = { revealed += key },
+                                onOpen = { Routes.gameRoute(game.id)?.let(onOpenGame) },
+                            )
+                        }
                     }
                 }
             }

@@ -66,6 +66,11 @@ import org.jetbrains.compose.resources.stringResource
  * @param onPause si no es `null`, pausa la partida al abrir el cartel de confirmación
  *        (pensado para juegos en tiempo real). `null` (por defecto) mantiene el
  *        comportamiento clásico: el cartel no toca la partida.
+ * @param confirmsExternally el juego monta su PROPIA confirmación de salida y este
+ *        guard no debe pintar la suya: el atrás del sistema llama directamente a
+ *        [onConfirmExit]. Lo usa el modo torneo, donde salir gasta el intento y el
+ *        aviso tiene que hablar de eso y no de "se guarda tu progreso". `false` por
+ *        defecto: el resto de juegos sigue con el cartel de siempre.
  * @param onExitPromptVisibilityChange notifica cuándo el cartel de confirmación está
  *        en pantalla. El juego lo usa para silenciar el menú de pausa mientras tanto
  *        (necesario solo si se pasó [onPause], porque entonces el motor está en PAUSED).
@@ -79,6 +84,7 @@ fun GameExitGuard(
     accent: Color = LogicColors.NeonCyan,
     onPause: (() -> Unit)? = null,
     onExitPromptVisibilityChange: (Boolean) -> Unit = {},
+    confirmsExternally: Boolean = false,
 ) {
     var showExitDialog by remember { mutableStateOf(false) }
 
@@ -106,6 +112,10 @@ fun GameExitGuard(
             showExitDialog -> keepPlaying()
             // Atrás en pausa (menú de pausa abierto): reanuda, igual que la "X" del menú.
             status == GameStatus.PAUSED -> onResume()
+            // El juego confirma por su cuenta (modo torneo): atrás llama directo a
+            // `onConfirmExit`, que abrirá SU cartel. Encadenar los dos diálogos
+            // haría pulsar dos veces para responder a la misma pregunta.
+            confirmsExternally -> onConfirmExit()
             // Atrás jugando: congela la partida (si el juego lo pidió) y pregunta.
             else -> openExitPrompt()
         }

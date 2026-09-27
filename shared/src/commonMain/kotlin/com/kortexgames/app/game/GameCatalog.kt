@@ -35,7 +35,7 @@ object GameIds {
     /** Flujo de Energía (categoría "spatial" / Visión Espacial). */
     const val ENERGY_FLOW = "55555555-5555-4555-8555-555555555555"
 
-    /** Atracción Geométrica / Polarity Collision (categoría "spatial"). */
+    /** Atracción Geométrica / Polarity Collision (categoría "mental_speed" / Velocidad Mental). */
     const val POLARITY_COLLISION = "66666666-6666-4666-8666-666666666666"
 
     /** Crucigrama Neón (categoría "language" / Lenguaje y Vocabulario). */
@@ -144,9 +144,9 @@ object GameIds {
     const val NEON_LEGION = "7b3e51f0-4d8a-4c26-9e17-f2a86c40d593"
 
     /**
-     * Hexa Orbit / tablero hexagonal giratorio con puntero de luz (categoría "spatial" / Visión
-     * Espacial). UUID v4 aleatorio con prefijo deliberadamente distinto a todos los demás ids
-     * del catálogo (mismo criterio anti-transposición que [QUANTUM_MERGE]).
+     * Hexa Orbit / tablero hexagonal giratorio con puntero de luz (categoría "mental_speed" /
+     * Velocidad Mental). UUID v4 aleatorio con prefijo deliberadamente distinto a todos los demás
+     * ids del catálogo (mismo criterio anti-transposición que [QUANTUM_MERGE]).
      *
      * Reservado desde la FASE 2 (motor); su [GameInfo], motif y seed en Supabase se dan de alta
      * en la fase de integración del juego.
@@ -351,7 +351,7 @@ object GameCatalog {
         // isNew = true: uno de los tres últimos juegos incorporados (ver GameInfo.isNew).
         GameInfo(GameIds.NEON_LEGION, "Neon Legion", GameCategory.MENTAL_SPEED, playable = true, motif = GameMotif.LEGION_SWARM, isNew = true),
         GameInfo(GameIds.NEON_DEFUSER, "Buscaminas", GameCategory.ATTENTION, playable = true, motif = GameMotif.MINESWEEPER),
-        GameInfo(GameIds.HEXA_ORBIT, "Hexa Orbit", GameCategory.SPATIAL, playable = true, motif = GameMotif.HEXA_ORBIT, isNew = true),
+        GameInfo(GameIds.HEXA_ORBIT, "Hexa Orbit", GameCategory.MENTAL_SPEED, playable = true, motif = GameMotif.HEXA_ORBIT, isNew = true),
         GameInfo(GameIds.BUBBLE_MATH, "Burbujas de Cálculo", GameCategory.MENTAL_MATH, playable = true, motif = GameMotif.MATH_BUBBLES),
         // Primer juego de Reconocimiento de Patrones del catálogo: la categoría deja de
         // estar vacía.
@@ -368,7 +368,7 @@ object GameCatalog {
         GameInfo(GameIds.SEQUENCE_MEMORY, "Memoria de Secuencias", GameCategory.MEMORY, playable = true, motif = GameMotif.SEQUENCE_GRID),
         GameInfo(GameIds.NEON_2048, "2048", GameCategory.MENTAL_MATH, playable = true, motif = GameMotif.NUMBER_TILES),
         GameInfo(GameIds.STARPORT_ESCAPE, "Neon Starport Escape", GameCategory.LOGIC, playable = true, published = false),
-        GameInfo(GameIds.POLARITY_COLLISION, "Atracción Geométrica", GameCategory.SPATIAL, playable = true, motif = GameMotif.POLARITY_SECTORS),
+        GameInfo(GameIds.POLARITY_COLLISION, "Atracción Geométrica", GameCategory.MENTAL_SPEED, playable = true, motif = GameMotif.POLARITY_SECTORS),
         GameInfo(GameIds.NEON_LEXICON, "Sopa de Letras Neón", GameCategory.LANGUAGE, playable = true, motif = GameMotif.WORD_SEARCH),
         GameInfo(GameIds.NEON_CIRCUIT, "Conectores", GameCategory.PROBLEM_SOLVING, playable = true, motif = GameMotif.CIRCUIT_FLOW),
         GameInfo(GameIds.HYPERGATE, "Hypergate", GameCategory.REFLEXES, playable = true, motif = GameMotif.HYPERGATE),
@@ -389,6 +389,18 @@ object GameCatalog {
      * ([com.kortexgames.app.ui.home.HomeScreen]); vacía cuando no hay ninguna
      * novedad vigente, en cuyo caso esa tarjeta no se muestra.
      */
+    /**
+     * Juego del catálogo por su UUID, o null si el id no es de ningún juego
+     * publicado. Lo usan las piezas que reciben un id "desde fuera" —hoy los
+     * torneos, que llegan del backend— y necesitan su título, categoría y acento
+     * sin duplicar el `firstOrNull` por toda la UI.
+     *
+     * Busca sobre [games] (publicados) y no sobre el catálogo completo: si un juego
+     * está oculto, un torneo suyo tampoco debe pintarse con su identidad.
+     */
+    fun byId(id: String?): GameInfo? =
+        id?.let { wanted -> games.firstOrNull { it.id == wanted } }
+
     val newGames: List<GameInfo> = games.filter { it.isNew }
 
     /** Categorías destacadas en la Home (fila horizontal, como el mockup). */

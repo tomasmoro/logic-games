@@ -1,0 +1,38 @@
+-- Vitrina de insignias de torneo: réplica local de solo lectura de lo que devuelve
+-- `get_my_event_awards()` (migración 0059). Como `Event.sq` y a diferencia de
+-- `PlayerProgress.sq`, NUNCA sube nada: el premio lo deriva el servidor de la
+-- clasificación congelada, y el dispositivo solo lo muestra.
+--
+-- Por qué se cachea algo que es derivable: el perfil es local-first como el resto de
+-- la app y tiene que pintarse sin red. Además el premio es inmutable —un torneo
+-- cerrado ya no admite marcas—, así que una copia local no puede quedar "mal", solo
+-- incompleta hasta el siguiente refresco.
+CREATE TABLE EventAwardEntity (
+    eventId       TEXT    NOT NULL PRIMARY KEY,  -- UUID del torneo
+    eventTitle    TEXT    NOT NULL,
+    gameId        TEXT    NOT NULL,              -- UUID del catálogo (GameIds)
+    position      INTEGER NOT NULL,              -- puesto final (1 = campeón)
+    totalPlayers  INTEGER NOT NULL,
+    badgeKey      TEXT,
+    endedAt       INTEGER NOT NULL               -- epoch millis del cierre
+);
+
+-- La vitrina se lee siempre en orden cronológico inverso.
+CREATE INDEX idx_event_awards_ended ON EventAwardEntity(endedAt);
+
+selectAll:
+SELECT * FROM EventAwardEntity ORDER BY endedAt DESC;
+
+-- El refresco REEMPLAZA la vitrina entera en vez de fusionar: la respuesta del
+-- servidor es la lista completa y autoritativa. Si un premio dejara de estar (un
+-- torneo despublicado, un `reward_top_n` corregido a la baja), fusionar lo dejaría
+-- para siempre en el perfil.
+deleteAll:
+DELETE FROM EventAwardEntity;
+
+insert:
+INSERT OR REPLACE INTO EventAwardEntity(
+    eventId, eventTitle, gameId, position, totalPlayers, badgeKey, endedAt
+) VALUES (
+    :eventId, :eventTitle, :gameId, :position, :totalPlayers, :badgeKey, :endedAt
+);

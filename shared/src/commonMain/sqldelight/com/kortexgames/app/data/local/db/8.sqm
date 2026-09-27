@@ -1,0 +1,16 @@
+-- Migración v8 → v9: vitrina local de insignias de torneo (ver EventAward.sq y la
+-- migración 0059 de Supabase). Necesaria para que las instalaciones EXISTENTES
+-- (BD en v8, sin esta tabla) la reciban vía onUpgrade; las nuevas la obtienen del
+-- CREATE mediante Schema.create. Mismo patrón que 1.sqm–7.sqm, y el DDL debe
+-- coincidir EXACTAMENTE con el de EventAward.sq.
+CREATE TABLE EventAwardEntity (
+    eventId       TEXT    NOT NULL PRIMARY KEY,
+    eventTitle    TEXT    NOT NULL,
+    gameId        TEXT    NOT NULL,
+    position      INTEGER NOT NULL,
+    totalPlayers  INTEGER NOT NULL,
+    badgeKey      TEXT,
+    endedAt       INTEGER NOT NULL
+);
+
+CREATE INDEX idx_event_awards_ended ON EventAwardEntity(endedAt);

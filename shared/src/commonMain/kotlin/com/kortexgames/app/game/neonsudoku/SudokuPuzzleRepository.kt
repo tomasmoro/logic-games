@@ -27,4 +27,16 @@ interface SudokuPuzzleRepository {
      * (retención: el banco pequeño de antes repetía en pocas sesiones).
      */
     suspend fun randomPuzzle(difficulty: SudokuDifficulty): SudokuPuzzle
+
+    /**
+     * El puzzle [id], venga de donde venga (caché local o Supabase), o null si no
+     * se puede conseguir.
+     *
+     * Existe para el **modo torneo**: ahí el tablero no se sortea, lo fija el
+     * evento (`events.payload.puzzle_id`) para que todos los participantes jueguen
+     * exactamente el mismo. A diferencia de [randomPuzzle] **puede fallar**: si el
+     * puzzle no está cacheado y no hay red, no hay nada que servir — y en un torneo
+     * es preferible no empezar a empezar con un tablero distinto al de los demás.
+     */
+    suspend fun puzzleById(id: String): SudokuPuzzle?
 }

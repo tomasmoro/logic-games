@@ -46,9 +46,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.core.theme.LogicGradients
 import com.kortexgames.app.di.AppGraph
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.profile_awards_section
+import org.jetbrains.compose.resources.stringResource
 import com.kortexgames.app.domain.model.AuthState
 import com.kortexgames.app.domain.model.GameProgress
 import com.kortexgames.app.game.daily.calculateStreakDays
+import com.kortexgames.app.ui.components.ArcadeBrickBackground
 import com.kortexgames.app.ui.components.ChartPoint
 import com.kortexgames.app.ui.components.KortexIcons
 import com.kortexgames.app.ui.components.LineChart
@@ -77,62 +81,88 @@ fun ProfileScreen(graph: AppGraph, onOpenAuth: () -> Unit, onOpenSettings: () ->
     val history by graph.progressRepository.observeHistory(null)
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val session by graph.authRepository.sessionState.collectAsStateWithLifecycle()
+    // Vitrina de torneos ganados. Sale de la caché local (local-first), así que se
+    // pinta sin red; el refresco lo dispara el AppGraph con el resto del calendario.
+    val awards by graph.eventsRepository.observeAwards()
+        .collectAsStateWithLifecycle(initialValue = emptyList())
     val scope = rememberCoroutineScope()
 
     val streak = calculateStreakDays(history)
 
     Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Perfil", style = MaterialTheme.typography.headlineLarge, color = LogicColors.OnDark)
-                Spacer(Modifier.weight(1f))
-                SettingsButton(onClick = onOpenSettings)
-            }
-
-            StreakCard(streakDays = streak, totalGames = history.size)
-
-            // --- Estadísticas ----------------------------------------------------
-//            Text("Estadísticas", style = MaterialTheme.typography.titleLarge, color = LogicColors.OnDark)
-//            SectionCard(title = "Efectividad") {
-//                LineChart(
-//                    points = remember(history) { effectivenessPoints(history) },
-//                    lineColor = LogicColors.NeonCyan,
-//                )
-//            }
-//            SectionCard(title = "Tiempo de finalización") {
-//                ChartPlaceholder("Próximamente: evolución de tus tiempos")
-//            }
-
-            // --- Ajustes ---------------------------------------------------------
-            Text("Ajustes", style = MaterialTheme.typography.titleLarge, color = LogicColors.OnDark)
-            SectionCard {
-                SettingToggle(Icons.AutoMirrored.Rounded.VolumeUp, "Efectos de sonido", LogicColors.NeonCyan, settings.settings.isSfxEnabled) {
-                    settingsVm.onIntent(SettingsIntent.ToggleSfx)
+        // Textura ambiental de muro arcade "neo-retro" (morado de marca, igual que la
+        // Home y la splash): el Perfil no pertenece a una categoría concreta, así que
+        // usa el acento de marca en vez del de un juego.
+        Box(Modifier.fillMaxSize().background(LogicColors.BackgroundDark)) {
+            ArcadeBrickBackground(modifier = Modifier.fillMaxSize(), accent = LogicColors.Violet)
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Perfil", style = MaterialTheme.typography.headlineLarge, color = LogicColors.OnDark)
+                    Spacer(Modifier.weight(1f))
+                    SettingsButton(onClick = onOpenSettings)
                 }
-                SettingToggle(Icons.Rounded.MusicNote, "Música", LogicColors.Violet, settings.settings.isMusicEnabled) {
-                    settingsVm.onIntent(SettingsIntent.ToggleMusic)
-                }
-                SettingToggle(Icons.Rounded.Vibration, "Vibración", LogicColors.Coral, settings.settings.isHapticsEnabled) {
-                    settingsVm.onIntent(SettingsIntent.ToggleHaptics)
-                }
-            }
 
-            // --- Cuenta ----------------------------------------------------------
-            Text("Cuenta", style = MaterialTheme.typography.titleLarge, color = LogicColors.OnDark)
-            if (session is AuthState.Authenticated) {
-                AuthenticatedAccountCard(onSignOut = { scope.launch { graph.signOut() } })
-            } else {
-                GuestAccountCard(onSignIn = onOpenAuth)
-            }
+                StreakCard(streakDays = streak, totalGames = history.size)
 
-            Spacer(Modifier.height(4.dp))
+                // --- Estadísticas ----------------------------------------------------
+//                Text("Estadísticas", style = MaterialTheme.typography.titleLarge, color = LogicColors.OnDark)
+//                SectionCard(title = "Efectividad") {
+//                    LineChart(
+//                        points = remember(history) { effectivenessPoints(history) },
+//                        lineColor = LogicColors.NeonCyan,
+//                    )
+//                }
+//                SectionCard(title = "Tiempo de finalización") {
+//                    ChartPlaceholder("Próximamente: evolución de tus tiempos")
+//                }
+
+                // --- Torneos ---------------------------------------------------------
+                // Sección PROPIA, separada de los logros de juego a propósito: son dos
+                // sistemas distintos (ver la migración 0059). Solo se muestra con sesión:
+                // un invitado no puede competir, así que anunciarle una vitrina que nunca
+                // va a llenar es ruido — y ya tiene abajo su tarjeta de "crea una cuenta".
+                if (session is AuthState.Authenticated) {
+                    Text(
+                        stringResource(Res.string.profile_awards_section),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = LogicColors.OnDark,
+                    )
+                    SectionCard {
+                        EventAwardsSection(awards = awards)
+                    }
+                }
+
+                // --- Ajustes ---------------------------------------------------------
+                Text("Ajustes", style = MaterialTheme.typography.titleLarge, color = LogicColors.OnDark)
+                SectionCard {
+                    SettingToggle(Icons.AutoMirrored.Rounded.VolumeUp, "Efectos de sonido", LogicColors.NeonCyan, settings.settings.isSfxEnabled) {
+                        settingsVm.onIntent(SettingsIntent.ToggleSfx)
+                    }
+                    SettingToggle(Icons.Rounded.MusicNote, "Música", LogicColors.Violet, settings.settings.isMusicEnabled) {
+                        settingsVm.onIntent(SettingsIntent.ToggleMusic)
+                    }
+                    SettingToggle(Icons.Rounded.Vibration, "Vibración", LogicColors.Coral, settings.settings.isHapticsEnabled) {
+                        settingsVm.onIntent(SettingsIntent.ToggleHaptics)
+                    }
+                }
+
+                // --- Cuenta ----------------------------------------------------------
+                Text("Cuenta", style = MaterialTheme.typography.titleLarge, color = LogicColors.OnDark)
+                if (session is AuthState.Authenticated) {
+                    AuthenticatedAccountCard(onSignOut = { scope.launch { graph.signOut() } })
+                } else {
+                    GuestAccountCard(onSignIn = onOpenAuth)
+                }
+
+                Spacer(Modifier.height(4.dp))
+            }
         }
     }
 }

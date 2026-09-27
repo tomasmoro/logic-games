@@ -19,6 +19,12 @@ CREATE INDEX sudoku_by_difficulty ON SudokuPuzzleEntity(difficulty, servedAt);
 countByDifficulty:
 SELECT COUNT(*) FROM SudokuPuzzleEntity WHERE difficulty = :difficulty;
 
+-- Un puzzle concreto por su UUID. Lo necesita el modo torneo: el evento fija el
+-- tablero (`events.payload.puzzle_id`) para que todos los participantes jueguen
+-- exactamente el mismo, y eso no se puede servir con la rotación por dificultad.
+selectById:
+SELECT * FROM SudokuPuzzleEntity WHERE id = :id;
+
 allIdsByDifficulty:
 SELECT id FROM SudokuPuzzleEntity WHERE difficulty = :difficulty;
 
