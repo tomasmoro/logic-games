@@ -10,9 +10,8 @@ import com.kortexgames.app.core.audio.PlatformContext
  * flujos (intersticial en el breakpoint, revivir/pista con recompensado) sigan
  * funcionando end-to-end en desarrollo sin romper nada.
  *
- * A diferencia de Android, aquí no hay [AdMobConfig] con selección real/prueba por
- * build: `AdMobBridge.swift` usa hoy los ad unit ID de PRUEBA de Google fijos. Antes
- * de publicar, replicar ese patrón (real solo en `Release`, ver BACKLOG).
+ * La selección de unidad real/prueba por build la hace [IosAdUnits] (gemelo del
+ * `AdMobConfig` de Android); la carga, precarga y reintentos viven en el puente Swift.
  */
 actual fun installPlatformAdPresenters(adManager: AdManager, context: PlatformContext) {
     val bridge = IosAdBridgeHolder.bridge

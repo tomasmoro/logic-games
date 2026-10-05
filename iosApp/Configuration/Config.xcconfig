@@ -27,8 +27,14 @@ PRODUCT_BUNDLE_IDENTIFIER=com.kortexgames.app$(TEAM_ID)
 // desde la UI de Xcode: duplicaría la declaración.
 CODE_SIGN_ENTITLEMENTS = Configuration/iosApp.entitlements
 
-CURRENT_PROJECT_VERSION=3
-MARKETING_VERSION=1.0
+// Dos números, dos reglas de Apple distintas:
+//  - MARKETING_VERSION (CFBundleShortVersionString): la versión que ve el usuario.
+//    Tiene que SUBIR en cada versión que se envíe a revisión; una vez aprobada la
+//    "1.0", su tren queda cerrado y ya no admite builds nuevas.
+//  - CURRENT_PROJECT_VERSION (CFBundleVersion): el número de build. Tiene que subir en
+//    cada subida, aunque la versión de marketing no cambie.
+CURRENT_PROJECT_VERSION=4
+MARKETING_VERSION=1.0.1
 
 // El framework Shared es estático, así que la app enlaza las libs del sistema
 // que usa el driver nativo de SQLDelight. libsqlite3 aporta los símbolos

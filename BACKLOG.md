@@ -321,7 +321,11 @@ fases (ver CLAUDE.md §2); son deudas y detalles a retomar.
       - **Rellenar `ADMOB_IOS_INTERSTITIAL_UNIT_ID` y `ADMOB_IOS_REWARDED_UNIT_ID`** en
         `secrets.properties` con las unidades reales de la app iOS de AdMob. Mientras
         estén vacías, un release servirá anuncios de PRUEBA y no monetizará.
-      - **Afinar la precarga** (reintento/backoff).
+      - ~~Afinar la precarga (reintento/backoff).~~ HECHO: `AdMobBridge.swift`
+        reintenta la carga con espera, carga bajo demanda al ir a mostrar y al volver a
+        primer plano, descarta anuncios caducados y registra cada fallo en el log
+        (categoría `AdMob`). Antes, un único fallo de la precarga inicial dejaba la
+        sesión entera sin anuncios.
 - [ ] **Verificar en dispositivo el consentimiento diferido.** El formulario UMP (y el
       ATT de iOS) ya no se piden al arrancar: los dispara `beginAdConsentFlow` cuando
       termina la bienvenida jugable de la primera apertura (`OnboardingGate
