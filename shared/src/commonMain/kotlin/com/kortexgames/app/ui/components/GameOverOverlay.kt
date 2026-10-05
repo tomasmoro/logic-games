@@ -219,6 +219,14 @@ fun GameOverOverlay(
     // MODO TORNEO (ver [singleBackCta]).
     val onlyBack = duringFirstRun || singleBackCta
 
+    // Juegos premium: toda acción que ARRANCA otra partida pasa por la puerta del
+    // cupo diario (ver [LocalPlayGate]); en el resto de juegos `gatedPlay` devuelve la
+    // acción tal cual. "Ver niveles" (catálogo agotado) no arranca nada —lleva a la
+    // antesala, que ya cobra al empezar—, así que no se envuelve para no cobrar dos veces.
+    val playAgain = gatedPlay(onPlayAgain)
+    val nextLevel = onNextLevel?.let { if (hasNextLevel) gatedPlay(it) else it }
+    val playUnlockedDifficulty = onPlayUnlockedDifficulty?.let { gatedPlay(it) }
+
     // Se celebra HABER BATIDO algo en ESTA partida, no ostentar un título.
     //
     // Ser el nº1 del mundo no basta: si bastara, el campeón vería fuegos artificiales
@@ -400,7 +408,7 @@ fun GameOverOverlay(
                         .pulse(),
                     gradient = accentCtaGradient(accent),
                 )
-            } else if (unlockedDifficultyLabel != null && onPlayUnlockedDifficulty != null) {
+            } else if (unlockedDifficultyLabel != null && playUnlockedDifficulty != null) {
                 // Escalón recién abierto: es el hito más "accionable" del cartel —hay un
                 // reto nuevo esperando— así que se lleva el CTA principal (pulse) y el badge
                 // que lo anuncia. `onNextLevel` no puede coincidir con esto: es exclusivo de
@@ -409,7 +417,7 @@ fun GameOverOverlay(
                 Spacer(Modifier.height(CardItemGap))
                 AnimatedGameButton(
                     text = stringResource(Res.string.gameover_cta_play_unlocked, unlockedDifficultyLabel.uppercase()),
-                    onClick = onPlayUnlockedDifficulty,
+                    onClick = playUnlockedDifficulty,
                     modifier = Modifier
                         .fillMaxWidth()
                         .pulse(),
@@ -423,7 +431,7 @@ fun GameOverOverlay(
                         icon = KortexIcons.Refresh,
                         label = stringResource(Res.string.gameover_cta_play_again),
                         tint = LogicColors.OnDarkMuted,
-                        onClick = onPlayAgain,
+                        onClick = playAgain,
                     )
                 }
                 Spacer(Modifier.height(CardItemGap))
@@ -437,7 +445,7 @@ fun GameOverOverlay(
                         .padding(vertical = 8.dp),
                     textAlign = TextAlign.Center,
                 )
-            } else if (onNextLevel != null) {
+            } else if (nextLevel != null) {
                 // Juego LEVELED: el CTA principal es avanzar; luego repetir el nivel
                 // y volver al selector. El único bucle (pulse) va al CTA que guía (§9.4).
                 // Catálogo finito ya agotado ([hasNextLevel] == false): no hay
@@ -449,7 +457,7 @@ fun GameOverOverlay(
                         if (hasNextLevel) Res.string.gameover_cta_next_level
                         else Res.string.gameover_cta_levels_done,
                     ),
-                    onClick = onNextLevel,
+                    onClick = nextLevel,
                     modifier = Modifier
                         .fillMaxWidth()
                         .pulse(),
@@ -466,7 +474,7 @@ fun GameOverOverlay(
                         icon = KortexIcons.Refresh,
                         label = stringResource(Res.string.gameover_cta_retry_level),
                         tint = LogicColors.OnDarkMuted,
-                        onClick = onPlayAgain,
+                        onClick = playAgain,
                     )
                     PauseOutlineButton(
                         icon = KortexIcons.Exit,
@@ -493,7 +501,7 @@ fun GameOverOverlay(
             } else {
                 AnimatedGameButton(
                     text = stringResource(Res.string.gameover_cta_play_again),
-                    onClick = onPlayAgain,
+                    onClick = playAgain,
                     // Único bucle de la pantalla (pulse) reservado al CTA principal,
                     // como manda §9.4: guía la acción sin competir con otros elementos.
                     modifier = Modifier

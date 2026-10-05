@@ -120,6 +120,14 @@ object Routes {
     }
 
     /**
+     * Inverso de [gameRoute]: el id del juego que se abre en [route], o null si la
+     * ruta no es de ningún juego. Se deriva de [gameRoute] recorriendo el catálogo
+     * en vez de mantener un segundo `when` que se desincronizaría al sumar juegos.
+     */
+    fun gameIdForRoute(route: String?): String? =
+        route?.let { r -> GameCatalog.allGameIds.firstOrNull { gameRoute(it) == r } }
+
+    /**
      * ¿La ruta es una **pantalla de juego** a pantalla completa? Fuente única de esta
      * pregunta: todas las rutas de juego comparten el prefijo `"game/"`, así que un
      * juego nuevo queda cubierto automáticamente sin tocar esta función ni las que la

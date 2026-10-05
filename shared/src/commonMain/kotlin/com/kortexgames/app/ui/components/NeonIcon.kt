@@ -41,6 +41,7 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material.icons.rounded.WorkspacePremium
 import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Star
@@ -179,6 +180,12 @@ object KortexIcons {
      * está sujeta a un anuncio, no que sea gratuita.
      */
     val RewardedAd: ImageVector = Icons.Rounded.OndemandVideo
+
+    /**
+     * Corona/insignia de juego premium (ver `PremiumBadge`). Distinta de [RewardedAd]:
+     * esta marca el juego; aquella, la acción concreta que cuesta un anuncio.
+     */
+    val Premium: ImageVector = Icons.Rounded.WorkspacePremium
 
     /**
      * Escudo protector: la "bandera" de Neon Defuser (marca donde el jugador cree

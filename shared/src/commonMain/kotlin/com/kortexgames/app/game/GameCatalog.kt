@@ -316,6 +316,11 @@ enum class GameMotif {
  *           `0043_games_is_new_badge.sql`) para poder ajustarla sin pasar por una
  *           release — aunque hoy, como el resto de [GameInfo], la UI solo lee este
  *           campo del cliente.
+ * @property premium true = juego **premium**: los jugadores sin plan premium tienen
+ *           [com.kortexgames.app.game.access.FREE_DAILY_PLAYS] partidas gratis al día y,
+ *           agotadas, cada partida extra cuesta un anuncio recompensado (ver
+ *           [com.kortexgames.app.game.access.PlayQuotaManager]). Espejado en Supabase
+ *           (`games.is_premium`, migración `0061_games_is_premium.sql`) igual que [isNew].
  */
 data class GameInfo(
     val id: String?,
@@ -325,6 +330,7 @@ data class GameInfo(
     val published: Boolean = true,
     val motif: GameMotif? = null,
     val isNew: Boolean = false,
+    val premium: Boolean = false,
 )
 
 /**
@@ -349,15 +355,15 @@ object GameCatalog {
         // enterrar las novedades al final de la lista.
         GameInfo(GameIds.WATER_SORT, "Ordena las Pociones", GameCategory.LOGIC, playable = true, motif = GameMotif.POTIONS),
         // isNew = true: uno de los tres últimos juegos incorporados (ver GameInfo.isNew).
-        GameInfo(GameIds.NEON_LEGION, "Neon Legion", GameCategory.MENTAL_SPEED, playable = true, motif = GameMotif.LEGION_SWARM, isNew = true),
+        GameInfo(GameIds.NEON_LEGION, "Neon Legion", GameCategory.MENTAL_SPEED, playable = true, motif = GameMotif.LEGION_SWARM, isNew = true, premium = true),
         GameInfo(GameIds.NEON_DEFUSER, "Buscaminas", GameCategory.ATTENTION, playable = true, motif = GameMotif.MINESWEEPER),
-        GameInfo(GameIds.HEXA_ORBIT, "Hexa Orbit", GameCategory.MENTAL_SPEED, playable = true, motif = GameMotif.HEXA_ORBIT, isNew = true),
+        GameInfo(GameIds.HEXA_ORBIT, "Hexa Orbit", GameCategory.MENTAL_SPEED, playable = true, motif = GameMotif.HEXA_ORBIT, isNew = true, premium = true),
         GameInfo(GameIds.BUBBLE_MATH, "Burbujas de Cálculo", GameCategory.MENTAL_MATH, playable = true, motif = GameMotif.MATH_BUBBLES),
         // Primer juego de Reconocimiento de Patrones del catálogo: la categoría deja de
         // estar vacía.
         GameInfo(GameIds.NEON_GRID_SWITCH, "Neon Grid Switch", GameCategory.PATTERNS, playable = true, motif = GameMotif.LIGHTS_GRID, isNew = true),
         GameInfo(GameIds.NEON_BLOCK_GRID, "Bloques Neón", GameCategory.LOGIC, playable = true, motif = GameMotif.TETROMINO),
-        GameInfo(GameIds.QUANTUM_MERGE, "Quantum Merge", GameCategory.SPATIAL, playable = true, motif = GameMotif.QUANTUM_SPHERES),
+        GameInfo(GameIds.QUANTUM_MERGE, "Quantum Merge", GameCategory.SPATIAL, playable = true, motif = GameMotif.QUANTUM_SPHERES, premium = true),
         GameInfo(GameIds.WORD_CONNECT, "Palabras Conectadas", GameCategory.LANGUAGE, playable = true, published = false, motif = GameMotif.WORD_WHEEL),
         GameInfo(GameIds.CRUCIGRAMA_NEON, "Crucigrama Neón", GameCategory.LANGUAGE, playable = true, motif = GameMotif.CROSSWORD),
         GameInfo(GameIds.HYPER_CUBE, "Hyper Cubo", GameCategory.SPATIAL, playable = true, motif = GameMotif.HYPER_CUBE),
@@ -402,6 +408,20 @@ object GameCatalog {
         id?.let { wanted -> games.firstOrNull { it.id == wanted } }
 
     val newGames: List<GameInfo> = games.filter { it.isNew }
+
+    /**
+     * Ids de TODOS los juegos definidos, publicados o no. Lo usa la navegación para
+     * saber qué juego corresponde a cada ruta: un juego oculto sigue teniendo ruta
+     * (se puede abrir en desarrollo) y debe seguir sujeto a sus reglas de acceso.
+     */
+    val allGameIds: List<String> = allGames.mapNotNull { it.id }
+
+    /**
+     * ¿Es [gameId] un juego premium ([GameInfo.premium])? Busca en el catálogo
+     * completo, no solo en [games], por el mismo motivo que [allGameIds].
+     */
+    fun isPremium(gameId: String?): Boolean =
+        gameId != null && allGames.any { it.id == gameId && it.premium }
 
     /** Categorías destacadas en la Home (fila horizontal, como el mockup). */
     val featuredCategories: List<GameCategory> = listOf(

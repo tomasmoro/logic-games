@@ -597,4 +597,20 @@
     <string name="profile_awards_champion_count">%1$s veces campeón</string>
     <string name="profile_awards_champion_count_one">1 vez campeón</string>
 
+    <!-- ============================================================
+         JUEGOS PREMIUM: cupo diario gratis + partida extra por anuncio
+         ============================================================ -->
+    <string name="premium_badge">PREMIUM</string>
+    <string name="premium_badge_content_description">Juego premium</string>
+    <!-- Bajo el CTA de la antesala mientras quedan partidas gratis hoy. -->
+    <string name="premium_quota_remaining">Partidas gratis hoy: %1$s de %2$s</string>
+    <!-- Bajo el CTA de la antesala con el cupo del día agotado. -->
+    <string name="premium_quota_exhausted">Ya usaste tus %1$s partidas gratis de hoy</string>
+    <string name="premium_play_with_ad">Ver anuncio y jugar</string>
+    <!-- Cartel al pulsar "Jugar de nuevo"/"Reiniciar" con el cupo agotado. -->
+    <string name="premium_unlock_title">Sin partidas gratis</string>
+    <string name="premium_unlock_body">Ya usaste tus %1$s partidas gratis de hoy en este juego. Mira un anuncio para jugar una partida más o vuelve mañana.</string>
+    <string name="premium_unlock_watch">VER ANUNCIO Y JUGAR</string>
+    <string name="premium_unlock_cancel">Ahora no</string>
+
 </resources>

@@ -46,12 +46,15 @@ import com.kortexgames.app.data.settings.OnboardingGate
 import com.kortexgames.app.data.settings.SettingsRepository
 import com.kortexgames.app.data.settings.createSettingsDataStore
 import com.kortexgames.app.game.EventPlaySession
+import com.kortexgames.app.game.GameCatalog
 import com.kortexgames.app.game.events.EventRewardManager
 import com.kortexgames.app.game.events.EventRewardStore
 import com.kortexgames.app.game.daily.DailyGoalManager
 import com.kortexgames.app.game.daily.DailyGoalStore
 import com.kortexgames.app.domain.model.AuthState
 import com.kortexgames.app.domain.model.PlanType
+import com.kortexgames.app.game.access.DataStorePlayQuotaStore
+import com.kortexgames.app.game.access.PlayQuotaManager
 import com.kortexgames.app.domain.repository.AchievementsRepository
 import com.kortexgames.app.domain.repository.AuthRepository
 import com.kortexgames.app.domain.repository.PlayerProgressRepository
@@ -64,6 +67,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -255,10 +259,17 @@ class AppGraph(context: PlatformContext) {
     val audio: AudioAndHapticManager =
         createAudioAndHapticManager(context, settingsRepository).apply { preload() }
 
+    /**
+     * Plan premium vigente del jugador. Fuente única para el [adManager] y el
+     * [playQuotaManager]: el día que el plan venga del SDK de la tienda solo cambia aquí.
+     */
+    private val isPremiumUser: () -> Boolean =
+        { (authState as? AuthState.Authenticated)?.plan == PlanType.PREMIUM }
+
     // --- Anuncios: cada 3 min de juego activo si NO es premium --------------
     val adManager = AdManager(
         scope = appScope,
-        isPremium = { (authState as? AuthState.Authenticated)?.plan == PlanType.PREMIUM },
+        isPremium = isPremiumUser,
         // Ni un anuncio durante la bienvenida de la primera apertura: el
         // consentimiento (UMP/ATT) aún no se ha resuelto —pedirlos incumpliría la
         // política de AdMob— y además el primer minuto del jugador debe ser juego.
@@ -270,6 +281,22 @@ class AppGraph(context: PlatformContext) {
         // commonMain no conoce ningún SDK: la elección vive tras este seam expect/actual.
         installPlatformAdPresenters(it, context)
     }
+
+    // --- Juegos premium: cupo diario + anuncio recompensado -----------------
+    /**
+     * Cupo de partidas de los juegos premium ([com.kortexgames.app.game.GameInfo.premium]).
+     * Exentas del cupo: las partidas de torneo (tienen sus propios intentos) y las de
+     * la bienvenida de primera apertura (aún no se pueden pedir anuncios).
+     */
+    val playQuotaManager = PlayQuotaManager(
+        store = DataStorePlayQuotaStore(preferences),
+        showRewardedAd = { adManager.showRewardedAd() },
+        isPremiumGame = GameCatalog::isPremium,
+        isPremiumUser = isPremiumUser,
+        exempt = combine(eventPlaySession.active, onboardingGate.isFirstRunOver) { event, firstRunOver ->
+            event != null || !firstRunOver
+        },
+    )
 
     // --- Objetivo diario (misión de 3 juegos del día → recompensa) ----------
     val dailyGoalManager = DailyGoalManager(

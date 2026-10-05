@@ -55,6 +55,7 @@ import com.kortexgames.app.ui.components.KortexIcons
 import com.kortexgames.app.ui.components.MotifScrim
 import com.kortexgames.app.ui.components.NeonIcon
 import com.kortexgames.app.ui.components.NewBadge
+import com.kortexgames.app.ui.components.PremiumBadge
 import com.kortexgames.app.ui.components.bounceClick
 import com.kortexgames.app.ui.navigation.Routes
 import kotlinx.coroutines.delay
@@ -419,13 +420,20 @@ private fun CompactGameCard(
         // Insignia "NUEVO" (variante compacta, pensada para tarjetas estrechas como
         // esta) o candado si aún no es jugable — mutuamente excluyentes en los datos
         // reales del catálogo (ver [GameInfo.isNew]), así que comparten esquina.
-        if (game.isNew) {
-            NewBadge(
-                compact = true,
+        //
+        // La insignia premium sí puede coincidir con "NUEVO" (los tres juegos premium
+        // son novedades), así que van en fila: la corona compacta a la izquierda.
+        if (game.isNew || game.premium) {
+            Row(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(top = 10.dp, end = 10.dp),
-            )
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (game.premium) PremiumBadge(compact = true)
+                if (game.isNew) NewBadge(compact = true)
+            }
         } else if (!game.playable) {
             NeonIcon(
                 icon = KortexIcons.Lock,

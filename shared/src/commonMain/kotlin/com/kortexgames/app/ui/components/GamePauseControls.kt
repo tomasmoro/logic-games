@@ -183,7 +183,8 @@ fun GamePauseControls(
             onExit = onExit,
             exitKeepsProgress = exitKeepsProgress,
             onAdvanceLevel = onAdvanceLevel,
-            onRestart = onRestart,
+            // Reiniciar empieza otra partida: en juegos premium gasta cupo (ver [LocalPlayGate]).
+            onRestart = onRestart?.let { gatedPlay(it) },
         )
 
         // Hoja de ayuda genérica por encima del menú de pausa (su propio scrim lo tapa).

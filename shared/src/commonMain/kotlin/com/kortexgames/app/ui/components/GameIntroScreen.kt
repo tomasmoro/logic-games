@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,11 +49,16 @@ import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.core.theme.LogicGradients
 import com.kortexgames.app.domain.model.formatDurationShort
 import com.kortexgames.app.game.GameMotif
+import com.kortexgames.app.game.access.FREE_DAILY_PLAYS
+import com.kortexgames.app.game.access.PlayAccess
 import com.kortexgames.app.ui.onboarding.LocalFirstRunFlow
 import kortexgames.shared.generated.resources.Res
 import kortexgames.shared.generated.resources.firstrun_age_notice
 import kortexgames.shared.generated.resources.firstrun_progress
 import kortexgames.shared.generated.resources.gameintro_level_upcoming
+import kortexgames.shared.generated.resources.premium_play_with_ad
+import kortexgames.shared.generated.resources.premium_quota_exhausted
+import kortexgames.shared.generated.resources.premium_quota_remaining
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -139,7 +145,8 @@ data class ResumeState(
  * @param title nombre del juego (titular).
  * @param description frase corta que explica de qué va el juego.
  * @param accent color de acento de la categoría (halo/borde neón, número de nivel).
- * @param onStart lanza la partida (el nivel elegido si [levels] no es null).
+ * @param onStart lanza la partida (el nivel elegido si [levels] no es null). En juegos
+ *        premium solo se invoca si la puerta del cupo diario la concede ([LocalPlayGate]).
  * @param onExit vuelve atrás (sale a la lista de juegos).
  * @param icon icono del juego; **null** = placeholder vacío (aún sin diseñar, por petición).
  * @param motif motivo del juego ([GameMotif]) que se dibuja **centrado** dentro del recuadro
@@ -203,10 +210,24 @@ fun GameIntroScreen(
 
     // Arrancar la partida es además el momento en que el jugador acepta las
     // condiciones durante la bienvenida: son el texto que tiene justo bajo el botón.
-    val startGame: () -> Unit = {
+    val launchGame: () -> Unit = {
         firstRun?.onGameStarted()
         onStart()
     }
+
+    // Juegos premium: empezar pasa por la puerta del cupo diario (ver [PlayGate]).
+    // "Continuar" una partida guardada NO pasa por ella: esa partida ya se pagó al
+    // empezarla. `null` hasta leer el cupo, para no pintar un rótulo que cambie al
+    // instante.
+    val playGate = LocalPlayGate.current
+    val access = playGate?.access?.collectAsState(initial = null)?.value
+    val needsAd = access is PlayAccess.NeedsAd
+    // El CTA ya dice "Ver anuncio y jugar": pulsarlo es aceptar el trato, sin cartel.
+    val startFromCta: () -> Unit =
+        if (playGate == null) launchGame else { { playGate.request(adAnnounced = needsAd, action = launchGame) } }
+    // "Empezar de nuevo" no anuncia el anuncio: si hace falta, la puerta lo ofrece antes.
+    val startGame: () -> Unit =
+        if (playGate == null) launchGame else { { playGate.request(action = launchGame) } }
 
     Box(modifier = modifier.fillMaxSize().background(LogicColors.BackgroundDark)) {
         // Capa ambiental temática del juego (muro arcade, skyline…), si la hay.
@@ -301,7 +322,7 @@ fun GameIntroScreen(
                 }
 
                 AnimatedGameButton(
-                    onClick = resume?.onResume ?: startGame,
+                    onClick = resume?.onResume ?: startFromCta,
                     gradient = LogicGradients.play,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -313,19 +334,30 @@ fun GameIntroScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                        val ctaAsksForAd = resume == null && needsAd
                         NeonIcon(
-                            icon = KortexIcons.Play,
+                            icon = if (ctaAsksForAd) KortexIcons.RewardedAd else KortexIcons.Play,
                             tint = LogicColors.BackgroundDark,
                             size = 22.dp,
                             glow = false,
                         )
                         Text(
-                            if (resume != null) "Continuar" else startLabel,
+                            when {
+                                resume != null -> "Continuar"
+                                ctaAsksForAd -> stringResource(Res.string.premium_play_with_ad)
+                                else -> startLabel
+                            },
                             style = MaterialTheme.typography.titleMedium,
                             color = LogicColors.BackgroundDark,
                             fontWeight = FontWeight.ExtraBold,
                         )
                     }
+                }
+
+                // Cupo del juego premium bajo el CTA. Con partida pendiente se omite:
+                // "Continuar" es gratis y el contador haría pensar lo contrario.
+                if (resume == null && access != null) {
+                    PlayQuotaCaption(access = access)
                 }
 
                 if (resume != null) {
@@ -380,6 +412,37 @@ fun GameIntroScreen(
                 onDismiss = { showHelp = false },
             )
         }
+    }
+}
+
+/**
+ * Contador del cupo diario de un juego premium bajo el CTA de la antesala: cuántas
+ * partidas gratis quedan o, agotadas, que la siguiente cuesta un anuncio. No pinta
+ * nada con acceso ilimitado (premium, torneo, juego libre).
+ */
+@Composable
+private fun PlayQuotaCaption(access: PlayAccess) {
+    val text = when (access) {
+        PlayAccess.Unlimited -> return
+        is PlayAccess.Free -> stringResource(
+            Res.string.premium_quota_remaining,
+            access.remaining.toString(),
+            access.limit.toString(),
+        )
+        PlayAccess.NeedsAd -> stringResource(Res.string.premium_quota_exhausted, FREE_DAILY_PLAYS.toString())
+    }
+    Spacer(Modifier.height(10.dp))
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        NeonIcon(icon = KortexIcons.Premium, tint = LogicColors.Amber, size = 16.dp, glow = false)
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = LogicColors.OnDarkMuted,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 

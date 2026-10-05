@@ -191,6 +191,8 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            // runTest: los tests de managers con funciones `suspend` (p. ej. PlayQuotaManager).
+            implementation(libs.kotlinx.coroutines.test)
         }
 
         // FASE 6: sumar el objeto `Secrets` generado (Client IDs de Google) a las

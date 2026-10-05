@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -35,6 +36,7 @@ import com.kortexgames.app.core.theme.LogicGamesTheme
 import com.kortexgames.app.di.AppGraph
 import com.kortexgames.app.game.FirstRunGames
 import com.kortexgames.app.game.GameCatalog
+import com.kortexgames.app.game.access.PlayQuotaManager
 import com.kortexgames.app.game.bubblemath.BubbleMathScreen
 import com.kortexgames.app.game.crucigrama.CrucigramaNeonScreen
 import com.kortexgames.app.game.energyflow.EnergyFlowScreen
@@ -61,6 +63,7 @@ import com.kortexgames.app.game.wordconnect.WordConnectScreen
 import com.kortexgames.app.ui.auth.AuthScreen
 import com.kortexgames.app.ui.components.ImmersiveMode
 import com.kortexgames.app.ui.components.NotificationPrimingDialog
+import com.kortexgames.app.ui.components.PlayGateHost
 import com.kortexgames.app.ui.components.ReviewPromptDialog
 import com.kortexgames.app.ui.components.RandomGameFab
 import com.kortexgames.app.ui.games.GameListScreen
@@ -512,81 +515,99 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean, introGamesPlay
                         },
                     )
                 }
+                // Rutas de juego: `gameComposable` envuelve cada pantalla con la puerta
+                // del cupo premium ([PlayGateHost]); un juego que se marque premium en
+                // el catálogo queda cubierto sin tocar esta lista.
+                //
                 // Salida de juego: TODOS usan el mismo [exitGame] en vez de un
                 // popBackStack suelto. Así, el día que la bienvenida cambie de juegos,
                 // el encadenado sigue funcionando sin tocar la navegación.
-                composable(Routes.MEMORY) {
+                gameComposable(Routes.MEMORY, graph.playQuotaManager) {
                     SequenceMemoryScreen(graph, exitGame)
                 }
-                composable(Routes.WATER_SORT) {
+                gameComposable(Routes.WATER_SORT, graph.playQuotaManager) {
                     WaterSortScreen(graph, exitGame)
                 }
-                composable(Routes.BUBBLE_MATH) {
+                gameComposable(Routes.BUBBLE_MATH, graph.playQuotaManager) {
                     BubbleMathScreen(graph, exitGame)
                 }
-                composable(Routes.ENERGY_FLOW) {
+                gameComposable(Routes.ENERGY_FLOW, graph.playQuotaManager) {
                     EnergyFlowScreen(graph, exitGame)
                 }
-                composable(Routes.POLARITY_COLLISION) {
+                gameComposable(Routes.POLARITY_COLLISION, graph.playQuotaManager) {
                     PolarityCollisionScreen(graph, exitGame)
                 }
-                composable(Routes.CRUCIGRAMA_NEON) {
+                gameComposable(Routes.CRUCIGRAMA_NEON, graph.playQuotaManager) {
                     CrucigramaNeonScreen(graph, exitGame)
                 }
-                composable(Routes.WORD_CONNECT) {
+                gameComposable(Routes.WORD_CONNECT, graph.playQuotaManager) {
                     WordConnectScreen(graph, exitGame)
                 }
-                composable(Routes.NEON_SCREWS) {
+                gameComposable(Routes.NEON_SCREWS, graph.playQuotaManager) {
                     ScrewGameScreen(graph, exitGame)
                 }
-                composable(Routes.NEON_BLOCK_GRID) {
+                gameComposable(Routes.NEON_BLOCK_GRID, graph.playQuotaManager) {
                     BlockGridScreen(graph, exitGame)
                 }
-                composable(Routes.NEON_LEXICON) {
+                gameComposable(Routes.NEON_LEXICON, graph.playQuotaManager) {
                     NeonLexiconScreen(graph, exitGame)
                 }
-                composable(Routes.STARPORT_ESCAPE) {
+                gameComposable(Routes.STARPORT_ESCAPE, graph.playQuotaManager) {
                     StarportScreen(graph, exitGame)
                 }
-                composable(Routes.NEON_CIRCUIT) {
+                gameComposable(Routes.NEON_CIRCUIT, graph.playQuotaManager) {
                     NeonCircuitScreen(graph, exitGame)
                 }
-                composable(Routes.NEON_LINE) {
+                gameComposable(Routes.NEON_LINE, graph.playQuotaManager) {
                     NeonLineScreen(graph, exitGame)
                 }
-                composable(Routes.HYPERGATE) {
+                gameComposable(Routes.HYPERGATE, graph.playQuotaManager) {
                     HypergateScreen(graph, exitGame)
                 }
-                composable(Routes.NEON_PULSE) {
+                gameComposable(Routes.NEON_PULSE, graph.playQuotaManager) {
                     NeonPulseScreen(graph, exitGame)
                 }
-                composable(Routes.NEON_2048) {
+                gameComposable(Routes.NEON_2048, graph.playQuotaManager) {
                     Neon2048Screen(graph, exitGame)
                 }
-                composable(Routes.NEON_SUDOKU) {
+                gameComposable(Routes.NEON_SUDOKU, graph.playQuotaManager) {
                     NeonSudokuScreen(graph, exitGame)
                 }
-                composable(Routes.NEON_DEFUSER) {
+                gameComposable(Routes.NEON_DEFUSER, graph.playQuotaManager) {
                     DefuserScreen(graph, exitGame)
                 }
-                composable(Routes.HYPER_CUBE) {
+                gameComposable(Routes.HYPER_CUBE, graph.playQuotaManager) {
                     HyperCubeScreen(graph, exitGame)
                 }
-                composable(Routes.QUANTUM_MERGE) {
+                gameComposable(Routes.QUANTUM_MERGE, graph.playQuotaManager) {
                     QuantumMergeScreen(graph) { navController.popBackStack() }
                 }
-                composable(Routes.NEON_LEGION) {
+                gameComposable(Routes.NEON_LEGION, graph.playQuotaManager) {
                     LegionScreen(graph, exitGame)
                 }
-                composable(Routes.HEXA_ORBIT) {
+                gameComposable(Routes.HEXA_ORBIT, graph.playQuotaManager) {
                     HexaOrbitScreen(graph, exitGame)
                 }
-                composable(Routes.NEON_GRID_SWITCH) {
+                gameComposable(Routes.NEON_GRID_SWITCH, graph.playQuotaManager) {
                     GridSwitchScreen(graph, exitGame)
                 }
             }
             }
         }
+}
+
+/**
+ * `composable` para una **pantalla de juego**: la monta dentro de [PlayGateHost] con el
+ * juego que corresponde a la ruta, para que los juegos premium apliquen su cupo diario.
+ */
+private fun NavGraphBuilder.gameComposable(
+    route: String,
+    playQuota: PlayQuotaManager,
+    content: @Composable () -> Unit,
+) {
+    composable(route) {
+        PlayGateHost(gameId = Routes.gameIdForRoute(route), manager = playQuota, content = content)
+    }
 }
 
 /**
