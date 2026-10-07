@@ -1,5 +1,14 @@
 package com.kortexgames.app.game.quantummerge
 
+import kortexgames.shared.generated.resources.quantum_merge_hud_score
+import kortexgames.shared.generated.resources.quantum_merge_hud_next
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.border
+import androidx.compose.animation.core.EaseOutBack
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -184,11 +193,28 @@ fun QuantumMergeScreen(graph: AppGraph, onExit: () -> Unit) {
     }
 
     // Bucle de juego: la física se sincroniza al reloj de render (withFrameNanos → Tick).
+    // De paso alimenta el reloj de animación de la pantalla (motas de la cámara, aparición de
+    // esferas): se lee solo dentro del `Canvas`, así que avanzarlo redibuja sin recomponer.
+    var clockOrigin by remember { mutableLongStateOf(0L) }
+    var timeSec by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(Unit) {
         while (true) {
-            withFrameNanos { frameNanos -> vm.onIntent(QuantumMergeIntent.Tick(frameNanos)) }
+            withFrameNanos { frameNanos ->
+                if (clockOrigin == 0L) clockOrigin = frameNanos
+                // Se resta un origen propio: los nanos del frame, pasados a segundos en `Float`,
+                // pierden precisión y las animaciones irían a saltos.
+                timeSec = (frameNanos - clockOrigin) / 1_000_000_000f
+                vm.onIntent(QuantumMergeIntent.Tick(frameNanos))
+            }
         }
     }
+
+    // Instante de nacimiento de cada esfera del tablero, para su "pop" de aparición. No es
+    // estado observable (no dispara recomposición): lo consulta y lo rellena el propio dibujo.
+    val sphereBirths = remember { mutableMapOf<Long, Float>() }
+    // Id de la última esfera sostenida en el dispensador: al soltarla pasa al tablero y NO debe
+    // hacer "pop" (ya estaba a la vista); solo aparecen así las nacidas de una fusión.
+    var lastDropId by remember { mutableLongStateOf(-1L) }
 
     // Latido ambiental de baja amplitud: el ÚNICO bucle continuo de la pantalla (§9.4, regla 5).
     val glowPulse by rememberInfiniteTransition(label = "quantumGlow").animateFloat(
@@ -299,7 +325,13 @@ fun QuantumMergeScreen(graph: AppGraph, onExit: () -> Unit) {
                         },
                 ) {
                     Canvas(modifier = Modifier.fillMaxSize()) {
-                        drawContainer(dangerProgress = game.dangerProgress, glowPulse = glowPulse)
+                        val time = timeSec
+                        drawReactor(
+                            accent = CategoryPalette.SpatialVision,
+                            dangerProgress = game.dangerProgress,
+                            glowPulse = glowPulse,
+                            time = time,
+                        )
                         drawDangerLine(
                             scale = scale,
                             dangerLineY = game.difficulty.dangerLineY,
@@ -311,15 +343,31 @@ fun QuantumMergeScreen(graph: AppGraph, onExit: () -> Unit) {
                             drawAimGuide(sphere = drop, scale = scale, glowPulse = glowPulse)
                         }
 
+                        // Tablero vacío = partida nueva: se olvidan los nacimientos anteriores.
+                        if (game.activeSpheres.isEmpty()) sphereBirths.clear()
                         for (sphere in game.activeSpheres) {
+                            // Primera vez que se ve esta esfera: si es la que se acaba de soltar,
+                            // nace ya "aparecida"; si no, viene de una fusión y hace pop.
+                            val born = sphereBirths.getOrPut(sphere.id) {
+                                if (sphere.id == lastDropId) Float.NEGATIVE_INFINITY else time
+                            }
+                            val age = (time - born) / SPHERE_APPEAR_SEC
+                            val appear = if (age >= 1f) 1f else 0.55f + 0.45f * EaseOutBack.transform(age.coerceAtLeast(0f))
                             drawEnergySphere(
                                 center = Offset(sphere.x * scale, sphere.y * scale),
                                 radius = sphere.radius * scale,
                                 color = sphere.tier.accent.color(),
                                 glowPulse = glowPulse,
+                                marks = sphere.tier.ordinal + 1,
                                 vx = sphere.vx,
                                 vy = sphere.vy,
+                                appear = appear,
                             )
+                        }
+                        // Poda: ids que ya no existen (fusionados o eliminados por el láser).
+                        if (sphereBirths.size > game.activeSpheres.size + 32) {
+                            val alive = game.activeSpheres.mapTo(HashSet()) { it.id }
+                            sphereBirths.keys.retainAll(alive)
                         }
 
                         // El destello va ENCIMA de las esferas: es la explosión de luz del
@@ -332,15 +380,18 @@ fun QuantumMergeScreen(graph: AppGraph, onExit: () -> Unit) {
                                 radius = flash.radius * scale,
                                 color = flash.accent.color(),
                                 progress = flash.progress,
+                                seed = flash.id.toInt(),
                             )
                         }
 
                         game.currentDropSphere?.let { drop ->
+                            lastDropId = drop.id
                             drawEnergySphere(
                                 center = Offset(drop.x * scale, drop.y * scale),
                                 radius = drop.radius * scale,
                                 color = drop.tier.accent.color(),
                                 glowPulse = glowPulse,
+                                marks = drop.tier.ordinal + 1,
                             )
                         }
                     }
@@ -443,31 +494,13 @@ private val DIFFICULTY_OPTIONS_UI: List<DifficultyOption> = QuantumDifficulty.en
 }
 
 /**
- * Traduce el acento semántico del tier al token de color del sistema de diseño.
- *
- * El mapa vive en la UI (y no en el `enum` de dominio) igual que en Bloques Neón: el motor de física
- * no conoce `Color`, y así el sistema de diseño mantiene UNA sola fuente de color (§9.2).
- */
-private fun TierAccent.color(): Color = when (this) {
-    TierAccent.CYAN -> LogicColors.NeonCyan
-    TierAccent.GREEN -> LogicColors.NeonGreen
-    TierAccent.LIME -> LogicColors.Lime
-    TierAccent.AMBER -> LogicColors.Amber
-    TierAccent.CORAL -> LogicColors.Coral
-    TierAccent.MAGENTA -> LogicColors.Magenta
-    TierAccent.VIOLET -> LogicColors.Violet
-    TierAccent.BLUE -> LogicColors.Blue
-    // El "blanco incandescente" del tier máximo es el blanco de la paleta, no un hex suelto.
-    TierAccent.WHITE_HOT -> LogicColors.OnDark
-}
-
-/**
- * HUD superior: marcador y previsor de la siguiente esfera.
+ * HUD superior: la **puntuación en grande** a la izquierda (con el nivel como etiqueta) y el
+ * previsor de la siguiente esfera a su lado.
  *
  * Deja libre la esquina superior derecha (el botón de pausa vive ahí) mediante el padding final.
  * Solo lleva **dos** indicadores a propósito: son los únicos que cambian una decisión en marcha, y
- * en un móvil estrecho una tercera píldora empujaría el previsor fuera de la pantalla. El resto de
- * cifras de la partida (fusiones, lanzamientos, precisión) ya salen en la tarjeta de resultados.
+ * en un móvil estrecho un tercero empujaría el previsor fuera de la pantalla. El resto de cifras de
+ * la partida (fusiones, lanzamientos, precisión) ya salen en la tarjeta de resultados.
  */
 @Composable
 private fun QuantumHud(
@@ -478,86 +511,87 @@ private fun QuantumHud(
     glowPulse: Float,
     modifier: Modifier = Modifier,
 ) {
+    // "Pop" del marcador al puntuar: cada fusión se celebra también en el número.
+    val scorePop = remember { Animatable(1f) }
+    LaunchedEffect(score) {
+        if (score > 0) {
+            scorePop.snapTo(1.22f)
+            scorePop.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
+        }
+    }
     Column(
-        modifier = modifier.padding(start = 20.dp, end = 68.dp, top = 16.dp),
+        modifier = modifier.padding(start = 20.dp, end = 68.dp, top = 12.dp),
     ) {
-        Text(
-            // El nivel viaja en el título en vez de en una píldora propia: es un dato que no
-            // cambia en toda la partida, así que no merece ocupar sitio en la fila de marcadores.
-            text = "Quantum Merge · ${difficulty.displayName}",
-            style = MaterialTheme.typography.titleMedium,
-            color = LogicColors.OnDark,
-            fontWeight = FontWeight.ExtraBold,
-        )
-        Row(
-            modifier = Modifier.padding(top = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            QuantumHudPill(label = "Puntos", value = score.toString())
-            NextSpherePreview(
-                tier = nextTier,
-                glowPulse = glowPulse,
-                modifier = Modifier.padding(start = 8.dp),
-            )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    // El nivel acompaña a la etiqueta en vez de ocupar una píldora propia: es un
+                    // dato que no cambia en toda la partida.
+                    text = "${stringResource(Res.string.quantum_merge_hud_score)} · ${difficulty.displayName}".uppercase(),
+                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.6.sp),
+                    color = LogicColors.OnDarkMuted,
+                )
+                Text(
+                    text = score.toString(),
+                    style = MaterialTheme.typography.displayLarge,
+                    color = LogicColors.OnDark,
+                    modifier = Modifier.graphicsLayer {
+                        scaleX = scorePop.value
+                        scaleY = scorePop.value
+                        // Crece desde la izquierda: el número está alineado a ese lado.
+                        transformOrigin = TransformOrigin(0f, 0.5f)
+                    },
+                )
+            }
+            NextSpherePreview(tier = nextTier, glowPulse = glowPulse)
         }
         // Aviso de desbordamiento: barra que se llena con el tiempo de gracia consumido. Es
         // información de estado puro (no un bucle), así que solo existe cuando hay peligro real.
         if (dangerProgress > 0f) {
             Canvas(
                 modifier = Modifier
-                    .padding(top = 8.dp)
+                    .padding(top = 6.dp)
                     .fillMaxWidth()
-                    .height(4.dp),
+                    .height(5.dp),
             ) {
+                val corner = CornerRadius(size.height * 0.5f)
+                drawRoundRect(color = LogicColors.SurfaceVariantDark, cornerRadius = corner)
+                val filled = Size(size.width * dangerProgress, size.height)
                 drawRoundRect(
-                    color = LogicColors.SurfaceVariantDark,
-                    cornerRadius = CornerRadius(size.height * 0.5f),
+                    color = LogicColors.Error.copy(alpha = 0.30f * glowPulse),
+                    topLeft = Offset(0f, -2.dp.toPx()),
+                    size = Size(filled.width, size.height + 4.dp.toPx()),
+                    cornerRadius = CornerRadius(size.height),
                 )
                 drawRoundRect(
                     color = LogicColors.Error.copy(alpha = 0.55f + 0.45f * glowPulse),
-                    size = Size(size.width * dangerProgress, size.height),
-                    cornerRadius = CornerRadius(size.height * 0.5f),
+                    size = filled,
+                    cornerRadius = corner,
                 )
             }
         }
     }
 }
 
-/** Píldora del HUD (etiqueta + valor), mismo lenguaje visual que el resto de juegos. */
-@Composable
-private fun QuantumHudPill(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .background(
-                LogicColors.SurfaceDark.copy(alpha = 0.8f),
-                shape = MaterialTheme.shapes.medium,
-            )
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(text = label, style = MaterialTheme.typography.labelSmall, color = LogicColors.OnDarkMuted)
-        Text(text = value, style = MaterialTheme.typography.labelLarge, color = LogicColors.OnDark)
-    }
-}
-
 /**
  * Previsor de la siguiente esfera. Se dibuja con la MISMA rutina que las del tablero (a escala
  * reducida) en lugar de con un icono: el jugador tiene que reconocerla de un vistazo, y para eso
- * debe ser literalmente la misma esfera que va a caer.
+ * debe ser literalmente la misma esfera que va a caer. La píldora lleva el borde del color de esa
+ * esfera, así que el cambio de "siguiente" se nota también de reojo.
  */
 @Composable
 private fun NextSpherePreview(tier: QuantumTier, glowPulse: Float, modifier: Modifier = Modifier) {
-    Column(
+    val color = tier.accent.color()
+    Row(
         modifier = modifier
-            .background(
-                LogicColors.SurfaceDark.copy(alpha = 0.8f),
-                shape = MaterialTheme.shapes.medium,
-            )
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .background(LogicColors.SurfaceDark.copy(alpha = 0.85f), CircleShape)
+            .border(1.dp, color.copy(alpha = 0.50f), CircleShape)
+            .padding(start = 14.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "Siguiente",
+            text = stringResource(Res.string.quantum_merge_hud_next),
             style = MaterialTheme.typography.labelSmall,
             color = LogicColors.OnDarkMuted,
         )
@@ -565,243 +599,17 @@ private fun NextSpherePreview(tier: QuantumTier, glowPulse: Float, modifier: Mod
             // El radio se normaliza contra el mayor tier lanzable para que el previsor comunique
             // el tamaño RELATIVO de lo que viene sin salirse nunca de su píldora.
             val maxRadius = QuantumTier.SPAWN_POOL.last().baseRadius
-            val radius = size.minDimension * 0.42f * (tier.baseRadius / maxRadius)
+            val radius = size.minDimension * 0.44f * (tier.baseRadius / maxRadius)
             drawEnergySphere(
                 center = Offset(size.width * 0.5f, size.height * 0.5f),
                 radius = radius,
-                color = tier.accent.color(),
+                color = color,
                 glowPulse = glowPulse,
+                marks = tier.ordinal + 1,
             )
         }
     }
 }
-
-/**
- * Contenedor: **tres** paredes (izquierda, derecha y suelo) en `SurfaceVariantDark` sobre un fondo
- * apenas más claro que el de la app.
- *
- * Que el borde superior no exista no es un olvido: la caja está abierta por arriba, exactamente
- * como el AABB de tres lados que resuelve el motor, y dejarlo abierto comunica al jugador por dónde
- * puede desbordar. Cuando hay peligro, la boca se tiñe con un degradado de [LogicColors.Error].
- */
-private fun DrawScope.drawContainer(dangerProgress: Float, glowPulse: Float) {
-    val wall = size.minDimension * WALL_WIDTH_FACTOR
-
-    drawRoundRect(
-        brush = Brush.verticalGradient(
-            colors = listOf(
-                LogicColors.BackgroundDark,
-                LogicColors.SurfaceDark.copy(alpha = 0.55f),
-            ),
-        ),
-        cornerRadius = CornerRadius(wall * 2f),
-    )
-
-    if (dangerProgress > 0f) {
-        // Degradado de alarma que baja desde la boca: cuanto más cerca la derrota, más presente.
-        drawRect(
-            brush = Brush.verticalGradient(
-                colors = listOf(
-                    LogicColors.Error.copy(alpha = 0.22f * dangerProgress * glowPulse),
-                    Color.Transparent,
-                ),
-            ),
-            size = Size(size.width, size.height * 0.35f),
-        )
-    }
-
-    // Los muros se trazan SOBRE el borde exacto del canvas y con el doble de grosor: el `Canvas`
-    // recorta la mitad exterior y la cara interior queda justo en el límite que usa el motor. Si se
-    // dibujaran por dentro, una esfera apoyada aparecería incrustada en la pared —el motor la
-    // detiene cuando su borde llega a la coordenada 0, no cuando llega al muro pintado—.
-    listOf(
-        Offset(0f, 0f) to Offset(0f, size.height),
-        Offset(size.width, 0f) to Offset(size.width, size.height),
-        Offset(0f, size.height) to Offset(size.width, size.height),
-    ).forEach { (start, end) ->
-        drawLine(
-            color = LogicColors.SurfaceVariantDark,
-            start = start,
-            end = end,
-            strokeWidth = wall * 2f,
-            cap = StrokeCap.Square,
-        )
-    }
-}
-
-/**
- * Línea de peligro: trazo discontinuo a la altura de [QuantumWorld.DANGER_LINE_Y].
- *
- * En reposo es casi invisible (una guía, no una alarma) y va **tomando el rojo de error** conforme
- * [dangerProgress] avanza, de modo que el mismo elemento informa de la regla y de su inminencia sin
- * añadir un segundo indicador que compita por la atención.
- */
-private fun DrawScope.drawDangerLine(
-    scale: Float,
-    dangerLineY: Float,
-    dangerProgress: Float,
-    glowPulse: Float,
-) {
-    val y = dangerLineY * scale
-    val color = lerp(LogicColors.SurfaceVariantDark, LogicColors.Error, dangerProgress)
-    val alpha = 0.45f + 0.55f * dangerProgress * glowPulse
-    val dash = size.minDimension * 0.022f
-
-    drawLine(
-        color = color.copy(alpha = alpha),
-        start = Offset(0f, y),
-        end = Offset(size.width, y),
-        strokeWidth = size.minDimension * 0.006f,
-        pathEffect = PathEffect.dashPathEffect(floatArrayOf(dash, dash * 1.4f)),
-    )
-}
-
-/**
- * Guía vertical de puntería: marca la columna por la que caerá la esfera sostenida.
- *
- * Sin ella el jugador tiene que estimar la vertical desde la boca del contenedor, que es justo la
- * fricción que arruina una mecánica de precisión. Se dibuja discontinua y a baja opacidad para
- * ayudar sin robar protagonismo a las esferas.
- */
-private fun DrawScope.drawAimGuide(sphere: Sphere, scale: Float, glowPulse: Float) {
-    val x = sphere.x * scale
-    val top = (sphere.y + sphere.radius) * scale
-    val dash = size.minDimension * 0.03f
-
-    drawLine(
-        color = sphere.tier.accent.color().copy(alpha = 0.16f + 0.12f * glowPulse),
-        start = Offset(x, top),
-        end = Offset(x, size.height),
-        strokeWidth = size.minDimension * 0.008f,
-        pathEffect = PathEffect.dashPathEffect(floatArrayOf(dash, dash * 1.8f)),
-    )
-}
-
-/**
- * Dibuja una **esfera de energía**: capas de alfa decreciente que simulan luz contenida.
- *
- * De fuera hacia dentro:
- *  1. **Halo exterior** (radial, muy tenue): el resplandor que la esfera derrama sobre el fondo.
- *  2. **Halo interior** (radial, más concentrado): la transición entre el resplandor y el cuerpo.
- *  3. **Cuerpo**: degradado radial que se aclara hacia el centro (mezcla con blanco) y se apaga en
- *     el borde. Es lo que le da volumen sin necesidad de una textura.
- *  4. **Borde grueso** de color puro: el "tubo de neón" que la define contra el fondo oscuro.
- *  5. **Brillo especular** desplazado arriba-izquierda: el detalle que la convierte en una esfera
- *     y no en un disco.
- *
- * Todas las medidas son fracciones del radio, así que la misma función sirve para una esfera del
- * tablero y para la miniatura del previsor.
- *
- * @param glowPulse factor del latido ambiental (0.78..1); modula solo los halos, nunca el cuerpo,
- *   para que el tablero respire sin que parpadeen los objetos.
- */
-private fun DrawScope.drawEnergySphere(
-    center: Offset,
-    radius: Float,
-    color: Color,
-    glowPulse: Float,
-    vx: Float = 0f,
-    vy: Float = 0f,
-) {
-    // Squash-stretch "gelatinoso": una esfera rápida se alarga en la dirección del movimiento y
-    // se aplana en la perpendicular, como un cuerpo blando que aún no ha absorbido su propia
-    // inercia. Deliberadamente sutil (tope [GEL_MAX_STRETCH] de solo 12 %): el pedido es "mínimamente
-    // gelatinosas", no bolas de gelatina, y un estiramiento agresivo competiría con el halo de
-    // energía en vez de leerse como física. Se normaliza contra [GEL_STRETCH_REF_SPEED] —muy por
-    // debajo del tope físico del motor (`MAX_SPEED`)— para que el efecto ya se note en una caída
-    // normal y no solo en el pico de velocidad, que casi nunca se alcanza.
-    val speed = hypot(vx, vy)
-    val stretch = (speed / GEL_STRETCH_REF_SPEED).coerceIn(0f, 1f) * GEL_MAX_STRETCH
-    val angleDeg = if (speed > GEL_MIN_SPEED_FOR_ANGLE) atan2(vy, vx) * (180f / PI.toFloat()) else 0f
-
-    rotate(degrees = angleDeg, pivot = center) {
-        scale(scaleX = 1f + stretch, scaleY = 1f - stretch, pivot = center) {
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(color.copy(alpha = 0.26f * glowPulse), Color.Transparent),
-                    center = center,
-                    radius = radius * 2.1f,
-                ),
-                radius = radius * 2.1f,
-                center = center,
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(color.copy(alpha = 0.38f * glowPulse), Color.Transparent),
-                    center = center,
-                    radius = radius * 1.4f,
-                ),
-                radius = radius * 1.4f,
-                center = center,
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        lerp(color, Color.White, 0.55f).copy(alpha = 0.95f),
-                        color.copy(alpha = 0.72f),
-                        color.copy(alpha = 0.28f),
-                    ),
-                    center = center,
-                    radius = radius,
-                ),
-                radius = radius,
-                center = center,
-            )
-            drawCircle(
-                color = color.copy(alpha = 0.92f),
-                radius = radius * 0.93f,
-                center = center,
-                style = Stroke(width = radius * 0.15f),
-            )
-            drawCircle(
-                color = Color.White.copy(alpha = 0.4f),
-                radius = radius * 0.17f,
-                center = Offset(center.x - radius * 0.32f, center.y - radius * 0.34f),
-            )
-        }
-    }
-}
-
-/**
- * Destello de fusión: un anillo que se expande y se apaga, con un núcleo de luz blanca.
- *
- * El [progress] llega del estado (lo avanza el tick de la física), no de un `animate*AsState`: así
- * el destello sigue el mismo reloj que el resto de la simulación y no se descuelga si el motor va
- * en cámara lenta tras un frame largo. El anillo crece con la raíz del progreso —rápido al
- * principio y frenando— porque es como se percibe una onda expansiva real.
- */
-private fun DrawScope.drawMergeFlash(
-    center: Offset,
-    radius: Float,
-    color: Color,
-    progress: Float,
-) {
-    val fade = 1f - progress
-    val ringRadius = radius * (0.65f + 1.5f * progress)
-
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(
-                Color.White.copy(alpha = 0.55f * fade),
-                color.copy(alpha = 0.35f * fade),
-                Color.Transparent,
-            ),
-            center = center,
-            radius = ringRadius * 1.2f,
-        ),
-        radius = ringRadius * 1.2f,
-        center = center,
-    )
-    drawCircle(
-        color = lerp(color, Color.White, 0.45f).copy(alpha = 0.8f * fade),
-        radius = ringRadius,
-        center = center,
-        style = Stroke(width = radius * 0.2f * fade),
-    )
-}
-
-/** Grosor de las paredes del contenedor como fracción del lado menor del tablero. */
-private const val WALL_WIDTH_FACTOR = 0.014f
 
 /** Amortiguación de la sacudida por fusión grande: baja = rebota un par de veces y para. */
 private const val SHAKE_DAMPING = 0.3f
@@ -810,17 +618,7 @@ private const val SHAKE_DAMPING = 0.3f
 private val SHAKE_TRAVEL = 5.dp
 
 /** Lado de la miniatura del previsor de la siguiente esfera. */
-private val PREVIEW_SIZE = 34.dp
+private val PREVIEW_SIZE = 40.dp
 
-/**
- * Velocidad (unidades de mundo/s) a la que el squash-stretch de [drawEnergySphere] satura.
- * Deliberadamente moderada —muy por debajo del `MAX_SPEED` del motor— para que el efecto ya se
- * note en una caída normal y no dependa de picos de velocidad raros de alcanzar.
- */
-private const val GEL_STRETCH_REF_SPEED = 200f
-
-/** Tope del estiramiento gelatinoso: 12 % de alargamiento máximo, "mínimamente" gelatinoso. */
-private const val GEL_MAX_STRETCH = 0.12f
-
-/** Por debajo de esta velocidad no se orienta el estiramiento: evita que el ángulo tiemble en reposo. */
-private const val GEL_MIN_SPEED_FOR_ANGLE = 1f
+/** Duración del "pop" con que aparece una esfera recién nacida de una fusión. */
+private const val SPHERE_APPEAR_SEC = 0.24f

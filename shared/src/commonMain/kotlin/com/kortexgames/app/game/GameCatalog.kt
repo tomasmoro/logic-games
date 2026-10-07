@@ -163,6 +163,13 @@ object GameIds {
      * dan de alta en la fase de integración del juego.
      */
     const val NEON_GRID_SWITCH = "16c38bc2-a0e1-46ec-b3a0-3aa1ea0659d2"
+
+    /**
+     * Neon Shikaku Matrix / partir el tablero en rectángulos cuya área iguala su número
+     * (categoría "spatial" / Visión Espacial). UUID v4 aleatorio con prefijo distinto a todos
+     * los demás ids del catálogo (mismo criterio anti-transposición que [QUANTUM_MERGE]).
+     */
+    const val NEON_SHIKAKU = "604aae7c-48c9-459d-a5ef-79c231a0d7b9"
 }
 
 /**
@@ -373,6 +380,8 @@ object GameCatalog {
         GameInfo(GameIds.NEON_CIRCUIT, "Conectores", GameCategory.PROBLEM_SOLVING, playable = true, motif = GameMotif.CIRCUIT_FLOW),
         GameInfo(GameIds.HYPERGATE, "Hypergate", GameCategory.REFLEXES, playable = true, motif = GameMotif.HYPERGATE),
         GameInfo(GameIds.NEON_LINE, "Línea Neón", GameCategory.PROBLEM_SOLVING, playable = true, motif = GameMotif.SINGLE_LINE),
+        // Sin motivo de tarjeta propio todavía: usa la textura genérica de su categoría.
+        GameInfo(GameIds.NEON_SHIKAKU, "Neon Shikaku Matrix", GameCategory.SPATIAL, playable = true),
     )
 
     /**

@@ -2,6 +2,7 @@ package com.kortexgames.app.game
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BubbleChart
+import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.GridOn
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.RocketLaunch
@@ -673,6 +674,44 @@ object GameHelpContent {
             "Tocar la misma celda dos veces la deja como estaba: no suma a tu favor.",
             "El orden de los toques no cambia el resultado final, solo importa QUÉ celdas tocaste.",
             "La primera etapa se resuelve con un solo toque: es el tutorial.",
+        ),
+    )
+
+    /**
+     * Neon Shikaku Matrix / partición en rectángulos (Visión Espacial). Usa el icono como
+     * arte porque el juego aún no tiene motivo propio de tarjeta.
+     */
+    val shikaku = GameHelp(
+        title = "Neon Shikaku Matrix",
+        summary = "Divide el tablero en rectángulos: cada uno con un solo número, igual a su área.",
+        accent = CategoryPalette.SpatialVision,
+        art = iconHelpArt(Icons.Rounded.Dashboard),
+        steps = listOf(
+            HelpStep(
+                icon = Icons.Rounded.TouchApp,
+                title = "Arrastra para trazar",
+                text = "Toca una celda y arrastra en diagonal. Junto al dedo verás el cálculo: ancho × alto = área.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Check,
+                title = "Un número por rectángulo",
+                text = "Cada rectángulo debe contener exactamente un número y medir tantas celdas como ese número.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Pencil,
+                title = "Traza encima para corregir",
+                text = "Un rectángulo nuevo reemplaza a los que pisa. Tocar uno ya colocado lo borra.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Warning,
+                title = "Cuidado con la figura",
+                text = "Ningún rectángulo puede pisar un hueco ni salirse del tablero. Los que parpadean en rojo no cumplen la regla.",
+            ),
+        ),
+        tips = listOf(
+            "Empieza por los números primos: un 5 o un 7 solo pueden ser una tira.",
+            "Las celdas pegadas a un hueco suelen tener un único rectángulo que las alcance.",
+            "Corregir y reiniciar restan puntos: piensa antes de trazar.",
         ),
     )
 }

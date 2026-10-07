@@ -1,5 +1,11 @@
 package com.kortexgames.app.game.neoncircuit
 
+import com.kortexgames.app.ui.components.rememberBoardClock
+import com.kortexgames.app.ui.components.drawNeonBoardPlate
+import com.kortexgames.app.ui.components.drawBoardSocket
+import com.kortexgames.app.ui.components.boardCascade
+import com.kortexgames.app.ui.components.NeonBoardHud
+import com.kortexgames.app.ui.components.BoardClock
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -203,14 +209,21 @@ fun NeonCircuitScreen(graph: AppGraph, onExit: () -> Unit) {
 
     val game = state.game
 
+    // Reloj del tablero (kit compartido con Línea Neón) y el instante en que se montó este
+    // nivel, que dispara la entrada en cascada de las celdas.
+    val clock = rememberBoardClock(running = state.status != GameStatus.PAUSED)
+    val boardBorn = remember(state.currentLevel, game.nodes) { clock.peek() }
+
     Box(modifier = Modifier.fillMaxSize().background(LogicColors.BackgroundDark)) {
         SpaceBackdrop(modifier = Modifier.fillMaxSize())
 
         Column(modifier = Modifier.fillMaxSize()) {
-            CircuitHud(
+            // HUD común de los juegos de tablero: nivel, pares conectados como barra y reinicio.
+            NeonBoardHud(
                 level = state.currentLevel,
-                connected = game.connectedCount,
-                total = game.pairCount,
+                progress = if (game.pairCount > 0) game.connectedCount.toFloat() / game.pairCount else 0f,
+                progressLabel = "${game.connectedCount}/${game.pairCount}",
+                accent = CategoryPalette.ProblemSolving,
                 onRestart = { vm.onIntent(NeonCircuitIntent.Restart) },
             )
             Box(
@@ -222,6 +235,8 @@ fun NeonCircuitScreen(graph: AppGraph, onExit: () -> Unit) {
                     onIntent = vm::onIntent,
                     pulseColor = pulseColor,
                     pulse = pulse.value,
+                    clock = clock,
+                    boardBorn = boardBorn,
                     modifier = Modifier
                         .padding(horizontal = 16.dp)
                         .fillMaxWidth()
@@ -265,62 +280,6 @@ fun NeonCircuitScreen(graph: AppGraph, onExit: () -> Unit) {
     }
 }
 
-/** HUD superior: título, píldoras de nivel/conexiones y reinicio. */
-@Composable
-private fun CircuitHud(
-    level: Int,
-    connected: Int,
-    total: Int,
-    onRestart: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier.fillMaxWidth().padding(top = 18.dp, start = 20.dp, end = 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = "Neon Circuit Flow",
-            style = MaterialTheme.typography.headlineSmall,
-            color = LogicColors.OnDark,
-            fontWeight = FontWeight.ExtraBold,
-        )
-        Row(
-            modifier = Modifier.padding(top = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            HudPill(label = "Nivel", value = level.toString())
-            HudPill(label = "Conectados", value = "$connected/$total")
-            Box(
-                modifier = Modifier
-                    .bounceClick(onClick = onRestart)
-                    .background(LogicColors.SurfaceDark.copy(alpha = 0.8f), shape = MaterialTheme.shapes.medium)
-                    .padding(8.dp),
-            ) {
-                Icon(
-                    imageVector = KortexIcons.Refresh,
-                    contentDescription = "Reiniciar nivel",
-                    tint = LogicColors.OnDarkMuted,
-                    modifier = Modifier.size(22.dp),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun HudPill(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .background(LogicColors.SurfaceDark.copy(alpha = 0.8f), shape = MaterialTheme.shapes.medium)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(text = label, style = MaterialTheme.typography.labelSmall, color = LogicColors.OnDarkMuted)
-        Text(text = value, style = MaterialTheme.typography.labelLarge, color = LogicColors.OnDark)
-    }
-}
-
 /**
  * La placa: un único [Canvas] que dibuja fondo, cables y nodos, más una capa de
  * gestos encima. `BoxWithConstraints` fija la equivalencia celda↔px que comparten
@@ -339,6 +298,8 @@ private fun CircuitBoard(
     onIntent: (NeonCircuitIntent) -> Unit,
     pulseColor: WireColor?,
     pulse: Float,
+    clock: BoardClock,
+    boardBorn: Float,
     modifier: Modifier = Modifier,
 ) {
     val size = game.gridSize
@@ -404,7 +365,7 @@ private fun CircuitBoard(
                     )
                 },
         ) {
-            drawBoardBackdrop(size, cellPx)
+            drawBoardCells(game, cellPx, sinceBorn = clock.seconds - boardBorn)
 
             // Cables debajo, nodos encima (así los terminales tapan el arranque
             // del trazo y se leen como el "conector" del que sale el cable).
@@ -434,24 +395,43 @@ private fun cellCenter(pos: GridPosition, cellPx: Float): Offset =
     Offset((pos.col + 0.5f) * cellPx, (pos.row + 0.5f) * cellPx)
 
 /**
- * Fondo de la placa: superficie oscura redondeada y rejilla muy sutil, para que
- * el jugador perciba la cuadrícula sin que compita con los cables (§9.1).
+ * La placa y sus celdas, con las piezas del kit de tablero neón (`NeonBoardKit.kt`).
+ *
+ * Del kit se toma SOLO esto —placa, celdas y entrada en cascada—; los cables y los nodos de este
+ * juego ya tenían su propio dibujo y se conservan (son gruesos, de color por par y con remate al
+ * conectar: funcionan). Lo que le faltaba al tablero era la rejilla: era una superficie casi lisa
+ * y la regla de "hay que llenar TODAS las casillas" no se veía.
+ *
+ * Ahora cada casilla es una baldosa: vacía lleva un punto de contacto ("aquí falta cable") y, al
+ * pasar un cable por ella, se **tiñe del color de ese cable**. Las casillas que quedan sin
+ * cubrir saltan a la vista, que es justo lo que el jugador necesita para cerrar el nivel.
+ *
+ * El marco de la placa se enciende al resolver.
+ *
+ * @param sinceBorn segundos desde que se montó el nivel (entrada en cascada).
  */
-private fun DrawScope.drawBoardBackdrop(gridSize: Int, cellPx: Float) {
-    val corner = CornerRadius(24.dp.toPx())
-    drawRoundRect(color = LogicColors.SurfaceDark.copy(alpha = 0.62f), cornerRadius = corner)
-
-    val gridColor = LogicColors.SurfaceVariantDark.copy(alpha = 0.45f)
-    for (i in 1 until gridSize) {
-        drawLine(gridColor, Offset(i * cellPx, 0f), Offset(i * cellPx, size.height), strokeWidth = 1.5f)
-        drawLine(gridColor, Offset(0f, i * cellPx), Offset(size.width, i * cellPx), strokeWidth = 1.5f)
-    }
-    // Marco frío apagado (detalle, sin robar foco a los cables).
-    drawRoundRect(
-        color = LogicColors.NeonCyan.copy(alpha = 0.22f),
-        cornerRadius = corner,
-        style = Stroke(width = 2.dp.toPx()),
+private fun DrawScope.drawBoardCells(game: NeonCircuitGameState, cellPx: Float, sinceBorn: Float) {
+    drawNeonBoardPlate(
+        accent = CategoryPalette.ProblemSolving,
+        lit = if (game.solved) 1f else 0f,
     )
+    val occupancy = game.occupancy
+    for (row in 0 until game.gridSize) {
+        for (col in 0 until game.gridSize) {
+            val appear = boardCascade(row, col, sinceBorn)
+            if (appear <= 0f) continue
+            val cell = GridPosition(row, col)
+            val wire = occupancy[cell]
+            drawBoardSocket(
+                center = cellCenter(cell, cellPx),
+                side = cellPx * 0.90f * appear,
+                fill = if (wire != null) 1f else 0f,
+                color = wire?.toAccent() ?: CategoryPalette.ProblemSolving,
+                // Bajo un nodo no hace falta el punto de "falta cable": lo tapa el propio nodo.
+                padAlpha = if (game.nodeAt(cell) != null) 0f else 0.7f,
+            )
+        }
+    }
 }
 
 /**
@@ -763,7 +743,14 @@ private fun ExampleBoard(modifier: Modifier = Modifier) {
     BoxWithConstraints(modifier = modifier.aspectRatio(1f)) {
         val cellPx = with(LocalDensity.current) { (maxWidth / exampleGrid).toPx() }
         Canvas(modifier = Modifier.fillMaxSize()) {
-            drawBoardBackdrop(exampleGrid, cellPx)
+            // Mismas celdas que la placa real (kit de tablero), ya teñidas por sus cables: el
+            // ejemplo enseña justo eso, un tablero sin casillas vacías.
+            drawNeonBoardPlate(accent = CategoryPalette.ProblemSolving, corner = 16.dp)
+            paths.forEach { path ->
+                path.cells.forEach { cell ->
+                    drawBoardSocket(cellCenter(cell, cellPx), cellPx * 0.90f, fill = 1f, color = path.color.toAccent())
+                }
+            }
             paths.forEach { drawWire(it, cellPx, widthBoost = 1f, connected = true, glowPulse = glow) }
             nodes.forEach { drawNode(it, cellPx, connected = true) }
         }

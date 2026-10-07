@@ -1,11 +1,13 @@
 package com.kortexgames.app.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -13,7 +15,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.kortexgames.app.core.theme.LogicColors
@@ -64,9 +69,35 @@ fun GameActionButton(
             .padding(horizontal = 12.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // Reserva fija (~1.9x el glifo) para que el halo no altere el layout.
-        Box(Modifier.size(54.dp), contentAlignment = Alignment.Center) {
-            NeonIcon(icon = icon, tint = effectiveTint, glow = enabled, size = 28.dp)
+        // Reserva fija (~1.9x el glifo) para que el halo no altere el layout. El icono
+        // va sobre un disco con aro del color de la acción: se lee como una TECLA que
+        // se puede pulsar, no como un glifo suelto flotando sobre el fondo.
+        Box(
+            modifier = Modifier
+                .size(54.dp)
+                .drawBehind {
+                    val radius = size.minDimension / 2f - 2.dp.toPx()
+                    drawCircle(LogicColors.SurfaceDark.copy(alpha = 0.90f), radius)
+                    if (enabled) {
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                listOf(tint.copy(alpha = 0.26f), Color.Transparent),
+                                radius = radius,
+                            ),
+                            radius = radius,
+                        )
+                        // Halo ceñido + aro nítido (misma receta de capas que §9.7).
+                        drawCircle(tint.copy(alpha = 0.18f), radius, style = Stroke(5.dp.toPx()))
+                    }
+                    drawCircle(
+                        color = effectiveTint.copy(alpha = if (enabled) 0.75f else 0.28f),
+                        radius = radius,
+                        style = Stroke(1.5.dp.toPx()),
+                    )
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            NeonIcon(icon = icon, tint = effectiveTint, glow = enabled, size = 26.dp)
             if (costsAd) {
                 NeonIcon(
                     icon = KortexIcons.RewardedAd,
@@ -74,11 +105,16 @@ fun GameActionButton(
                     glow = false,
                     size = 14.dp,
                     contentDescription = "Cuesta ver un anuncio",
-                    modifier = Modifier.align(Alignment.BottomEnd),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        // Pastilla opaca bajo el distintivo: sobre el aro del disco se
+                        // perdía; así se sigue leyendo "cuesta un anuncio".
+                        .background(LogicColors.SurfaceVariantDark, CircleShape)
+                        .padding(2.dp),
                 )
             }
         }
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(6.dp))
         Text(label, style = MaterialTheme.typography.labelLarge, color = effectiveTint)
     }
 }

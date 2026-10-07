@@ -154,6 +154,8 @@
     <string name="firstrun_welcome_title_done">Sesión completa</string>
     <string name="firstrun_welcome_subtitle_done">Has probado los tres juegos. Crea una cuenta para guardar tu progreso, o entra como invitado.</string>
     <string name="firstrun_welcome_games_label">Tu primera sesión</string>
+    <!-- Contador junto al rótulo de la sesión. %1$s = juegos jugados, %2$s = total. -->
+    <string name="firstrun_welcome_progress_count">%1$s/%2$s</string>
     <string name="firstrun_welcome_cta">Empezar a jugar</string>
     <string name="firstrun_welcome_cta_continue">Seguir jugando</string>
     <string name="firstrun_welcome_cta_done">Continuar</string>
@@ -294,6 +296,8 @@
          la regla de strings.xml, ver CLAUDE.md §10 "Alcance"); solo el láser y la
          segunda oportunidad son texto nuevo. -->
     <!-- Botón del HUD que dispara el láser viendo un anuncio. -->
+    <string name="quantum_merge_hud_score">Puntos</string>
+    <string name="quantum_merge_hud_next">Siguiente</string>
     <string name="quantum_merge_laser_label">Láser</string>
     <!-- Oferta de revivir viendo un anuncio tras el primer desbordamiento del reactor. -->
     <string name="quantum_merge_revive_title">¿Reactor desbordado?</string>
@@ -596,5 +600,52 @@
     <string name="profile_awards_champion">Campeón</string>
     <string name="profile_awards_champion_count">%1$s veces campeón</string>
     <string name="profile_awards_champion_count_one">1 vez campeón</string>
+
+    <!-- ============================================================
+         Ordena las Pociones — HUD de partida. El nombre del juego NO va
+         aquí (vive en GameCatalog, ver CLAUDE.md §10).
+         ============================================================ -->
+    <!-- %1$s = número de nivel. Se pinta en mayúsculas dentro de la píldora. -->
+    <string name="watersort_hud_level">Nivel %1$s</string>
+    <string name="watersort_hud_moves">movimientos</string>
+    <string name="watersort_hud_moves_one">movimiento</string>
+    <!-- Lectura de accesibilidad de la fila de orbes de progreso.
+         %1$s = pociones completadas, %2$s = total de colores del nivel. -->
+    <string name="watersort_hud_progress_description">%1$s de %2$s pociones completadas</string>
+
+    <!-- ============================================================
+         Neon Shikaku Matrix — antesala, HUD y badge de arrastre. El
+         nombre del juego NO va aquí (vive en GameCatalog, ver
+         CLAUDE.md §10).
+         ============================================================ -->
+    <string name="shikaku_hud_level">Nivel</string>
+    <string name="shikaku_hud_covered">Cubierto</string>
+    <string name="shikaku_hud_restart_description">Reiniciar nivel</string>
+    <string name="shikaku_board_generating">Generando matriz…</string>
+    <!-- Cálculo en vivo junto al dedo. %1$s = ancho, %2$s = alto, %3$s = área. -->
+    <string name="shikaku_badge_area">%1$s × %2$s = %3$s</string>
+    <!-- %1$s = número que contiene la selección y que el área debería igualar. -->
+    <string name="shikaku_badge_target">Objetivo: %1$s</string>
+    <string name="shikaku_badge_multiple">Varios números</string>
+    <string name="shikaku_badge_out_of_mask">Fuera del tablero</string>
+    <string name="shikaku_gameover_headline">¡Matriz completada!</string>
+    <string name="shikaku_intro_description">La matriz está sin dividir. Arrastra para trazar rectángulos de luz: cada uno debe encerrar un único número y medir exactamente tantas celdas como ese número. Cubre todo el tablero sin solapar.</string>
+
+    <!-- ============================================================
+         HUD común de los juegos de tablero por niveles (NeonBoardHud):
+         Línea Neón hoy; Conectores y Flujo de Energía después.
+         ============================================================ -->
+    <!-- %1$s = número de nivel. Se pinta en mayúsculas dentro de la píldora. -->
+    <string name="gameboard_hud_level">Nivel %1$s</string>
+    <string name="gameboard_hud_restart">Reiniciar nivel</string>
+
+    <!-- Flujo de Energía — cifra del HUD. %1$s = giros hechos en el nivel. -->
+    <string name="energyflow_hud_rotations">%1$s giros</string>
+    <string name="energyflow_hud_rotations_one">1 giro</string>
+
+    <!-- Bloques Neón — HUD de partida. -->
+    <string name="blockgrid_hud_score">Puntos</string>
+    <string name="blockgrid_hud_lines">Líneas</string>
+    <string name="blockgrid_hud_restart">Reiniciar partida</string>
 
 </resources>
