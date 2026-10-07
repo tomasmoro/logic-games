@@ -442,6 +442,30 @@ fun NeonProgressBar(progress: Float, color: Color, modifier: Modifier = Modifier
 }
 
 /**
+ * Destello de **borde** como feedback de acierto/fallo: el color entra por los cantos de la
+ * pantalla y deja el centro limpio.
+ *
+ * Sustituye al velo plano a pantalla completa, que teñía también el tablero justo cuando el
+ * jugador ya está mirando lo siguiente; un destello periférico se percibe igual de reojo sin tapar
+ * nada. Lo comparten Burbujas de Cálculo, Crucigrama Neón e Hypergate.
+ *
+ * @param amount 0..1, intensidad actual del destello.
+ */
+fun DrawScope.drawEdgeFlash(color: Color, amount: Float) {
+    if (amount <= 0f) return
+    val reach = maxOf(size.width, size.height) * 0.75f
+    drawRect(
+        brush = Brush.radialGradient(
+            0f to Color.Transparent,
+            0.55f to Color.Transparent,
+            1f to color.copy(alpha = 0.55f * amount),
+            center = Offset(size.width / 2f, size.height / 2f),
+            radius = reach,
+        ),
+    )
+}
+
+/**
  * HUD superior de un juego de tablero por niveles: píldora de **nivel**, **barra de progreso**
  * con su cifra y botón redondo de **reiniciar**.
  *

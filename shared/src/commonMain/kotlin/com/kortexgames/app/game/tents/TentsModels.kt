@@ -198,19 +198,54 @@ object TentsMatching {
      * `true` si se puede asignar a cada árbol una tienda distinta ortogonalmente adyacente, sin
      * que sobre ninguna tienda.
      *
-     * Es un emparejamiento perfecto en un grafo bipartito, resuelto con caminos de aumento (Kuhn).
-     * Un voraz ("a cada árbol su primera tienda libre") falla en configuraciones legítimas: si el
-     * árbol A puede usar las tiendas 1 y 2 y el B solo la 1, darle la 1 a A deja a B sin pareja
-     * aunque el tablero sea correcto. Con ≤ 16 árboles y ≤ 4 vecinos por árbol el coste es nulo.
-     *
      * @param size lado del tablero.
      * @param trees índices aplanados (`y * size + x`) de los árboles.
      * @param isTent consulta de tienda por índice aplanado.
      * @param tentCount tiendas que hay en el tablero; si no coincide con los árboles no hay 1:1.
      */
-    fun isPerfect(size: Int, trees: IntArray, tentCount: Int, isTent: (Int) -> Boolean): Boolean {
-        if (trees.size != tentCount) return false
-        // owner[celda] = posición en `trees` del árbol que tiene asignada la tienda de esa celda.
+    fun isPerfect(size: Int, trees: IntArray, tentCount: Int, isTent: (Int) -> Boolean): Boolean =
+        trees.size == tentCount && match(size, trees, requireAll = true, isTent) != null
+
+    /** Versión sobre el tablero de la UI, para la detección de victoria. */
+    fun isPerfect(board: TentsBoard): Boolean {
+        val tents = board.cells.count { it.type == TentsCellType.TENT }
+        return isPerfect(board.size, treesOf(board), tents) { board.cells[it].type == TentsCellType.TENT }
+    }
+
+    /**
+     * Parejas del emparejamiento **máximo** del tablero tal como está ahora, aunque esté a medio
+     * resolver: `índice del árbol → índice de su tienda` (aplanados). Los árboles aún sin tienda
+     * no aparecen, y una tienda que no figura como valor no ha podido asignarse a ningún árbol.
+     *
+     * Es lo que pinta la pantalla como "cuerda de luz" entre cada tienda y su árbol: hace visible
+     * la única regla que no se ve mirando casillas sueltas. Al ser máximo (y no voraz), nunca
+     * deja suelta una tienda que sí tenía pareja posible.
+     */
+    fun pairs(board: TentsBoard): Map<Int, Int> {
+        val trees = treesOf(board)
+        val owner = match(board.size, trees, requireAll = false) { board.cells[it].type == TentsCellType.TENT }
+            ?: return emptyMap()
+        val result = HashMap<Int, Int>()
+        for (tent in owner.indices) if (owner[tent] != -1) result[trees[owner[tent]]] = tent
+        return result
+    }
+
+    private fun treesOf(board: TentsBoard): IntArray =
+        board.cells.indices.filter { board.cells[it].type == TentsCellType.TREE }.toIntArray()
+
+    /**
+     * Emparejamiento bipartito árbol↔tienda por caminos de aumento (Kuhn).
+     *
+     * Un voraz ("a cada árbol su primera tienda libre") falla en configuraciones legítimas: si el
+     * árbol A puede usar las tiendas 1 y 2 y el B solo la 1, darle la 1 a A deja a B sin pareja
+     * aunque el tablero sea correcto. Con ≤ 16 árboles y ≤ 4 vecinos por árbol el coste es nulo.
+     *
+     * @param requireAll si es `true`, corta y devuelve `null` en cuanto un árbol se queda sin
+     *   tienda (lo que necesita el solver, que llama a esto en cada hoja de su búsqueda).
+     * @return `owner[celda]` = posición en [trees] del árbol dueño de la tienda de esa celda, o
+     *   `-1` si la celda no es una tienda asignada.
+     */
+    private fun match(size: Int, trees: IntArray, requireAll: Boolean, isTent: (Int) -> Boolean): IntArray? {
         val owner = IntArray(size * size) { -1 }
         val visited = BooleanArray(size * size)
 
@@ -236,16 +271,9 @@ object TentsMatching {
 
         for (tree in trees.indices) {
             visited.fill(false)
-            if (!assign(tree)) return false
+            if (!assign(tree) && requireAll) return null
         }
-        return true
-    }
-
-    /** Versión sobre el tablero de la UI, para la detección de victoria. */
-    fun isPerfect(board: TentsBoard): Boolean {
-        val trees = board.cells.indices.filter { board.cells[it].type == TentsCellType.TREE }.toIntArray()
-        val tents = board.cells.count { it.type == TentsCellType.TENT }
-        return isPerfect(board.size, trees, tents) { board.cells[it].type == TentsCellType.TENT }
+        return owner
     }
 
     private val DX = intArrayOf(0, 1, 0, -1)

@@ -267,7 +267,7 @@ object NeonLexiconGenerator {
      * y por partida, así que en un mismo nivel unas veces sale del derecho y
      * otras al revés, nunca de forma predecible.
      */
-    private const val REVERSE_WORDS_FROM_LEVEL = 7
+    private const val REVERSE_WORDS_FROM_LEVEL = 5
 
     private const val ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 

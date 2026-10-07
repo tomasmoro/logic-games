@@ -726,7 +726,7 @@ object GameHelpContent {
             HelpStep(
                 icon = KortexIcons.Check,
                 title = "Una tienda por árbol",
-                text = "Cada árbol necesita su propia tienda pegada arriba, abajo, a la izquierda o a la derecha. Dos árboles no pueden compartir tienda.",
+                text = "Cada árbol necesita su propia tienda pegada arriba, abajo, a la izquierda o a la derecha. Dos árboles no pueden compartir tienda: una cuerda de luz une cada tienda con su árbol, y el árbol se enciende.",
             ),
             HelpStep(
                 icon = KortexIcons.Warning,

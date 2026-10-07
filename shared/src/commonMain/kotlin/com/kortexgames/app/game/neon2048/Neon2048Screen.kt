@@ -2,7 +2,6 @@ package com.kortexgames.app.game.neon2048
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.spring
@@ -33,8 +32,6 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,7 +82,12 @@ import com.kortexgames.app.ui.components.bounceClick
 import com.kortexgames.app.ui.components.ModalReveal
 import com.kortexgames.app.ui.components.NeonIcon
 import com.kortexgames.app.ui.components.drawNeonBoardPlate
-import com.kortexgames.app.ui.components.drawNeonGem
+import com.kortexgames.app.ui.components.drawNeonTile
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.lerp
 import com.kortexgames.app.ui.components.drawSparkBurst
 import com.kortexgames.app.ui.components.modalCard
 import com.kortexgames.app.ui.components.modalScrim
@@ -430,39 +432,14 @@ private fun Neon2048Board(
     val boardSize = state.boardSize
     val density = LocalDensity.current
 
-    // Empujón del tablero: al deslizar, la placa entera se desplaza unos píxeles en la dirección
-    // del gesto y vuelve con resorte. Es lo que da "peso" al swipe (§9.4) y, de paso, responde
-    // también al gesto que no mueve nada: el tablero cabecea contra el borde y no pasa más.
-    val nudge = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
-    val scope = rememberCoroutineScope()
-    val nudgePx = with(density) { BOARD_NUDGE.toPx() }
-    // `pointerInput` solo se reinicia con `enabled`: sin esto se quedaría con el primer callback.
-    val currentOnSwipe by rememberUpdatedState(onSwipe)
-    val swipeWithNudge: (Direction) -> Unit = remember(nudgePx) {
-        { direction ->
-            scope.launch {
-                nudge.snapTo(Offset(direction.deltaCol * nudgePx, direction.deltaRow * nudgePx))
-                nudge.animateTo(
-                    Offset.Zero,
-                    spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
-                )
-            }
-            currentOnSwipe(direction)
-        }
-    }
-
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .graphicsLayer {
-                translationX = nudge.value.x
-                translationY = nudge.value.y
-            }
             // La placa compartida del kit de tableros (la misma de Bloques Neón y Sudoku).
             .drawBehind { drawNeonBoardPlate(accent = CategoryPalette.MentalMath) }
             .padding(BOARD_PADDING)
-            .swipeGestures(enabled, swipeWithNudge),
+            .swipeGestures(enabled, onSwipe),
     ) {
         // Reparto: `boardSize` celdas + (boardSize-1) huecos dentro del ancho
         // disponible. Un tablero 8×8 reparte el mismo espacio entre el doble de
@@ -723,17 +700,18 @@ private fun Neon2048TileView(tile: Tile, cellSize: Dp, stepPx: Int) {
 }
 
 /**
- * La cara de una ficha: gema maciza del kit ([drawNeonGem]) con su número.
+ * La cara de una ficha: **cristal oscuro encendido por un tubo de neón**, con su número.
  *
- * Antes era solo el tubo de neón hueco; con el tablero medio lleno las fichas se confundían con
- * las casillas vacías y el número de un fantasma se transparentaba a través de la superviviente.
- * Ahora la ficha tiene cuerpo, y el neón queda como remate del borde.
+ * El color de la potencia vive en el borde (el tubo compartido, [drawNeonTile], §9.7) y se
+ * **derrama hacia dentro** del cristal, que queda teñido pero oscuro; el número brilla con un
+ * halo de ese mismo color. Dos versiones anteriores quedaron descartadas:
+ *  - solo el tubo hueco: con el tablero medio lleno las fichas se confundían con las casillas
+ *    vacías y el número de un fantasma se transparentaba a través de la superviviente;
+ *  - un relleno macizo y saturado: se leía como dibujo animado, ajeno al lenguaje de la app
+ *    (§9.1: superficie oscura, acento luminoso).
  *
- * Dos decisiones de legibilidad:
- *  - la cara va **oscurecida** ([TILE_FACE_SHADE]): el número es blanco y sobre ámbar, lima o
- *    cian plenos no se leería. El color de la potencia lo siguen dando el borde y el tinte;
- *  - el **encendido del borde crece con la potencia** ([tileGlow]): las fichas pequeñas, que
- *    son mayoría, quedan tranquilas, y las grandes brillan — el neón vale porque es escaso (§9.1).
+ * El **encendido crece con la potencia** ([tileGlow]): las fichas pequeñas, que son mayoría,
+ * quedan tranquilas, y las grandes brillan — el neón vale porque es escaso.
  *
  * Lo comparten la ficha viva y el fantasma para que sean indistinguibles mientras viajan.
  */
@@ -741,28 +719,57 @@ private fun Neon2048TileView(tile: Tile, cellSize: Dp, stepPx: Int) {
 private fun TileFace(value: Int, cellSize: Dp) {
     val power = value.countTrailingZeroBits()
     val accent = tileAccent(power)
+    val glow = tileGlow(power)
     Canvas(modifier = Modifier.fillMaxSize()) {
-        drawNeonGem(
-            topLeft = Offset.Zero,
-            cellPx = size.width,
-            accent = accent,
-            bodyFraction = TILE_BODY_FRACTION,
-            faceShade = TILE_FACE_SHADE,
-            glow = tileGlow(power),
+        val margin = size.width * TILE_MARGIN_FRACTION
+        val topLeft = Offset(margin, margin)
+        val body = Size(size.width - margin * 2f, size.height - margin * 2f)
+        val corner = CornerRadius(size.width * TILE_CORNER_FRACTION)
+
+        // Cristal: opaco (tapa la casilla y cualquier fantasma) y apenas teñido.
+        drawRoundRect(
+            color = lerp(LogicColors.SurfaceDark, accent, TILE_GLASS_TINT),
+            topLeft = topLeft,
+            size = body,
+            cornerRadius = corner,
+        )
+        // Resplandor interior: la luz del tubo sobre el cristal, intensa junto al borde y
+        // apagándose hacia el centro. Muchas capas finas que se solapan, para que la caída
+        // sea suave y no se vean escalones.
+        val outline = Path().apply {
+            addRoundRect(RoundRect(Rect(topLeft, body), corner))
+        }
+        clipPath(outline) {
+            val reach = size.width * TILE_INNER_GLOW_REACH
+            for (i in 1..TILE_INNER_GLOW_LAYERS) {
+                drawRoundRect(
+                    color = accent.copy(alpha = TILE_INNER_GLOW_ALPHA * (0.55f + 0.45f * glow)),
+                    topLeft = topLeft,
+                    size = body,
+                    cornerRadius = corner,
+                    // La mitad del ancho cae dentro del cristal (el resto lo recorta el clip).
+                    style = Stroke(width = reach * 2f * i / TILE_INNER_GLOW_LAYERS),
+                )
+            }
+        }
+        // Tubo de neón del borde, desde la fuente única del proyecto.
+        drawNeonTile(
+            baseColor = accent,
+            activeAmt = glow,
+            cornerRadius = (size.width * TILE_CORNER_FRACTION).toDp(),
+            sparks = false,
+            baseMargin = margin.toDp(),
+            strokeScale = 0.75f,
         )
     }
     Text(
         text = "$value",
         style = MaterialTheme.typography.displayLarge.copy(
             fontSize = fontSizeFor(value, cellSize).value.sp,
-            // Sombra corta: despega el número de la franja de brillo de la gema.
-            shadow = Shadow(
-                color = LogicColors.BackgroundDark.copy(alpha = 0.65f),
-                offset = Offset(0f, 2f),
-                blurRadius = 5f,
-            ),
+            // Halo del color de la ficha: el número se lee como rótulo de neón encendido.
+            shadow = Shadow(color = accent.copy(alpha = 0.90f), offset = Offset.Zero, blurRadius = 18f),
         ),
-        color = LogicColors.OnDark,
+        color = lerp(LogicColors.OnDark, accent, TILE_TEXT_TINT),
         textAlign = TextAlign.Center,
     )
 }
@@ -1051,17 +1058,28 @@ private val CELL_GAP = 8.dp
  *  El radio real que se dibuja sale de [tileCornerFor], proporcional a la celda. */
 private val TILE_CORNER = 14.dp
 
-/** Cuánto se desplaza la placa al deslizar antes de volver con resorte. */
-private val BOARD_NUDGE = 6.dp
+/** Margen entre el cristal de la ficha y el borde de su casilla (deja sitio al halo del tubo). */
+private const val TILE_MARGIN_FRACTION = 0.035f
 
-/** Lado del cuerpo de la ficha respecto a su casilla: casi entera, la rejilla ya las separa. */
-private const val TILE_BODY_FRACTION = 0.96f
+/** Radio de esquina del cristal, en fracción del lado de la casilla. */
+private const val TILE_CORNER_FRACTION = 0.18f
 
-/** Oscurecido de la cara de la ficha para que el número blanco se lea sobre cualquier color. */
-private const val TILE_FACE_SHADE = 0.42f
+/** Cuánto del color de la ficha tiñe el cristal. Bajo: la cara es oscura y el color lo pone la
+ *  luz del borde; por encima de ~0.4 vuelve a parecer un relleno plano. */
+private const val TILE_GLASS_TINT = 0.10f
+
+/** Hasta dónde entra el resplandor del borde en el cristal, en fracción del lado. */
+private const val TILE_INNER_GLOW_REACH = 0.24f
+
+/** Capas del resplandor interior y opacidad de cada una (se suman hacia el borde). */
+private const val TILE_INNER_GLOW_LAYERS = 9
+private const val TILE_INNER_GLOW_ALPHA = 0.05f
+
+/** Cuánto del color de la ficha lleva el número (el resto es blanco): legible pero teñido. */
+private const val TILE_TEXT_TINT = 0.12f
 
 /** Encendido del borde de la ficha más pequeña. */
-private const val TILE_GLOW_MIN = 0.30f
+private const val TILE_GLOW_MIN = 0.45f
 
 /** Encendido del borde de una ficha grande. */
 private const val TILE_GLOW_MAX = 0.95f

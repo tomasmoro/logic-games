@@ -92,6 +92,20 @@ import org.jetbrains.compose.resources.stringResource
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
+import androidx.compose.foundation.border
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.unit.sp
+import com.kortexgames.app.ui.components.BoardClock
+import com.kortexgames.app.ui.components.drawEdgeFlash
+import com.kortexgames.app.ui.components.NeonIcon
+import com.kortexgames.app.ui.components.rememberBoardClock
+import kortexgames.shared.generated.resources.bubble_hud_combo
+import kortexgames.shared.generated.resources.bubble_hud_round
+import kortexgames.shared.generated.resources.bubble_target_label
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
@@ -110,8 +124,9 @@ private val BubbleColors = listOf(
     LogicColors.Amber,
 )
 
-/** Diámetro de una burbuja. Fijo para que el cálculo de posición sea simple. */
-private val BubbleSize = 74.dp
+/** Diámetro de una burbuja. Fijo para que el cálculo de posición sea simple. (Subido un 10 %
+ *  desde 74 dp: la operación se lee mejor y la pompa tiene más presencia.) */
+private val BubbleSize = 82.dp
 
 /** 2π: círculo completo en radianes, para repartir las chispas en todas direcciones. */
 private const val TAU = 6.2831855f
@@ -121,6 +136,39 @@ private const val PI_F = 3.1415927f
 
 /** Alto de la banda inferior donde vive el objetivo (el "suelo"). */
 private val FloorBand = 104.dp
+
+/** Amplitud del vaivén lateral de una burbuja. */
+private val BubbleSway = 3.dp
+
+/** Velocidad del vaivén (rad/s). Lenta: ambiente, no temblor. */
+private const val SwaySpeed = 1.3f
+
+/** Fracción de la caída a partir de la que el suelo empieza a avisar. */
+private const val DangerFrom = 0.68f
+
+/** Alto de la franja roja que el suelo proyecta hacia arriba cuando hay peligro. */
+private val DangerWashHeight = 54.dp
+
+/** Sacudida del campo al fallar: duración, oscilaciones y amplitud inicial. */
+private const val ShakeDurationMs = 320
+private const val ShakeCycles = 3f
+private val ShakeAmplitude = 7.dp
+
+/** Escala inicial del latido del marcador al sumar. */
+private const val ScorePopScale = 1.2f
+
+/** Escala inicial del latido de la insignia de combo en cada acierto. */
+private const val ComboBeatScale = 1.3f
+
+/** Racha a partir de la que el combo pasa a ámbar y a coral. */
+private const val ComboWarmFrom = 4
+private const val ComboHotFrom = 7
+
+/** Encendido en reposo del tubo de la consola del objetivo. */
+private const val TargetIdleGlow = 0.5f
+
+/** Cuánto crece la consola del objetivo en el golpe de cambio. */
+private const val TargetPopAmount = 0.14f
 
 /**
  * Pantalla de "Burbujas de Cálculo". Caen burbujas con operaciones y, en la base,
@@ -193,6 +241,25 @@ fun BubbleMathScreen(graph: AppGraph, onExit: () -> Unit) {
             intensity = 0.6f,
         )
 
+        // Reloj único del ambiente (respiración y vaivén de las burbujas). Se congela fuera de
+        // RUNNING: en pausa las burbujas no caen, así que tampoco deben seguir latiendo.
+        val clock = rememberBoardClock(running = state.status == GameStatus.RUNNING)
+
+        // Sacudida del campo al fallar o dejar caer el objetivo: el error se siente en toda la
+        // pantalla y no solo en un destello. Una vez por evento, amortiguada.
+        val shake = remember { Animatable(0f) }
+        LaunchedEffect(game.eventId) {
+            if (game.eventId == 0 || game.lastResult == null || game.lastResult == TapResult.CORRECT) {
+                return@LaunchedEffect
+            }
+            shake.snapTo(0f)
+            shake.animateTo(1f, tween(durationMillis = ShakeDurationMs))
+        }
+
+        // Cuánto se acerca al suelo la burbuja más baja (0 = lejos, 1 = tocándolo). Se mide
+        // sobre TODAS, no solo sobre la correcta: usar la correcta delataría cuál es.
+        val danger = game.bubbles.maxOfOrNull { ((it.y - DangerFrom) / (1f - DangerFrom)).coerceIn(0f, 1f) } ?: 0f
+
         Column(modifier = Modifier.fillMaxSize()) {
             GameHud(round = game.round, score = game.score, combo = game.combo)
 
@@ -200,7 +267,13 @@ fun BubbleMathScreen(graph: AppGraph, onExit: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .clipToBounds(),
+                    .clipToBounds()
+                    .graphicsLayer {
+                        val p = shake.value
+                        if (p > 0f && p < 1f) {
+                            translationX = sin(p * ShakeCycles * TAU) * ShakeAmplitude.toPx() * (1f - p)
+                        }
+                    },
             ) {
                 val fieldW = maxWidth
                 val fieldH = maxHeight
@@ -216,6 +289,7 @@ fun BubbleMathScreen(graph: AppGraph, onExit: () -> Unit) {
                     key(bubble.id) {
                         FallingBubble(
                             bubble = bubble,
+                            clock = clock,
                             fieldWidth = fieldW,
                             floorLine = floorLine,
                             onTap = { vm.onIntent(BubbleMathIntent.TapBubble(bubble.id)) },
@@ -226,6 +300,8 @@ fun BubbleMathScreen(graph: AppGraph, onExit: () -> Unit) {
                 // Objetivo en la base + línea de suelo.
                 TargetBase(
                     target = game.target,
+                    round = game.round,
+                    danger = danger,
                     modifier = Modifier.align(Alignment.BottomCenter),
                 )
 
@@ -330,49 +406,101 @@ fun BubbleMathScreen(graph: AppGraph, onExit: () -> Unit) {
 }
 
 /**
- * Barra superior con la ronda, el marcador y el combo (cuando ≥2, con latido). Las
- * vidas se muestran aparte, centradas arriba de toda la pantalla (ver
- * [BubbleMathScreen]), así que esta barra deja hueco a la derecha para no chocar
- * con ellas.
+ * Barra superior: ronda, marcador y combo.
+ *
+ * Todo va agrupado a la IZQUIERDA: el centro es de los corazones y la esquina derecha del botón
+ * de pausa (antes el combo caía justo debajo de él). El marcador late al sumar y el combo es una
+ * insignia que se calienta —verde, ámbar, coral— según crece la racha.
  */
 @Composable
 private fun GameHud(round: Int, score: Int, combo: Int) {
+    val scorePop = remember { Animatable(1f) }
+    var lastScore by remember { mutableIntStateOf(score) }
+    LaunchedEffect(score) {
+        val grew = score > lastScore
+        lastScore = score
+        if (!grew) return@LaunchedEffect
+        scorePop.snapTo(ScorePopScale)
+        scorePop.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(start = 20.dp, end = 76.dp, top = 12.dp, bottom = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Bottom,
     ) {
         Column {
             Text(
-                "Ronda ${round.coerceAtLeast(1)}",
-                style = MaterialTheme.typography.labelLarge,
+                text = stringResource(Res.string.bubble_hud_round, round.coerceAtLeast(1).toString()).uppercase(),
+                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.6.sp),
                 color = LogicColors.OnDarkMuted,
             )
             Text(
-                "$score",
-                style = MaterialTheme.typography.headlineMedium,
+                text = "$score",
+                style = MaterialTheme.typography.headlineLarge,
                 color = LogicColors.OnDark,
                 fontWeight = FontWeight.Black,
+                modifier = Modifier.graphicsLayer {
+                    scaleX = scorePop.value
+                    scaleY = scorePop.value
+                    // Crece desde la izquierda: el número está alineado a ese lado.
+                    transformOrigin = TransformOrigin(0f, 0.5f)
+                },
             )
         }
+        ComboBadge(combo = combo, modifier = Modifier.padding(bottom = 4.dp))
+    }
+}
 
-        // Combo: solo aparece a partir de x2 para que sea una recompensa notable.
-        val comboScale by animateFloatAsState(
-            targetValue = if (combo >= 2) 1f else 0f,
-            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-            label = "comboScale",
+/**
+ * Insignia de combo. Solo existe a partir de x2 (por debajo no hay racha que celebrar), entra con
+ * rebote, **late en cada acierto** y cambia de color al subir de tramo: el jugador nota que la
+ * racha "se calienta" sin leer la cifra.
+ */
+@Composable
+private fun ComboBadge(combo: Int, modifier: Modifier = Modifier) {
+    val visible by animateFloatAsState(
+        targetValue = if (combo >= 2) 1f else 0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "comboVisible",
+    )
+    val beat = remember { Animatable(1f) }
+    LaunchedEffect(combo) {
+        if (combo < 2) return@LaunchedEffect
+        beat.snapTo(ComboBeatScale)
+        beat.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
+    }
+    if (visible <= 0f) return
+
+    val color = when {
+        combo >= ComboHotFrom -> LogicColors.Coral
+        combo >= ComboWarmFrom -> LogicColors.Amber
+        else -> LogicColors.NeonGreen
+    }
+    Row(
+        modifier = modifier
+            .graphicsLayer {
+                val scale = visible * beat.value
+                scaleX = scale
+                scaleY = scale
+                alpha = visible.coerceIn(0f, 1f)
+            }
+            .background(lerp(LogicColors.SurfaceDark, color, 0.16f).copy(alpha = 0.92f), CircleShape)
+            .border(1.5.dp, color.copy(alpha = 0.85f), CircleShape)
+            .padding(start = 8.dp, end = 12.dp, top = 5.dp, bottom = 5.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        NeonIcon(icon = KortexIcons.Streak, tint = color, size = 16.dp, glow = false, contentDescription = null)
+        Text(
+            // La insignia sigue mostrando la última racha mientras se encoge al romperse.
+            text = stringResource(Res.string.bubble_hud_combo, combo.coerceAtLeast(2).toString()),
+            style = MaterialTheme.typography.titleMedium,
+            color = color,
+            fontWeight = FontWeight.Black,
         )
-        if (comboScale > 0f) {
-            Text(
-                "x$combo",
-                style = MaterialTheme.typography.titleLarge,
-                color = LogicColors.NeonGreen,
-                fontWeight = FontWeight.Black,
-                modifier = Modifier.scale(comboScale),
-            )
-        }
     }
 }
 
@@ -525,10 +653,15 @@ private fun LifeGainLabel(progress: Float) {
  * Una burbuja en caída. Mapea la posición fraccional del motor a un desplazamiento
  * en Dp y aplica una entrada con rebote (crece de 0.6→1 al aparecer). El color es
  * decorativo (por id), nunca indica si es la correcta.
+ *
+ * El cuerpo es una burbuja de jabón ([drawSoapBubble]) que respira y se mece levemente con el
+ * [clock]. Ambas cosas se leen en fase de dibujo/capa, así que no recomponen la burbuja; la
+ * caída sí lo hace, porque la posición viene del estado del motor en cada frame.
  */
 @Composable
 private fun FallingBubble(
     bubble: Bubble,
+    clock: BoardClock,
     fieldWidth: Dp,
     floorLine: Dp,
     onTap: () -> Unit,
@@ -545,34 +678,62 @@ private fun FallingBubble(
     }
 
     val color = BubbleColors[bubble.id % BubbleColors.size]
+    // Fase propia: sin ella todas las burbujas respirarían y se mecerían al unísono.
+    val seed = bubble.id * 1.7f
     Box(
         modifier = Modifier
             .offset(x = xDp, y = yDp)
             .size(BubbleSize)
-            .scale(appear.value)
-            // Globo de neón hueco: misma estética de "tubo neón" que las teclas de
-            // Memoria (halo + aro + núcleo blanco), centralizada en [drawNeonBubble].
-            .drawBehind { drawNeonBubble(color) }
+            .graphicsLayer {
+                scaleX = appear.value
+                scaleY = appear.value
+                // Vaivén lateral de unos pocos dp: flota, no cae como una piedra. Tan corto
+                // que la zona de toque (que no se mueve) sigue coincidiendo con lo dibujado.
+                translationX = sin(clock.seconds * SwaySpeed + seed) * BubbleSway.toPx()
+            }
+            .drawBehind { drawSoapBubble(color, clock.seconds, seed) }
             .clip(CircleShape)
             .bounceClick(onClick = onTap),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             bubble.expr.text,
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleMedium.copy(
+                // Sombra corta: despega la operación de los reflejos de la burbuja.
+                shadow = Shadow(
+                    color = LogicColors.BackgroundDark.copy(alpha = 0.85f),
+                    offset = Offset(0f, 1.5f),
+                    blurRadius = 4f,
+                ),
+            ),
             color = LogicColors.OnDark,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.Black,
             textAlign = TextAlign.Center,
         )
     }
 }
 
 /**
- * Base del juego: la línea de suelo y el número objetivo destacado. Es el "cesto"
- * al que apuntan las burbujas: si el objetivo cruza esta línea, se pierde una vida.
+ * Base del juego: la línea de suelo y el número objetivo. Es el "cesto" al que apuntan las
+ * burbujas: si la correcta cruza la línea, se pierde una vida.
+ *
+ * El objetivo es LA pregunta del juego, así que deja de ser un número suelto y pasa a una
+ * **consola de neón** (píldora con el tubo compartido, §9.7) que se enciende y da un golpe cada
+ * vez que cambia: al empezar una ronda el ojo va a donde algo acaba de moverse.
+ *
+ * @param round ronda actual; es la clave del golpe, porque dos rondas seguidas pueden pedir el
+ *   mismo número y aun así hay que avisar de que la pregunta es nueva.
+ * @param danger 0..1, cercanía al suelo de la burbuja más baja (aviva la línea de peligro).
  */
 @Composable
-private fun TargetBase(target: Int, modifier: Modifier = Modifier) {
+private fun TargetBase(target: Int, round: Int, danger: Float, modifier: Modifier = Modifier) {
+    // 1 → 0: destello + rebote del cambio de objetivo.
+    val change = remember { Animatable(0f) }
+    LaunchedEffect(round, target) {
+        change.snapTo(1f)
+        change.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow))
+    }
+
     Column(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -580,20 +741,44 @@ private fun TargetBase(target: Int, modifier: Modifier = Modifier) {
         // Línea de suelo: neón ROJO con glow. Es una frontera de peligro ("no crucen
         // más allá"): el resplandor rojo la carga de significado semántico —cuanto más
         // se acerca una burbuja, más evidente el límite— sin robar el foco del objetivo.
-        DangerFloorLine()
-        Column(
+        DangerFloorLine(danger = danger)
+        Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                // El alto total de la base debe rondar [FloorBand]: la línea roja tiene que caer
+                // donde el motor sitúa el suelo (y = 1), o las burbujas "tocarían" antes o después.
+                .padding(top = 10.dp, bottom = 20.dp)
+                .graphicsLayer {
+                    val scale = 1f + TargetPopAmount * change.value
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .drawBehind {
+                    val corner = size.height / 2f
+                    drawRoundRect(
+                        color = LogicColors.SurfaceDark.copy(alpha = 0.88f),
+                        cornerRadius = CornerRadius(corner),
+                    )
+                    drawNeonTile(
+                        baseColor = LogicColors.NeonGreen,
+                        // En reposo a media luz; el cambio de objetivo lo sube a pleno.
+                        activeAmt = (TargetIdleGlow + (1f - TargetIdleGlow) * change.value).coerceIn(0f, 1f),
+                        cornerRadius = (size.height / 2f).toDp(),
+                        sparks = false,
+                        baseMargin = 0.dp,
+                        strokeScale = 0.7f,
+                    )
+                }
+                .padding(horizontal = 26.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                "OBJETIVO",
-                style = MaterialTheme.typography.labelLarge,
+                text = stringResource(Res.string.bubble_target_label).uppercase(),
+                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.6.sp),
                 color = LogicColors.OnDarkMuted,
             )
             Text(
-                "$target",
+                text = "$target",
                 style = MaterialTheme.typography.displayLarge,
                 color = LogicColors.NeonGreen,
                 fontWeight = FontWeight.Black,
@@ -608,9 +793,15 @@ private fun TargetBase(target: Int, modifier: Modifier = Modifier) {
  * trazos horizontales (halo ancho translúcido → intermedio → línea nítida → núcleo
  * blanco), el mismo truco "sin blur" del resto de neón de la app; el latido lento y de
  * baja amplitud sigue §9.4 (bucles ambientales suaves, sin robar atención).
+ *
+ * Con [danger] la línea **reacciona**: cuando una burbuja se acerca, el tubo engorda, brilla más
+ * y proyecta hacia arriba una franja roja. El peligro deja de ser un decorado fijo y pasa a
+ * avisar justo cuando hace falta.
+ *
+ * @param danger 0..1, cercanía al suelo de la burbuja más baja.
  */
 @Composable
-private fun DangerFloorLine() {
+private fun DangerFloorLine(danger: Float) {
     // Latido lento del halo (respira entre 0.6 y 1): marca "zona viva" de peligro.
     val transition = rememberInfiniteTransition(label = "dangerGlow")
     val glow by transition.animateFloat(
@@ -647,8 +838,22 @@ private fun DangerFloorLine() {
             strokeWidth = width,
             cap = StrokeCap.Round,
         )
-        line(0.22f * glow, w * 5f)   // Halo ancho translúcido (respira con glow).
-        line(0.45f * glow, w * 2.4f) // Halo intermedio.
+        // Franja de aviso sobre la línea: solo existe mientras hay una burbuja cerca.
+        if (danger > 0f) {
+            val reach = DangerWashHeight.toPx()
+            drawRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(Color.Transparent, red.copy(alpha = 0.22f * danger)),
+                    startY = cy - reach,
+                    endY = cy,
+                ),
+                topLeft = Offset(0f, cy - reach),
+                size = androidx.compose.ui.geometry.Size(size.width, reach),
+            )
+        }
+        val boost = 1f + 0.6f * danger
+        line((0.22f * glow * boost).coerceAtMost(1f), w * 5f * boost)   // Halo ancho (respira con glow).
+        line((0.45f * glow * boost).coerceAtMost(1f), w * 2.4f * boost) // Halo intermedio.
         line(0.95f, w)               // Línea nítida del tubo.
         // Núcleo blanco-rojizo interior: el look de neón "encendido".
         drawLine(
@@ -724,12 +929,14 @@ private fun BubbleBurstLayer(burst: BubbleBurst?, eventId: Int, floorLine: Dp) {
         val maxDist = (if (burst.success) BubbleSize * 1.6f else BubbleSize * 0.9f).toPx()
         val unit = 10.dp.toPx()
 
-        // Anillo de choque que se expande desde el borde de la burbuja.
-        drawCircle(
-            color = color.copy(alpha = 0.4f * alpha),
-            radius = (BubbleSize / 2).toPx() + ease * maxDist * 0.5f,
+        // La burbuja deshaciéndose (fogonazo, película rota y gotas); encima van las chispas.
+        drawBubblePop(
             center = Offset(cx, cy),
-            style = Stroke(width = 2.dp.toPx()),
+            radius = (BubbleSize / 2).toPx(),
+            color = color,
+            progress = p,
+            success = burst.success,
+            seed = eventId,
         )
 
         sparks.forEach { s ->
@@ -757,7 +964,7 @@ private fun BubbleBurstLayer(burst: BubbleBurst?, eventId: Int, floorLine: Dp) {
 }
 
 /**
- * Destello a pantalla completa como feedback inmediato: verde al acertar, rojo al
+ * Destello de borde como feedback inmediato: verde al acertar, rojo al
  * fallar o dejar escapar el objetivo. Se dispara **una sola vez** por evento gracias
  * a [eventId] (no en cada recomposición): sube la opacidad de golpe y la desvanece.
  */
@@ -766,16 +973,13 @@ private fun FeedbackFlash(eventId: Int, result: TapResult?) {
     val alpha = remember { Animatable(0f) }
     LaunchedEffect(eventId) {
         if (eventId == 0 || result == null) return@LaunchedEffect
-        alpha.snapTo(0.35f)
+        alpha.snapTo(1f)
         alpha.animateTo(0f, tween(durationMillis = 420))
     }
     if (alpha.value <= 0f) return
     val color = if (result == TapResult.CORRECT) LogicColors.Success else LogicColors.Error
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(color.copy(alpha = alpha.value)),
-    )
+    // Por los cantos, no un velo plano: ver [drawEdgeFlash].
+    Canvas(modifier = Modifier.fillMaxSize()) { drawEdgeFlash(color, alpha.value) }
 }
 
 // ---------------------------------------------------------------------------

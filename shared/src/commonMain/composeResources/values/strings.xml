@@ -686,4 +686,28 @@
     <string name="defuser_hud_time">Tiempo de partida</string>
     <string name="defuser_hud_mines">Minas por marcar: %1$s</string>
 
+    <!-- Burbujas de Cálculo: HUD y objetivo -->
+    <string name="bubble_hud_round">Ronda %1$s</string>
+    <string name="bubble_hud_combo">x%1$s</string>
+    <string name="bubble_target_label">Objetivo</string>
+
+    <!-- Neon Hyper-Cube: HUD y ayuda de gestos -->
+    <string name="hypercube_hud_free_mode">Modo libre</string>
+    <string name="hypercube_hud_moves">Movimientos</string>
+    <string name="hypercube_hud_time">Tiempo</string>
+    <string name="hypercube_gesture_hint">Arrastra sobre una fila para girarla · fuera del cubo para orbitar</string>
+
+    <!-- Crucigrama Neón: HUD -->
+    <string name="crucigrama_hud_words">%1$s/%2$s palabras</string>
+    <string name="crucigrama_hud_combo">x%1$s</string>
+
+    <!-- Sopa de Letras Neón: HUD -->
+    <string name="wordsearch_hud_words">%1$s/%2$s palabras</string>
+
+    <!-- Hypergate: HUD y pista -->
+    <string name="hypergate_hint">Toca en cualquier parte para cambiar la polaridad del portal e igualarla a la del cometa que llega</string>
+    <string name="hypergate_hud_absorbed">Absorbidos</string>
+    <string name="hypergate_hud_crashed">Choques</string>
+    <string name="hypergate_hud_time">Segundos restantes</string>
+
 </resources>

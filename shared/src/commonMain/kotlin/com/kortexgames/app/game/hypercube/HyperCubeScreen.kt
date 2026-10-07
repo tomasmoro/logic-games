@@ -73,7 +73,29 @@ import com.kortexgames.app.ui.components.NeonIcon
 import com.kortexgames.app.ui.components.ResumeState
 import com.kortexgames.app.ui.components.SpaceBackdrop
 import com.kortexgames.app.ui.components.bounceClick
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.unit.sp
+import com.kortexgames.app.ui.components.drawSparkBurst
+import com.kortexgames.app.ui.components.rememberBoardClock
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.gameboard_hud_level
+import kortexgames.shared.generated.resources.hypercube_gesture_hint
+import kortexgames.shared.generated.resources.hypercube_hud_free_mode
+import kortexgames.shared.generated.resources.hypercube_hud_moves
+import kortexgames.shared.generated.resources.hypercube_hud_time
+import kotlinx.coroutines.delay
+import org.jetbrains.compose.resources.stringResource
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.min
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * # Neon Hyper-Cube — pantalla y motor de render 3D
@@ -121,8 +143,19 @@ import kotlin.math.min
  * ## El cubo es un sólido, no un holograma hueco
  * Los rellenos son **opacos**: detrás de cada pegatina se pinta la cara completa del cubie, que
  * tesela con la de sus vecinos y sella el volumen, de modo que ni el fondo estrellado ni las caras
- * ocultas se transparentan por las juntas (ver [HyperCubeGeometry.BODY_HALF]). El brillo neón vive
- * en los contornos, dibujados encima de ese cuerpo.
+ * ocultas se transparentan por las juntas (ver [HyperCubeGeometry.BODY_HALF]).
+ *
+ * Las pegatinas son **cristal oscuro encendido por un tubo de neón**: el color vive en el borde
+ * (halo → trazo nítido → núcleo blanco) y **se derrama hacia dentro** de la cara, que queda teñida
+ * pero oscura. Así el color de cada pegatina se lee de un vistazo —con solo un contorno fino
+ * costaba ver qué cara estaba hecha— sin caer en el relleno plano y saturado, que daba un aire
+ * de dibujo animado ajeno a la estética de la app (§9.1: superficie oscura, acento luminoso).
+ *
+ * ## Vida alrededor del cubo
+ * El cubo ya no flota en el vacío: descansa sobre un **pedestal holográfico** (halo + anillos que
+ * giran despacio, ver [drawPedestal]), la capa que gira se **enciende**, la pegatina agarrada
+ * responde bajo el dedo y, al resolverlo, el cubo da un golpe de escala con chispas antes de que
+ * aparezca el resultado (ver `SOLVE_HOLD_MS`).
  *
  * ## Gestos: orbitar vs. girar una capa
  * Un arrastre que **empieza sobre una pegatina** gira su rebanada; uno que empieza fuera del cubo
@@ -253,13 +286,19 @@ fun HyperCubeScreen(graph: AppGraph, onExit: () -> Unit) {
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
-                Text(
-                    text = "Arrastra sobre una fila para girarla · fuera del cubo para orbitar",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = LogicColors.OnDarkMuted,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 12.dp),
-                )
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = stringResource(Res.string.hypercube_gesture_hint),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = LogicColors.OnDarkMuted,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .padding(horizontal = 24.dp, vertical = 8.dp)
+                            .background(LogicColors.SurfaceDark.copy(alpha = 0.80f), RoundedCornerShape(16.dp))
+                            .border(1.dp, ACCENT.copy(alpha = 0.30f), RoundedCornerShape(16.dp))
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                    )
+                }
             }
 
             // Barra de acciones inferior, en el mismo sitio y con el mismo control que el resto de
@@ -292,7 +331,18 @@ fun HyperCubeScreen(graph: AppGraph, onExit: () -> Unit) {
             Spacer(Modifier.height(8.dp))
         }
 
-        if (state.status == GameStatus.FINISHED && state.gameOver != null) {
+        // El resultado espera a que termine la celebración del cubo: sin esta espera el diálogo
+        // lo tapaba en el mismo frame del giro que lo resuelve, y el cubo terminado —lo que el
+        // jugador lleva toda la partida persiguiendo— no llegaba a verse.
+        var resultReady by remember { mutableStateOf(false) }
+        LaunchedEffect(state.gameOver != null) {
+            resultReady = false
+            if (state.gameOver != null) {
+                delay(SOLVE_HOLD_MS)
+                resultReady = true
+            }
+        }
+        if (state.status == GameStatus.FINISHED && state.gameOver != null && resultReady) {
             GameOverOverlay(
                 info = state.gameOver!!,
                 audio = graph.audio,
@@ -381,6 +431,13 @@ private fun CubeViewport(
         val currentScene = rememberUpdatedState(scene)
         val currentIntent = rememberUpdatedState(onIntent)
 
+        // Reloj de ambiente (giro lento de los anillos del pedestal); se lee solo en el dibujo.
+        val clock = rememberBoardClock()
+        // Cara agarrada mientras el dedo decide el giro: se ilumina para que el jugador vea QUÉ
+        // tiene cogido antes de que nada se mueva (§9.4, feedback inmediato). Se guarda su
+        // contorno ya proyectado: la escena no cambia hasta que el giro arranca, y entonces se suelta.
+        var grabbedOutline by remember { mutableStateOf<Path?>(null) }
+
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
@@ -404,6 +461,7 @@ private fun CubeViewport(
                             // La escena está ordenada de lejos a cerca, así que el ÚLTIMO polígono
                             // que contiene el punto es el que el jugador ve encima y cree tocar.
                             grabbed = currentScene.value.lastOrNull { it.contains(position) }
+                            grabbedOutline = grabbed?.bodyPath
                             accumulated = Offset.Zero
                             turnEmitted = false
                             velocityTracker.resetTracking()
@@ -421,9 +479,10 @@ private fun CubeViewport(
                                 )
                             }
                             grabbed = null
+                            grabbedOutline = null
                             turnEmitted = false
                         },
-                        onDragCancel = { grabbed = null; turnEmitted = false },
+                        onDragCancel = { grabbed = null; grabbedOutline = null; turnEmitted = false },
                         onDrag = { change, dragAmount ->
                             change.consume()
                             val facelet = grabbed
@@ -445,6 +504,9 @@ private fun CubeViewport(
                                     if (intent != null) {
                                         currentIntent.value(intent)
                                         turnEmitted = true
+                                        // La capa ya gira: el resalte de "agarrada" sobraría
+                                        // (y quedaría clavado donde estaba la cara).
+                                        grabbedOutline = null
                                     }
                                 }
                             }
@@ -453,8 +515,42 @@ private fun CubeViewport(
                 },
         ) {
             val strokeWidth = (scale * STROKE_WIDTH_FRACTION).coerceAtLeast(1.5f)
-            // Algoritmo del pintor: la lista ya viene ordenada de lejos a cerca.
-            scene.forEach { facelet -> drawFacelet(facelet, strokeWidth, flash) }
+            // `flash` baja de 1 a 0 tras resolver; su complemento es el avance de la celebración.
+            val celebrate = if (flash > 0f) 1f - flash else 0f
+
+            drawPedestal(center, scale, clock.seconds, flash)
+
+            // Golpe de escala al resolver: el cubo "late" una vez. Se aplica al dibujo y no a la
+            // proyección porque con la partida terminada ya no hay gestos que deban coincidir.
+            val bump = if (flash > 0f) 1f + SOLVE_BUMP * sin(celebrate * PI.toFloat()) else 1f
+            scale(bump, bump, pivot = center) {
+                // Algoritmo del pintor: la lista ya viene ordenada de lejos a cerca.
+                scene.forEach { facelet -> drawFacelet(facelet, strokeWidth, flash) }
+            }
+
+            grabbedOutline?.let { outline ->
+                drawPath(outline, color = Color.White.copy(alpha = 0.22f))
+                drawPath(
+                    outline,
+                    color = Color.White.copy(alpha = 0.85f),
+                    style = Stroke(width = strokeWidth, join = StrokeJoin.Round),
+                )
+            }
+
+            // Chispas de la victoria: una ráfaga central y un cinturón escalonado alrededor.
+            if (flash > 0f) {
+                drawSparkBurst(center, ACCENT, reach = scale * 3.4f, progress = celebrate * 1.25f, seed = 7)
+                for (i in 0 until SOLVE_SPARK_COUNT) {
+                    val angle = i * (2f * PI.toFloat() / SOLVE_SPARK_COUNT)
+                    drawSparkBurst(
+                        center = Offset(center.x + cos(angle) * scale * 2.6f, center.y + sin(angle) * scale * 2.2f),
+                        color = SOLVE_SPARK_COLORS[i % SOLVE_SPARK_COLORS.size],
+                        reach = scale * 1.1f,
+                        progress = (celebrate - 0.08f - i * 0.045f) * 1.6f,
+                        seed = 31 + i,
+                    )
+                }
+            }
         }
     }
 }
@@ -473,6 +569,10 @@ private fun CubeViewport(
  *   las **ranuras**: visualmente son parte del cubo, y probar contra el cuadrado más pequeño de la
  *   pegatina las dejaba fuera, de modo que arrastrar sobre una junta orbitaba la cámara en vez de
  *   girar la capa. Con las caras completas la superficie del cubo queda cubierta sin huecos.
+ * @property shade iluminación de la cara, `SHADE_MIN..1`: la que mira a la luz (arriba y hacia el
+ *   observador) va a color pleno y las laterales algo más apagadas. Es lo que da volumen al cubo
+ *   y evita que tres caras del mismo tono se fundan en una mancha.
+ * @property inSlice la pegatina pertenece a la capa que está girando ahora: se enciende.
  * @property depth profundidad media en espacio de cámara; clave de ordenación del pintor.
  * @property color color neón de la pegatina, ya resuelto desde el tema.
  * @property cubie posición lógica del cubie al que pertenece (para saber qué capa girar).
@@ -482,6 +582,8 @@ private fun CubeViewport(
 private data class ProjectedFacelet(
     val path: Path,
     val bodyPath: Path,
+    val shade: Float,
+    val inSlice: Boolean,
     val corners: List<Offset>,
     val depth: Float,
     val color: Color,
@@ -543,7 +645,16 @@ private fun buildScene(
             // significa "mira hacia el observador".
             val edge1 = view[1] - view[0]
             val edge2 = view[2] - view[1]
-            if ((edge1 cross edge2).z <= 0f) continue
+            val normal = edge1 cross edge2
+            if (normal.z <= 0f) continue
+
+            // Iluminación difusa de la cara con una luz fija en espacio de CÁMARA (arriba, algo a
+            // la izquierda y hacia el observador): al orbitar, las caras cambian de luz como en un
+            // objeto real en vez de llevar el sombreado "pintado".
+            val length = sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z)
+            val lambert = if (length <= 0f) 1f else {
+                ((normal.x * LIGHT_X + normal.y * LIGHT_Y + normal.z * LIGHT_Z) / length).coerceIn(0f, 1f)
+            }
 
             val projected = view.map { project(it, center, scale) }
             // El cuerpo se transforma aparte (no vale escalar el polígono ya proyectado: la
@@ -555,6 +666,8 @@ private fun buildScene(
             scene += ProjectedFacelet(
                 path = projected.toPath(),
                 bodyPath = bodyProjected.toPath(),
+                shade = SHADE_MIN + (1f - SHADE_MIN) * lambert,
+                inSlice = inSlice,
                 corners = bodyProjected,
                 depth = (view[0].z + view[1].z + view[2].z + view[3].z) / 4f,
                 color = sticker.color.toNeon(),
@@ -617,59 +730,142 @@ private fun project(v: Vector3, center: Offset, scale: Float): Offset {
 }
 
 /**
- * Pinta una pegatina como **tubo de luz sobre cuerpo sólido**: primero la cara opaca del cubie,
- * luego la pegatina y su contorno neón en varias pasadas (halo ancho → halo intermedio → trazo
- * nítido → núcleo blanco al destellar).
+ * Pinta una pegatina como **cristal oscuro encendido por un tubo de neón**: la cara opaca del
+ * cubie, la pegatina teñida, el resplandor del borde derramándose hacia dentro y el contorno en
+ * varias pasadas (halo ancho → halo intermedio → trazo nítido → núcleo blanco).
  *
  * Sigue la §9.7 de CLAUDE.md: como el contorno no es el de un *tile* rectangular sino un
  * cuadrilátero arbitrario ya deformado por la perspectiva, no se puede llamar a `drawNeonTile`;
  * se replica su **misma proporción de capas** para que la estética sea idéntica a la de los demás
  * tableros del juego.
  *
+ * ## De dónde sale el color de la cara
+ * No de un relleno plano (eso es lo que se leía como dibujo animado), sino de la **luz del borde**:
+ * dentro de la pegatina se pintan trazos anchos y translúcidos sobre su propio contorno,
+ * recortados a ella, de modo que el color es intenso junto al tubo y se apaga hacia el centro.
+ * Es lo que hace un neón real sobre el cristal que lo sostiene.
+ *
  * ## Por qué el relleno es opaco y la profundidad se hace con mezcla de color
  * El cubo debe leerse como un **sólido**: nada de lo que hay detrás (ni el fondo estrellado ni las
- * caras ocultas) puede transparentarse. Por eso los rellenos van a alfa 1 y la atenuación por
- * distancia ([depthDim]) se aplica **mezclando el color hacia el fondo** en vez de bajando el
- * alfa, que es lo que reintroduciría la transparencia. Los halos sí conservan alfa: se dibujan
- * *encima* del cuerpo opaco, así que su translucidez no deja ver nada de detrás.
+ * caras ocultas) puede transparentarse. Por eso los rellenos van a alfa 1 y tanto la atenuación
+ * por distancia ([depthDim]) como la iluminación ([ProjectedFacelet.shade]) se aplican
+ * **mezclando el color hacia el fondo** en vez de bajando el alfa, que es lo que reintroduciría
+ * la transparencia. Los halos sí conservan alfa: se dibujan *encima* del cuerpo opaco.
+ *
+ * La capa que gira ([ProjectedFacelet.inSlice]) se pinta sin atenuar y con el tubo reforzado: es
+ * lo que el jugador está moviendo y debe destacar sobre el resto del cubo.
  */
 private fun DrawScope.drawFacelet(facelet: ProjectedFacelet, strokeWidth: Float, flash: Float) {
     val dim = depthDim(facelet.depth)
     val neon = facelet.color
+    val lift = if (facelet.inSlice) 1f else 0f
+    // Luz total de la cara: profundidad × orientación, salvo en la capa activa (a pleno).
+    val base = dim * facelet.shade
+    val light = (base + (1f - base) * (0.8f * lift)).coerceIn(0f, 1f)
+    // Encendido del tubo: sube con la capa activa y con el destello de cubo resuelto.
+    val power = (light * (1f + 0.55f * lift) + 0.6f * flash).coerceAtMost(1.6f)
+    val round = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
 
     // Cuerpo del cubie: opaco y teselando con sus vecinos, sella el volumen (ver BODY_HALF).
-    drawPath(facelet.bodyPath, color = LogicColors.SurfaceDark.dimmed(dim))
-    // Pegatina: superficie algo más clara que el cuerpo + un velo del color de la cara que la
-    // identifica sin convertirla en un relleno plano de color.
-    drawPath(facelet.path, color = LogicColors.SurfaceVariantDark.dimmed(dim))
-    drawPath(facelet.path, color = neon.copy(alpha = 0.16f * dim))
+    drawPath(facelet.bodyPath, color = LogicColors.SurfaceDark.dimmed(0.35f + 0.25f * dim))
+    // Cristal de la pegatina: oscuro, con un tinte del color que basta para identificarla.
+    drawPath(facelet.path, color = lerp(LogicColors.SurfaceDark, neon, GLASS_TINT).dimmed(light))
 
+    // Resplandor interior: la luz del tubo derramándose sobre el cristal, de más a menos.
+    // Son muchas capas finas de alfa bajo que se solapan (la suma decae suave hacia el centro):
+    // con solo tres capas gruesas los escalones se veían como cuadrados concéntricos.
+    clipPath(facelet.path) {
+        for (i in 0 until INNER_GLOW_LAYERS) {
+            val t = i / (INNER_GLOW_LAYERS - 1f)
+            drawPath(
+                facelet.path,
+                color = neon.copy(alpha = (INNER_GLOW_ALPHA * power).coerceAtMost(1f)),
+                style = Stroke(
+                    width = strokeWidth * (INNER_GLOW_WIDE + (INNER_GLOW_NEAR - INNER_GLOW_WIDE) * t),
+                    join = StrokeJoin.Round,
+                ),
+            )
+        }
+    }
+
+    // Tubo de neón: halo ancho → halo intermedio → trazo nítido → núcleo blanco.
     drawPath(
         facelet.path,
-        color = neon.copy(alpha = 0.10f * dim),
-        style = Stroke(width = strokeWidth * 3.6f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        color = neon.copy(alpha = (0.12f * power).coerceAtMost(1f)),
+        style = Stroke(width = strokeWidth * 4.5f, cap = StrokeCap.Round, join = StrokeJoin.Round),
     )
     drawPath(
         facelet.path,
-        color = neon.copy(alpha = 0.24f * dim),
-        style = Stroke(width = strokeWidth * 2f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        color = neon.copy(alpha = (0.34f * power).coerceAtMost(1f)),
+        style = Stroke(width = strokeWidth * 2.1f, cap = StrokeCap.Round, join = StrokeJoin.Round),
     )
+    drawPath(facelet.path, color = neon.dimmed((light + 0.25f).coerceAtMost(1f)), style = round)
     drawPath(
         facelet.path,
-        color = neon.copy(alpha = 0.95f * dim),
-        style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        color = Color.White.copy(alpha = (CORE_ALPHA * light + 0.35f * lift + 0.85f * flash).coerceAtMost(0.95f)),
+        style = Stroke(width = strokeWidth * 0.4f, cap = StrokeCap.Round, join = StrokeJoin.Round),
     )
-    if (flash > 0f) {
-        drawPath(
-            facelet.path,
-            color = Color.White.copy(alpha = flash * 0.85f),
+}
+
+/**
+ * **Pedestal holográfico** bajo el cubo: un halo del acento detrás, una sombra elíptica en el
+ * "suelo" y dos anillos de trazos que giran despacio en sentidos opuestos.
+ *
+ * Sin él el cubo flotaba en mitad de la pantalla sin referencia de dónde está "abajo"; con una
+ * base, la órbita de la cámara se lee como rodear un objeto apoyado en algo. Es ambiente: lento y
+ * de baja amplitud (§9.4), y solo se enciende de verdad en la celebración ([flash]).
+ *
+ * @param scale píxeles por unidad de modelo (el mismo de la proyección), para que el pedestal
+ *   acompañe al tamaño del cubo en cualquier pantalla.
+ * @param time segundos del reloj de ambiente.
+ * @param flash 1→0 tras resolver: aviva el halo y abre los anillos.
+ */
+private fun DrawScope.drawPedestal(center: Offset, scale: Float, time: Float, flash: Float) {
+    // Halo detrás del cubo.
+    val haloRadius = scale * 3.3f
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(ACCENT.copy(alpha = 0.16f + 0.22f * flash), ACCENT.copy(alpha = 0.05f), Color.Transparent),
+            center = center,
+            radius = haloRadius,
+        ),
+        radius = haloRadius,
+        center = center,
+    )
+
+    // Base: elipse achatada por debajo del cubo (vista en perspectiva, de ahí el achatado).
+    val baseCenter = Offset(center.x, center.y + scale * 2.35f)
+    val grow = 1f + 0.35f * (if (flash > 0f) 1f - flash else 0f)
+    val radiusX = scale * 2.05f * grow
+    val radiusY = radiusX * PEDESTAL_SQUASH
+    drawOval(
+        brush = Brush.radialGradient(
+            colors = listOf(ACCENT.copy(alpha = 0.22f + 0.25f * flash), Color.Transparent),
+            center = baseCenter,
+            radius = radiusX,
+        ),
+        topLeft = Offset(baseCenter.x - radiusX, baseCenter.y - radiusY),
+        size = Size(radiusX * 2f, radiusY * 2f),
+    )
+    // Anillos de trazos. El "giro" se hace desplazando la fase del patrón: rotar el óvalo en sí
+    // lo sacaría de su plano.
+    val dash = scale * 0.34f
+    fun ring(scaleBy: Float, speed: Float, alpha: Float, width: Float) {
+        val rx = radiusX * scaleBy
+        val ry = radiusY * scaleBy
+        drawOval(
+            color = ACCENT.copy(alpha = (alpha + 0.35f * flash).coerceAtMost(1f)),
+            topLeft = Offset(baseCenter.x - rx, baseCenter.y - ry),
+            size = Size(rx * 2f, ry * 2f),
             style = Stroke(
-                width = strokeWidth * 0.5f,
+                width = width,
                 cap = StrokeCap.Round,
-                join = StrokeJoin.Round,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(dash, dash * 0.8f), time * speed * dash),
             ),
         )
     }
+    ring(scaleBy = 1f, speed = PEDESTAL_SPIN, alpha = 0.55f, width = 1.6.dp.toPx())
+    ring(scaleBy = 0.72f, speed = -PEDESTAL_SPIN * 1.6f, alpha = 0.32f, width = 1.2.dp.toPx())
 }
 
 /**
@@ -782,7 +978,7 @@ private fun ProjectedFacelet.contains(point: Offset): Boolean {
  * Cabecera del tablero: nivel o modo, movimientos contra el par y cronómetro.
  *
  * Solo **datos**: las acciones (deshacer, mezclar) viven en la barra inferior, como en el resto de
- * juegos con ayudas.
+ * juegos con ayudas. Deja libre la esquina derecha, donde va el botón de pausa.
  */
 @Composable
 private fun HyperCubeHud(
@@ -793,24 +989,37 @@ private fun HyperCubeHud(
     elapsedMs: () -> Long,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 72.dp, top = 14.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        HudPill(
-            label = if (isFreeMode) "MODO" else "NIVEL",
-            value = if (isFreeMode) "Libre" else level.toString(),
+        // Nivel/modo: la misma píldora de contorno que el HUD de los demás tableros por niveles.
+        Text(
+            text = (
+                if (isFreeMode) stringResource(Res.string.hypercube_hud_free_mode)
+                else stringResource(Res.string.gameboard_hud_level, level.toString())
+                ).uppercase(),
+            style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 1.4.sp),
+            color = ACCENT,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .background(LogicColors.SurfaceDark.copy(alpha = 0.85f), CircleShape)
+                .border(1.5.dp, ACCENT.copy(alpha = 0.55f), CircleShape)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
         )
         // El par (longitud de la mezcla) es la referencia de "solución corta" con la que se puntúa
         // la eficiencia, así que se muestra... salvo en modo libre: ahí la mezcla es de 20 giros
         // aleatorios, que NO es un objetivo alcanzable ni pretende serlo, y enseñarlo como meta
         // ("3 / 20") solo daría una sensación falsa de ir perdiendo. Sin nivel, no hay par.
-        HudPill(
-            label = "MOV.",
-            value = if (isFreeMode || par <= 0) "$moves" else "$moves / $par",
+        val hasPar = !isFreeMode && par > 0
+        HudChip(
+            icon = KortexIcons.Refresh,
+            description = stringResource(Res.string.hypercube_hud_moves),
+            value = if (hasPar) "$moves/$par" else "$moves",
+            // Pasarse del par no es un error, pero sí cuesta eficiencia: se avisa en ámbar.
+            valueColor = if (hasPar && moves > par) LogicColors.Amber else LogicColors.OnDark,
         )
         HudClock(elapsedMs = elapsedMs)
-
     }
 }
 
@@ -836,7 +1045,13 @@ private fun HudClock(elapsedMs: () -> Long) {
             withFrameNanos { display = formatElapsed(elapsedMs()) }
         }
     }
-    HudPill(label = "TIEMPO", value = display, monospace = true)
+    HudChip(
+        icon = KortexIcons.Timer,
+        description = stringResource(Res.string.hypercube_hud_time),
+        value = display,
+        valueColor = LogicColors.OnDark,
+        monospace = true,
+    )
 }
 
 /**
@@ -857,26 +1072,35 @@ private fun formatElapsed(millis: Long): String {
     }
 }
 
-/** Píldora de dato del HUD (superficie elevada + etiqueta atenuada sobre valor destacado). */
+/**
+ * Dato del HUD como píldora con icono: el icono dice QUÉ es (movimientos, tiempo) sin gastar una
+ * línea de etiqueta, así la cabecera queda en una sola fila baja y deja más alto al cubo.
+ *
+ * @param description texto del dato para lectores de pantalla (lo que antes decía la etiqueta).
+ * @param monospace cifra de ancho fijo; imprescindible en el cronómetro (ver más abajo).
+ */
 @Composable
-private fun HudPill(label: String, value: String, monospace: Boolean = false) {
-    Column(
+private fun HudChip(
+    icon: ImageVector,
+    description: String,
+    value: String,
+    valueColor: Color,
+    monospace: Boolean = false,
+) {
+    Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(LogicColors.SurfaceDark)
+            .background(LogicColors.SurfaceDark.copy(alpha = 0.85f), CircleShape)
+            .border(1.dp, LogicColors.SurfaceVariantDark, CircleShape)
             .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = LogicColors.OnDarkMuted,
-            fontWeight = FontWeight.SemiBold,
-        )
+        NeonIcon(icon = icon, tint = ACCENT, size = 16.dp, glow = false, contentDescription = description)
         Text(
             text = value,
-            style = MaterialTheme.typography.titleMedium,
-            color = ACCENT,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.labelLarge,
+            color = valueColor,
+            fontWeight = FontWeight.Black,
             // Monoespaciada en el cronómetro: con dígitos de ancho variable, las milésimas hacen
             // que la píldora entera cambie de tamaño en cada frame.
             fontFamily = if (monospace) FontFamily.Monospace else null,
@@ -949,10 +1173,56 @@ private const val PROJECTION_SCALE = 0.21f
 private const val MAX_MODEL_RADIUS = 1.7f
 
 /** Cuánto conserva de su color la cara más lejana al mezclarse con el fondo (1 = sin atenuar). */
-private const val MIN_DEPTH_DIM = 0.5f
+private const val MIN_DEPTH_DIM = 0.62f
+
+/**
+ * Dirección de la luz en espacio de cámara (vector unitario): arriba, un poco a la izquierda y
+ * hacia el observador. Con ella la cara superior es la más clara y las laterales se distinguen.
+ */
+private const val LIGHT_X = -0.30f
+private const val LIGHT_Y = 0.58f
+private const val LIGHT_Z = 0.757f
+
+/** Luz mínima de una cara que mira de perfil a la luz. Alta: el tubo debe seguir encendido. */
+private const val SHADE_MIN = 0.70f
+
+/** Cuánto del color de la cara tiñe el cristal de la pegatina. Bajo: la cara es oscura y el
+ *  color lo pone la luz del borde; por encima de ~0.4 vuelve a parecer un relleno plano. */
+private const val GLASS_TINT = 0.24f
+
+/** Resplandor interior: ancho (en grosores de trazo) de la capa más amplia y de la más pegada
+ *  al tubo. La mitad de cada ancho cae dentro de la pegatina. */
+private const val INNER_GLOW_WIDE = 20f
+private const val INNER_GLOW_NEAR = 2.5f
+
+/** Capas del resplandor interior y opacidad de cada una (se suman hacia el borde). */
+private const val INNER_GLOW_LAYERS = 9
+private const val INNER_GLOW_ALPHA = 0.075f
+
+/** Opacidad del núcleo blanco del tubo a plena luz: el toque de "neón encendido". */
+private const val CORE_ALPHA = 0.55f
+
+/** Achatado de la elipse del pedestal (alto/ancho): la base se ve en perspectiva. */
+private const val PEDESTAL_SQUASH = 0.26f
+
+/** Velocidad de giro del anillo exterior del pedestal, en trazos por segundo. Lenta: ambiente. */
+private const val PEDESTAL_SPIN = 0.55f
+
+/** Cuánto crece el cubo en el golpe de escala al resolverse. */
+private const val SOLVE_BUMP = 0.07f
+
+/** Ráfagas del cinturón de chispas de la victoria y sus colores (los de las caras). */
+private const val SOLVE_SPARK_COUNT = 6
+private val SOLVE_SPARK_COLORS = listOf(
+    LogicColors.NeonCyan, LogicColors.Amber, LogicColors.NeonGreen,
+    LogicColors.Blue, LogicColors.Magenta, LogicColors.Violet,
+)
+
+/** Cuánto se retiene el diálogo de resultado tras resolver (ms): lo que dura la celebración. */
+private const val SOLVE_HOLD_MS = 1_000L
 
 /** Grosor del trazo nítido, como fracción de la escala de proyección. */
-private const val STROKE_WIDTH_FRACTION = 0.022f
+private const val STROKE_WIDTH_FRACTION = 0.026f
 
 /** Radianes de órbita por píxel arrastrado (~400 px para media vuelta). */
 private const val CAMERA_SENSITIVITY = 0.008f

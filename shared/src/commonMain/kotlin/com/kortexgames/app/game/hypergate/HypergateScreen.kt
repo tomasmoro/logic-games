@@ -1,30 +1,36 @@
 package com.kortexgames.app.game.hypergate
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -32,16 +38,16 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -49,18 +55,28 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.di.AppGraph
+import com.kortexgames.app.game.GameHelpContent
 import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.ui.components.GameIntroScreen
-import com.kortexgames.app.game.GameHelpContent
 import com.kortexgames.app.ui.components.GameOverOverlay
 import com.kortexgames.app.ui.components.GamePauseControls
+import com.kortexgames.app.ui.components.KortexIcons
+import com.kortexgames.app.ui.components.NeonIcon
+import com.kortexgames.app.ui.components.NeonProgressBar
 import com.kortexgames.app.ui.components.RankingPreviewUnavailable
 import com.kortexgames.app.ui.components.SpaceBackdrop
 import com.kortexgames.app.ui.components.WorldRankingLoading
 import com.kortexgames.app.ui.components.WorldRankingPreviewPanel
-import com.kortexgames.app.ui.components.softGlow
+import com.kortexgames.app.ui.components.drawEdgeFlash
+import com.kortexgames.app.ui.components.rememberBoardClock
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.hypergate_hint
+import kortexgames.shared.generated.resources.hypergate_hud_absorbed
+import kortexgames.shared.generated.resources.hypergate_hud_crashed
+import kortexgames.shared.generated.resources.hypergate_hud_time
+import org.jetbrains.compose.resources.stringResource
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -79,11 +95,15 @@ import kotlin.math.sin
  * modelo polar: el tick es O(n) sin `cos/sin`, y el coste trigonométrico se paga aquí, donde de
  * todos modos hay que tocar la GPU.
  *
- * ## Feedback táctil del escudo
- * Al conmutar, la escala del anillo hace un **micro-rebote con `spring`** ([shieldScale]) y el
- * color **transiciona** entre Verde Neón (A) y Cian Eléctrico (B) con `animateColorAsState`. El
- * anillo se dibuja como `Stroke` dentro de una capa con [Modifier.softGlow] del color activo,
- * tal como pide el spec, para el halo neón "que respira".
+ * ## Escena y feedback
+ * Todo se pinta en **un solo Canvas** con las funciones de `HypergateArt`: el túnel de velocidad
+ * del fondo, la marca de dónde impactará el cometa más cercano, los cometas, el portal y los
+ * impactos. Un único reloj ([rememberBoardClock]) mueve las animaciones y se lee solo al dibujar.
+ *
+ * El portal responde a cada toque (rebote + onda) y cada impacto tiene su efecto en el punto del
+ * anillo donde ocurrió, con su "+N"; un choque sacude la escena y la tiñe de rojo por los bordes.
+ * Los aciertos seguidos forman una **racha** que el núcleo del portal enseña y que aviva su giro:
+ * es solo visual (la puntuación la lleva el motor), pero da al jugador algo que proteger.
  */
 @Composable
 fun HypergateScreen(graph: AppGraph, onExit: () -> Unit) {
@@ -127,35 +147,68 @@ fun HypergateScreen(graph: AppGraph, onExit: () -> Unit) {
 
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
 
-    // Halo de baja amplitud que "respira" (un único bucle ambiental, §9.4).
-    val glowPulse by rememberInfiniteTransition(label = "hypergateGlow").animateFloat(
-        initialValue = 0.72f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1400, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "hypergateGlowAlpha",
-    )
+    // Reloj único de las animaciones (túnel, coronas del portal, impactos). Se congela fuera de
+    // RUNNING: en pausa los cometas no avanzan, así que tampoco debe moverse el fondo.
+    val clock = rememberBoardClock(running = state.status == GameStatus.RUNNING)
 
     // Color del escudo según su polaridad, con crossfade suave al conmutar.
     val shieldColor by animateColorAsState(
-        targetValue = if (game.shield == ShieldState.A) LogicColors.NeonGreen else LogicColors.NeonCyan,
-        animationSpec = tween(durationMillis = 180),
+        targetValue = game.shield.toNeon(),
+        animationSpec = tween(durationMillis = 140),
         label = "hypergateShieldColor",
     )
 
-    // Micro-rebote táctil: cada cambio de polaridad hunde la escala y la deja volver con spring.
-    val shieldScale = remember { Animatable(1f) }
-    LaunchedEffect(game.shield) {
-        shieldScale.snapTo(SHIELD_BOUNCE_MIN)
-        shieldScale.animateTo(
-            targetValue = 1f,
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
-                stiffness = Spring.StiffnessMedium,
-            ),
-        )
+    // Instante del último cambio de polaridad: de su "edad" salen el rebote y la onda del portal.
+    var toggleAt by remember { mutableFloatStateOf(-10f) }
+    LaunchedEffect(game.shield) { toggleAt = clock.peek() }
+
+    // --- Impactos ---------------------------------------------------------------------------
+    // El motor no dice DÓNDE impactó cada proyectil (solo emite sonido/vibración y actualiza los
+    // contadores), así que la pantalla lo deduce comparando la lista de proyectiles con la del
+    // frame anterior: el que desaparece estando junto al anillo acaba de impactar, y si fue
+    // absorbido o chocó se sabe por qué contador subió. Es adorno puro y así el motor no cambia.
+    val impacts = remember { mutableStateListOf<GateImpact>() }
+    val previous = remember { arrayOfNulls<HypergateState>(1) }
+    var streak by remember { mutableIntStateOf(0) }
+    var crashAt by remember { mutableFloatStateOf(-10f) }
+    SideEffect {
+        val before = previous[0]
+        previous[0] = game
+        if (before == null) return@SideEffect
+        val now = clock.peek()
+        impacts.removeAll { now - it.at > IMPACT_LIFE_SEC + 0.5f }
+        val absorbed = game.absorbed - before.absorbed
+        val crashed = game.crashed - before.crashed
+        if (absorbed < 0 || crashed < 0) {
+            // Partida nueva: fuera lo de la anterior.
+            impacts.clear()
+            streak = 0
+            return@SideEffect
+        }
+        if (absorbed == 0 && crashed == 0) return@SideEffect
+        val alive = game.projectiles.mapTo(HashSet()) { it.id }
+        val gone = before.projectiles.filter { it.id !in alive }
+        // Reparto de la puntuación del frame entre lo que impactó, para el "+N" flotante.
+        var delta = game.score - before.score
+        gone.forEachIndexed { i, p ->
+            // Si en el mismo frame hubo de los dos tipos, cada uno se decide por su polaridad.
+            val success = if (crashed == 0) true else if (absorbed == 0) false else p.required == before.shield
+            impacts += GateImpact(
+                id = p.id,
+                angleRad = p.angleRad,
+                required = p.required,
+                success = success,
+                at = now,
+                scoreDelta = if (i == 0) delta else 0,
+            )
+            delta = 0
+        }
+        if (crashed > 0) {
+            streak = 0
+            crashAt = now
+        } else {
+            streak += absorbed
+        }
     }
 
     // Bucle de juego: la física se sincroniza al reloj de render (withFrameNanos → Tick).
@@ -177,8 +230,14 @@ fun HypergateScreen(graph: AppGraph, onExit: () -> Unit) {
         }
     }
 
-    val density = LocalDensity.current
-    val shieldDiameterDp = with(density) { (game.shieldRadiusPx * 2f).toDp() }
+    val measurer = rememberTextMeasurer()
+    val streakStyle = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
+    val deltaStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black)
+    // La racha se mide una vez por valor, no en cada frame.
+    val streakLayout = remember(streak) {
+        if (streak >= STREAK_SHOWN_FROM) measurer.measure("x$streak", streakStyle) else null
+    }
+    val timeFraction = (game.remainingMs.toFloat() / ROUND_DURATION_MS).coerceIn(0f, 1f)
 
     Box(
         modifier = Modifier
@@ -192,65 +251,139 @@ fun HypergateScreen(graph: AppGraph, onExit: () -> Unit) {
     ) {
         SpaceBackdrop(modifier = Modifier.fillMaxSize())
 
-        // Capa de proyectiles: polar → cartesiano, dibujados como estelas neón con glow.
-        Canvas(modifier = Modifier.fillMaxSize()) {
+        // Toda la escena en un Canvas: túnel → guía del próximo impacto → cometas → portal →
+        // impactos → textos. El portal va en el mismo Canvas que los cometas (antes era una
+        // capa aparte) para que impactos y anillo compartan centro y radio exactos.
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    // Sacudida del choque: el golpe se siente en toda la escena.
+                    val age = clock.seconds - crashAt
+                    if (age in 0f..SHAKE_SEC) {
+                        translationX = sin(age * 70f) * SHAKE_AMPLITUDE.toPx() * (1f - age / SHAKE_SEC)
+                    }
+                },
+        ) {
+            val now = clock.seconds
             val center = Offset(size.width * 0.5f, size.height * 0.5f)
-            for (p in game.projectiles) {
-                val head = Offset(
-                    x = center.x + cos(p.angleRad) * p.distancePx,
-                    y = center.y + sin(p.angleRad) * p.distancePx,
-                )
-                drawNeonProjectile(
-                    head = head,
-                    angleRad = p.angleRad,
-                    color = projectileColor(p.required),
-                    glowPulse = glowPulse,
+            val radius = game.shieldRadiusPx
+
+            // El túnel acelera según se agota la ronda: la urgencia del final se ve en el fondo.
+            drawWarpField(center, now, speed = 1f + 1.2f * (1f - timeFraction), tint = shieldColor)
+
+            // Marca de impacto del cometa más cercano: el que hay que resolver ahora.
+            val nearest = game.projectiles.minByOrNull { it.distancePx }
+            if (nearest != null && radius > 0f) {
+                val travel = (nearest.distancePx - radius).coerceAtLeast(0f)
+                drawImpactMarker(
+                    center = center,
+                    radius = radius,
+                    head = Offset(
+                        center.x + cos(nearest.angleRad) * nearest.distancePx,
+                        center.y + sin(nearest.angleRad) * nearest.distancePx,
+                    ),
+                    angleRad = nearest.angleRad,
+                    color = nearest.required.toNeon(),
+                    urgency = 1f - travel / (radius * MARKER_RANGE),
                 )
             }
-        }
 
-        // Escudo central: anillo con softGlow del color activo + micro-rebote de escala.
-        if (game.shieldRadiusPx > 0f) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(shieldDiameterDp)
-                    .graphicsLayer {
-                        scaleX = shieldScale.value
-                        scaleY = shieldScale.value
-                    }
-                    .softGlow(color = shieldColor, shape = CircleShape),
-            ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    drawShieldRing(color = shieldColor, glowPulse = glowPulse)
+            // Cometas: polar → cartesiano.
+            for (p in game.projectiles) {
+                drawComet(
+                    head = Offset(
+                        x = center.x + cos(p.angleRad) * p.distancePx,
+                        y = center.y + sin(p.angleRad) * p.distancePx,
+                    ),
+                    angleRad = p.angleRad,
+                    required = p.required,
+                    speedFactor = p.speedPx / REFERENCE_SPEED_PX,
+                )
+            }
+
+            drawGate(
+                center = center,
+                radius = radius,
+                shield = game.shield,
+                color = shieldColor,
+                time = now,
+                toggleAge = now - toggleAt,
+                crashAge = now - crashAt,
+                streak = streak,
+                showGlyph = streakLayout == null,
+            )
+            // Con racha, el núcleo enseña el multiplicador en vez del glifo.
+            streakLayout?.let { layout ->
+                drawText(
+                    textLayoutResult = layout,
+                    color = shieldColor,
+                    topLeft = Offset(center.x - layout.size.width / 2f, center.y - layout.size.height / 2f),
+                )
+            }
+
+            impacts.forEach { impact ->
+                val age = now - impact.at
+                drawGateImpact(
+                    center = center,
+                    radius = radius,
+                    angleRad = impact.angleRad,
+                    color = impact.required.toNeon(),
+                    success = impact.success,
+                    age = age,
+                    seed = impact.id.toInt(),
+                )
+                // "+N" (o la penalización) que sale del punto de impacto y se aleja apagándose.
+                val p = age / FLOAT_TEXT_SEC
+                if (impact.scoreDelta != 0 && p in 0f..1f) {
+                    val layout = measurer.measure(
+                        text = if (impact.scoreDelta > 0) "+${impact.scoreDelta}" else "${impact.scoreDelta}",
+                        style = deltaStyle,
+                    )
+                    val distance = radius * (1.75f + 0.5f * p)
+                    drawText(
+                        textLayoutResult = layout,
+                        color = (if (impact.success) impact.required.toNeon() else LogicColors.Error).copy(alpha = 1f - p * p),
+                        topLeft = Offset(
+                            center.x + cos(impact.angleRad) * distance - layout.size.width / 2f,
+                            center.y + sin(impact.angleRad) * distance - layout.size.height / 2f,
+                        ),
+                    )
                 }
             }
+
+            // Destello rojo por los bordes al chocar.
+            val crashAge = now - crashAt
+            if (crashAge in 0f..EDGE_FLASH_SEC) drawEdgeFlash(LogicColors.Error, 1f - crashAge / EDGE_FLASH_SEC)
         }
 
-        // HUD superior: marcador, absorbidos, choques y tiempo restante.
-        Column(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 18.dp, start = 20.dp, end = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+        HypergateHud(
+            score = game.score,
+            absorbed = game.absorbed,
+            crashed = game.crashed,
+            remainingMs = game.remainingMs,
+            timeFraction = timeFraction,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+
+        // Cómo se juega, solo hasta el primer impacto: enseña sin estorbar y se va en cuanto el
+        // jugador ya ha visto de qué va.
+        AnimatedVisibility(
+            visible = game.absorbed + game.crashed == 0 && state.status == GameStatus.RUNNING,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 64.dp, start = 24.dp, end = 24.dp),
         ) {
             Text(
-                text = "Hypergate",
-                style = MaterialTheme.typography.headlineSmall,
-                color = LogicColors.OnDark,
-                fontWeight = FontWeight.ExtraBold,
-            )
-            Text(
-                text = "Toca para igualar la polaridad del escudo al proyectil",
+                text = stringResource(Res.string.hypergate_hint),
                 style = MaterialTheme.typography.bodyMedium,
                 color = LogicColors.OnDarkMuted,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .background(LogicColors.SurfaceDark.copy(alpha = 0.80f), RoundedCornerShape(16.dp))
+                    .border(1.dp, CategoryPalette.Reflexes.copy(alpha = 0.30f), RoundedCornerShape(16.dp))
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
             )
-            Row(modifier = Modifier.padding(top = 8.dp)) {
-                HypergateHudPill(label = "Puntos", value = game.score.toString())
-                HypergateHudPill(label = "Absorbidos", value = game.absorbed.toString(), modifier = Modifier.padding(start = 8.dp))
-                HypergateHudPill(label = "Choques", value = game.crashed.toString(), modifier = Modifier.padding(start = 8.dp))
-                HypergateHudPill(label = "Tiempo", value = "${(game.remainingMs / 1000).coerceAtLeast(0)}s", modifier = Modifier.padding(start = 8.dp))
-            }
         }
 
         if (state.status == GameStatus.FINISHED && state.gameOver != null) {
@@ -278,106 +411,155 @@ fun HypergateScreen(graph: AppGraph, onExit: () -> Unit) {
     }
 }
 
-/** Color neón de un proyectil según la polaridad que lo absorbe (coherente con el escudo). */
-private fun projectileColor(required: ShieldState): Color =
-    if (required == ShieldState.A) LogicColors.NeonGreen else LogicColors.NeonCyan
+/**
+ * Un impacto reciente en el portal, deducido por la pantalla (ver el `SideEffect` de
+ * [HypergateScreen]).
+ *
+ * @property id el del proyectil; sirve de semilla para que cada impacto chispee distinto.
+ * @property angleRad ángulo polar por el que llegó: sitúa el efecto sobre el anillo.
+ * @property required polaridad del proyectil (su color).
+ * @property success absorbido (`true`) o choque.
+ * @property at instante del reloj de la pantalla en que ocurrió.
+ * @property scoreDelta puntos que sumó o restó, para el texto flotante; 0 = sin texto.
+ */
+private data class GateImpact(
+    val id: Long,
+    val angleRad: Float,
+    val required: ShieldState,
+    val success: Boolean,
+    val at: Float,
+    val scoreDelta: Int,
+)
 
 /**
- * Píldora del HUD (etiqueta + valor), mismo lenguaje visual que el resto de juegos.
- * `modifier` como primer parámetro opcional según la convención de componentes (§4).
+ * HUD superior: puntuación, cronómetro y contadores.
+ *
+ * La **puntuación** va grande y late al sumar. El **tiempo** es una barra que se vacía más los
+ * segundos en una píldora; en los últimos segundos ambos pasan a rojo y la píldora late, porque
+ * en una ronda de 30 s "se acaba" es la información que cambia cómo juegas. Absorbidos y choques
+ * son fichas pequeñas con icono. El título y la instrucción que antes ocupaban la cabecera se
+ * quitaron: el título está en la antesala y la instrucción es una pista que desaparece sola.
+ *
+ * Deja libre la esquina superior derecha (el botón de pausa vive ahí).
  */
 @Composable
-private fun HypergateHudPill(label: String, value: String, modifier: Modifier = Modifier) {
+private fun HypergateHud(
+    score: Int,
+    absorbed: Int,
+    crashed: Int,
+    remainingMs: Long,
+    timeFraction: Float,
+    modifier: Modifier = Modifier,
+) {
+    val accent = CategoryPalette.Reflexes
+    val seconds = ((remainingMs + 999) / 1000).coerceAtLeast(0)
+    val urgent = remainingMs <= URGENT_FROM_MS
+    val timeColor = if (urgent) LogicColors.Error else accent
+
+    val scorePop = remember { Animatable(1f) }
+    var lastScore by remember { mutableIntStateOf(score) }
+    LaunchedEffect(score) {
+        val grew = score > lastScore
+        lastScore = score
+        if (!grew) return@LaunchedEffect
+        scorePop.snapTo(1.2f)
+        scorePop.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
+    }
+    // Latido de la píldora del tiempo: una vez por segundo, solo en la recta final.
+    val timeBeat = remember { Animatable(1f) }
+    LaunchedEffect(seconds, urgent) {
+        if (!urgent) return@LaunchedEffect
+        timeBeat.snapTo(1.25f)
+        timeBeat.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
+    }
+
     Column(
-        modifier = modifier
-            .background(LogicColors.SurfaceDark.copy(alpha = 0.8f), shape = MaterialTheme.shapes.medium)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier.fillMaxWidth().padding(start = 20.dp, end = 76.dp, top = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(text = label, style = MaterialTheme.typography.labelSmall, color = LogicColors.OnDarkMuted)
-        Text(text = value, style = MaterialTheme.typography.labelLarge, color = LogicColors.OnDark)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                text = "$score",
+                style = MaterialTheme.typography.headlineLarge,
+                color = LogicColors.OnDark,
+                fontWeight = FontWeight.Black,
+                modifier = Modifier.weight(1f).graphicsLayer {
+                    scaleX = scorePop.value
+                    scaleY = scorePop.value
+                    // Crece desde la izquierda: el número está alineado a ese lado.
+                    transformOrigin = TransformOrigin(0f, 0.5f)
+                },
+            )
+            HudChip(KortexIcons.Shield, LogicColors.NeonGreen, "$absorbed", stringResource(Res.string.hypergate_hud_absorbed))
+            HudChip(KortexIcons.Close, LogicColors.Error, "$crashed", stringResource(Res.string.hypergate_hud_crashed))
+            Row(
+                modifier = Modifier
+                    .graphicsLayer {
+                        scaleX = timeBeat.value
+                        scaleY = timeBeat.value
+                    }
+                    .background(LogicColors.SurfaceDark.copy(alpha = 0.85f), CircleShape)
+                    .border(1.5.dp, timeColor.copy(alpha = 0.7f), CircleShape)
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                NeonIcon(
+                    icon = KortexIcons.Timer,
+                    tint = timeColor,
+                    size = 16.dp,
+                    glow = false,
+                    contentDescription = stringResource(Res.string.hypergate_hud_time),
+                )
+                Text(
+                    text = "$seconds",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (urgent) LogicColors.Error else LogicColors.OnDark,
+                    fontWeight = FontWeight.Black,
+                    // Ancho mínimo: de "10" a "9" la píldora no debe encoger y mover a sus vecinas.
+                    modifier = Modifier.widthIn(min = 18.dp),
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+        NeonProgressBar(progress = timeFraction, color = timeColor, modifier = Modifier.fillMaxWidth())
     }
 }
 
-/**
- * Dibuja el anillo del escudo dentro de su propia capa (que ya lleva el [Modifier.softGlow]).
- * El Canvas ocupa el diámetro exacto del escudo, así que el radio de dibujo es la mitad del lado.
- *
- * @param glowPulse factor 0.72..1 del latido ambiental, modula la opacidad del halo interno.
- */
-private fun DrawScope.drawShieldRing(color: Color, glowPulse: Float) {
-    val center = Offset(size.width * 0.5f, size.height * 0.5f)
-    val radius = size.minDimension * 0.5f
-
-    // Halo radial interno (además del softGlow de la capa) para el brillo neón "encendido".
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(color.copy(alpha = 0.22f * glowPulse), Color.Transparent),
-            center = center,
-            radius = radius * 1.9f,
-        ),
-        radius = radius * 1.4f,
-        center = center,
-    )
-    // Anillo (Stroke) del color activo.
-    drawCircle(
-        color = color.copy(alpha = 0.9f),
-        radius = radius * 0.94f,
-        center = center,
-        style = Stroke(width = radius * 0.09f),
-    )
-    // Núcleo oscuro para que el anillo respire sobre el fondo y no se "rellene" visualmente.
-    drawCircle(
-        color = LogicColors.BackgroundDark.copy(alpha = 0.85f),
-        radius = radius * 0.72f,
-        center = center,
-    )
+/** Ficha de contador del HUD: icono + cifra. El icono dice qué es sin gastar una etiqueta. */
+@Composable
+private fun HudChip(icon: ImageVector, tint: Color, value: String, description: String) {
+    Row(
+        modifier = Modifier
+            .background(LogicColors.SurfaceDark.copy(alpha = 0.85f), CircleShape)
+            .border(1.dp, LogicColors.SurfaceVariantDark, CircleShape)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        NeonIcon(icon = icon, tint = tint, size = 14.dp, glow = false, contentDescription = description)
+        Text(text = value, style = MaterialTheme.typography.labelLarge, color = LogicColors.OnDark, fontWeight = FontWeight.Black)
+    }
 }
 
-/**
- * Dibuja un proyectil como una **estela corta** con `StrokeCap.Round` apuntando hacia el centro,
- * más un glow radial y un núcleo brillante. La cola se sitúa "detrás" (hacia afuera) usando el
- * mismo ángulo polar: `cola = head + (cos, sin) * TRAIL_LEN`, dando sensación de movimiento sin
- * necesidad de guardar posiciones previas.
- */
-private fun DrawScope.drawNeonProjectile(
-    head: Offset,
-    angleRad: Float,
-    color: Color,
-    glowPulse: Float,
-) {
-    val tail = Offset(
-        x = head.x + cos(angleRad) * PROJECTILE_TRAIL_PX,
-        y = head.y + sin(angleRad) * PROJECTILE_TRAIL_PX,
-    )
-    // Glow radial alrededor de la cabeza (mismo lenguaje que los asteroides de Polarity).
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(color.copy(alpha = 0.4f * glowPulse), Color.Transparent),
-            center = head,
-            radius = PROJECTILE_HEAD_PX * 2.6f,
-        ),
-        radius = PROJECTILE_HEAD_PX * 1.9f,
-        center = head,
-    )
-    // Estela.
-    drawLine(
-        color = color,
-        start = tail,
-        end = head,
-        strokeWidth = PROJECTILE_HEAD_PX * 0.9f,
-        cap = StrokeCap.Round,
-    )
-    // Núcleo brillante en la punta.
-    drawCircle(color = color, radius = PROJECTILE_HEAD_PX * 0.55f, center = head)
-    drawCircle(color = Color.White.copy(alpha = 0.28f), radius = PROJECTILE_HEAD_PX * 0.2f, center = head)
-}
+/** Racha de aciertos a partir de la que el núcleo del portal enseña el multiplicador. */
+private const val STREAK_SHOWN_FROM = 2
 
-/** Escala mínima del micro-rebote del escudo al conmutar (hunde y vuelve con spring a 1). */
-private const val SHIELD_BOUNCE_MIN = 0.86f
+/** Sacudida de la escena al chocar: duración y amplitud inicial. */
+private const val SHAKE_SEC = 0.32f
+private val SHAKE_AMPLITUDE = 8.dp
 
-/** Longitud (px) de la estela del proyectil, hacia afuera desde su cabeza. */
-private const val PROJECTILE_TRAIL_PX = 34f
+/** Duración del destello rojo de borde al chocar (s). */
+private const val EDGE_FLASH_SEC = 0.4f
 
-/** Radio base (px) de la cabeza del proyectil; el glow y el núcleo se derivan de él. */
-private const val PROJECTILE_HEAD_PX = 13f
+/** Vida del "+N" flotante de un impacto (s). */
+private const val FLOAT_TEXT_SEC = 0.7f
+
+/** Distancia (en radios del portal) desde la que la marca de impacto empieza a avivarse. */
+private const val MARKER_RANGE = 5f
+
+/** Velocidad de referencia (px/s) con la que se normaliza la estela de un cometa. */
+private const val REFERENCE_SPEED_PX = 320f
+
+/** Milisegundos restantes desde los que el cronómetro pasa a rojo y late. */
+private const val URGENT_FROM_MS = 5_000L
