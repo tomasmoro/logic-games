@@ -648,4 +648,42 @@
     <string name="blockgrid_hud_lines">Líneas</string>
     <string name="blockgrid_hud_restart">Reiniciar partida</string>
 
+    <!-- Neon Sudoku Matrix: HUD y teclado -->
+    <string name="sudoku_hud_time">Tiempo de partida</string>
+    <string name="sudoku_hud_errors">Errores: %1$s de %2$s</string>
+    <string name="sudoku_key_notes">Notas</string>
+    <string name="sudoku_key_hint">Pista</string>
+    <string name="sudoku_key_notes_on">Modo notas activo</string>
+    <string name="sudoku_key_notes_off">Activar modo notas</string>
+    <string name="sudoku_key_erase">Borrar la celda seleccionada</string>
+    <string name="sudoku_key_hint_desc">Ver un anuncio y revelar el número correcto de la celda seleccionada</string>
+
+    <!-- Neon Grid 2048: HUD y overlay del hito -->
+    <string name="neon2048_hud_score">Puntos</string>
+    <string name="neon2048_hud_best">Récord</string>
+    <string name="neon2048_hud_max">Ficha más alta</string>
+    <string name="neon2048_hud_gain">+%1$s</string>
+    <string name="neon2048_win_title">¡2048!</string>
+    <string name="neon2048_win_body">Has llegado a la ficha objetivo. Puedes seguir jugando para batir tu récord.</string>
+    <string name="neon2048_win_continue">Seguir jugando</string>
+    <string name="neon2048_win_restart">Empezar de nuevo</string>
+
+    <!-- ============================================================
+         Neon Trees & Tents — antesala, HUD y tablero. El nombre del
+         juego NO va aquí (vive en GameCatalog, ver CLAUDE.md §10).
+         ============================================================ -->
+    <string name="tents_intro_description">El bosque está a oscuras. Planta una tienda de luz junto a cada árbol: ninguna puede tocar a otra, ni siquiera en diagonal, y cada fila y columna debe sumar exactamente su número.</string>
+    <!-- Cifra junto a la barra de progreso. %1$s = tiendas plantadas, %2$s = tiendas del nivel. -->
+    <string name="tents_hud_progress">%1$s/%2$s tiendas</string>
+    <string name="tents_board_generating">Sembrando el bosque…</string>
+    <string name="tents_gameover_headline">¡Campamento montado!</string>
+    <!-- Lecturas de accesibilidad de los contadores de borde.
+         %1$s = número de fila/columna (desde 1), %2$s = tiendas plantadas, %3$s = tiendas requeridas. -->
+    <string name="tents_counter_row_description">Fila %1$s: %2$s de %3$s tiendas</string>
+    <string name="tents_counter_column_description">Columna %1$s: %2$s de %3$s tiendas</string>
+
+    <!-- Neon Defuser (buscaminas): HUD -->
+    <string name="defuser_hud_time">Tiempo de partida</string>
+    <string name="defuser_hud_mines">Minas por marcar: %1$s</string>
+
 </resources>

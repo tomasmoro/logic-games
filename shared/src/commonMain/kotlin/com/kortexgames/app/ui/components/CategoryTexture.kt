@@ -54,6 +54,8 @@ import kotlin.math.sin
  *  - [GameMotif.QUANTUM_SPHERES] → esferas de luz de tamaños crecientes dentro del reactor.
  *  - [GameMotif.HEXA_ORBIT] → panal de hexágonos con un trazo de luz curvo atravesándolos.
  *  - [GameMotif.LIGHTS_GRID] → rejilla con la cruz de celdas que enciende un toque.
+ *  - [GameMotif.SHIKAKU_RECTS] → tablero en L partido en rectángulos con su número.
+ *  - [GameMotif.TENTS_FOREST] → mini tablero con pinos y sus tiendas ya colocadas.
  *  - Memoria → red neuronal ([NeuralCornerTexture]).
  *  - Cálculo Mental → símbolos matemáticos de distintos tamaños.
  *  - Pensamiento Lógico → piezas de rompecabezas.
@@ -158,6 +160,8 @@ private fun MotifTexture(
         GameMotif.LEGION_SWARM -> LegionSwarmTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
         GameMotif.HEXA_ORBIT -> HexaOrbitTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
         GameMotif.LIGHTS_GRID -> LightsGridTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
+        GameMotif.SHIKAKU_RECTS -> ShikakuRectsTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
+        GameMotif.TENTS_FOREST -> TentsForestTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
     }
 }
 
@@ -1678,5 +1682,125 @@ private fun LightsGridTexture(accent: Color, modifier: Modifier, intensity: Floa
                 )
             }
         }
+    }
+}
+
+/**
+ * Rectángulo del motivo de Shikaku, en celdas de una rejilla 4×4.
+ *
+ * @property clueCol columna de la celda que lleva el número.
+ * @property clueRow fila de la celda que lleva el número.
+ * @property lit `true` para el rectángulo destacado (halo + trazo pleno).
+ */
+private class ShikakuMotifRect(
+    val col: Int, val row: Int, val cols: Int, val rows: Int,
+    val clueCol: Int, val clueRow: Int, val lit: Boolean = false,
+) {
+    /** El número que muestra: su área, que es justo la regla del juego. */
+    val clue: String get() = (cols * rows).toString()
+}
+
+/**
+ * Partición del motivo de **Neon Shikaku Matrix**: una rejilla 4×4 a la que le faltan
+ * las dos celdas de arriba a la derecha (figura en L, 14 celdas), dividida en cuatro
+ * rectángulos de áreas 2 + 3 + 6 + 3. Es una solución REAL de un tablero del juego,
+ * no un adorno: cada número coincide con el área de su rectángulo, así la miniatura
+ * enseña la regla de un vistazo (mismo criterio que [GRID_SWITCH_LIT]).
+ */
+private val SHIKAKU_MOTIF_RECTS = listOf(
+    ShikakuMotifRect(col = 0, row = 0, cols = 2, rows = 1, clueCol = 0, clueRow = 0),
+    ShikakuMotifRect(col = 0, row = 1, cols = 1, rows = 3, clueCol = 0, clueRow = 2),
+    ShikakuMotifRect(col = 1, row = 1, cols = 3, rows = 2, clueCol = 2, clueRow = 1, lit = true),
+    ShikakuMotifRect(col = 1, row = 3, cols = 3, rows = 1, clueCol = 3, clueRow = 3),
+)
+
+/**
+ * **Neon Shikaku Matrix**: los rectángulos de [SHIKAKU_MOTIF_RECTS] como tubos de neón
+ * huecos sobre una rejilla tenue, con el de área 6 encendido. Mismo lenguaje visual que
+ * [LightsGridTexture] (halo + contorno, sin relleno sólido) y misma colocación, para que
+ * las tarjetas de rejilla del catálogo se lean como una familia.
+ */
+@Composable
+private fun ShikakuRectsTexture(accent: Color, modifier: Modifier, intensity: Float, centered: Boolean = false) {
+    val measurer = rememberTextMeasurer()
+    Canvas(modifier = modifier) {
+        val n = 4
+        val cell = size.height / 5f
+        val gridSize = n * cell
+        val originX = if (centered) (size.width - gridSize) / 2f else size.width - gridSize + cell * 0.4f
+        val originY = (size.height - gridSize) / 2f
+        val inset = cell * 0.09f
+        val stroke = 1.5f.dp.toPx()
+        SHIKAKU_MOTIF_RECTS.forEach { rect ->
+            // Divisiones internas tenues: recuerdan que el rectángulo está hecho de celdas,
+            // que es de donde sale su número.
+            val lineColor = accent.copy(alpha = 0.14f * intensity)
+            for (c in 1 until rect.cols) {
+                val x = originX + (rect.col + c) * cell
+                drawLine(lineColor, Offset(x, originY + rect.row * cell + inset * 2), Offset(x, originY + (rect.row + rect.rows) * cell - inset * 2), stroke * 0.7f)
+            }
+            for (r in 1 until rect.rows) {
+                val y = originY + (rect.row + r) * cell
+                drawLine(lineColor, Offset(originX + rect.col * cell + inset * 2, y), Offset(originX + (rect.col + rect.cols) * cell - inset * 2, y), stroke * 0.7f)
+            }
+
+            val tl = Offset(originX + rect.col * cell + inset, originY + rect.row * cell + inset)
+            val rectSize = Size(rect.cols * cell - inset * 2, rect.rows * cell - inset * 2)
+            val radius = CornerRadius(cell * 0.22f)
+            if (rect.lit) {
+                drawRoundRect(
+                    color = accent.copy(alpha = 0.26f * intensity),
+                    topLeft = tl, size = rectSize, cornerRadius = radius,
+                )
+            }
+            val alpha = (if (rect.lit) 0.95f else 0.42f) * intensity
+            drawRoundRect(
+                color = accent.copy(alpha = alpha),
+                topLeft = tl, size = rectSize, cornerRadius = radius, style = Stroke(width = stroke),
+            )
+            drawGlyph(
+                measurer, rect.clue,
+                originX + (rect.clueCol + 0.5f) * cell,
+                originY + (rect.clueRow + 0.5f) * cell,
+                (cell * 0.5f / density).coerceAtLeast(10f),
+                accent.copy(alpha = alpha),
+            )
+        }
+    }
+}
+
+/**
+ * Árboles y tiendas del motivo de **Neon Trees & Tents**, como `columna to fila` en una
+ * rejilla 4×4. Es una solución REAL de un tablero del juego (cada tienda pegada a su árbol y
+ * ninguna tocando a otra), no un adorno: mismo criterio que [SHIKAKU_MOTIF_RECTS].
+ */
+private val TENTS_MOTIF_TREES = listOf(1 to 0, 3 to 1, 0 to 2)
+private val TENTS_MOTIF_TENTS = listOf(0 to 0, 3 to 2, 0 to 3)
+
+/**
+ * **Neon Trees & Tents**: rejilla tenue con los pinos de [TENTS_MOTIF_TREES] en reposo y las
+ * tiendas de [TENTS_MOTIF_TENTS] encendidas. Usa los mismos glifos que el tablero
+ * ([drawNeonPine] / [drawNeonTent]) y la misma colocación que [ShikakuRectsTexture], para que
+ * las tarjetas de rejilla del catálogo se lean como una familia.
+ */
+@Composable
+private fun TentsForestTexture(accent: Color, modifier: Modifier, intensity: Float, centered: Boolean = false) {
+    Canvas(modifier = modifier) {
+        val n = 4
+        val cell = size.height / 5f
+        val gridSize = n * cell
+        val originX = if (centered) (size.width - gridSize) / 2f else size.width - gridSize + cell * 0.4f
+        val originY = (size.height - gridSize) / 2f
+        val lineColor = accent.copy(alpha = 0.16f * intensity)
+        val stroke = 1.dp.toPx()
+        for (i in 0..n) {
+            val offset = i * cell
+            drawLine(lineColor, Offset(originX + offset, originY), Offset(originX + offset, originY + gridSize), stroke)
+            drawLine(lineColor, Offset(originX, originY + offset), Offset(originX + gridSize, originY + offset), stroke)
+        }
+        fun centerOf(cellAt: Pair<Int, Int>) =
+            Offset(originX + (cellAt.first + 0.5f) * cell, originY + (cellAt.second + 0.5f) * cell)
+        TENTS_MOTIF_TREES.forEach { drawNeonPine(centerOf(it), cell, accent, glow = 0f, alpha = 0.5f * intensity) }
+        TENTS_MOTIF_TENTS.forEach { drawNeonTent(centerOf(it), cell, accent, glow = 0.5f, alpha = 0.95f * intensity) }
     }
 }

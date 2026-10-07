@@ -170,6 +170,13 @@ object GameIds {
      * los demás ids del catálogo (mismo criterio anti-transposición que [QUANTUM_MERGE]).
      */
     const val NEON_SHIKAKU = "604aae7c-48c9-459d-a5ef-79c231a0d7b9"
+
+    /**
+     * Neon Trees & Tents / plantar una tienda junto a cada árbol sin que se toquen
+     * (categoría "logic" / Pensamiento Lógico). UUID v4 aleatorio con prefijo distinto a todos
+     * los demás ids del catálogo (mismo criterio anti-transposición que [QUANTUM_MERGE]).
+     */
+    const val NEON_TENTS = "0240cbed-e818-446d-8a1c-e592a2617a85"
 }
 
 /**
@@ -298,6 +305,19 @@ enum class GameMotif {
      * en la miniatura, en vez de un patrón de luces arbitrario.
      */
     LIGHTS_GRID,
+
+    /**
+     * Neon Shikaku Matrix: tablero en L ya partido en rectángulos de neón, cada uno con su
+     * número (= su área). Enseña a la vez la regla y lo que distingue al juego: la figura
+     * irregular.
+     */
+    SHIKAKU_RECTS,
+
+    /**
+     * Neon Trees & Tents: mini tablero con pinos y la tienda que le toca a cada uno, ya
+     * colocadas sin tocarse — la regla del juego resuelta en la miniatura.
+     */
+    TENTS_FOREST,
 }
 
 /**
@@ -359,6 +379,11 @@ object GameCatalog {
         GameInfo(GameIds.NEON_LEGION, "Neon Legion", GameCategory.MENTAL_SPEED, playable = true, motif = GameMotif.LEGION_SWARM, isNew = true),
         GameInfo(GameIds.NEON_DEFUSER, "Buscaminas", GameCategory.ATTENTION, playable = true, motif = GameMotif.MINESWEEPER),
         GameInfo(GameIds.HEXA_ORBIT, "Hexa Orbit", GameCategory.MENTAL_SPEED, playable = true, motif = GameMotif.HEXA_ORBIT, isNew = true),
+        // isNew = true: la incorporación más reciente al catálogo (ver GameInfo.isNew).
+        GameInfo(GameIds.NEON_SHIKAKU, "Neon Shikaku Matrix", GameCategory.SPATIAL, playable = true, motif = GameMotif.SHIKAKU_RECTS, isNew = true),
+        // published = false: recién integrado, a la espera de probarlo en dispositivo. Al
+        // publicarlo basta con quitar el flag (su seed de Supabase es la migración 0063).
+        GameInfo(GameIds.NEON_TENTS, "Neon Trees & Tents", GameCategory.LOGIC, playable = true, motif = GameMotif.TENTS_FOREST, isNew = true),
         GameInfo(GameIds.BUBBLE_MATH, "Burbujas de Cálculo", GameCategory.MENTAL_MATH, playable = true, motif = GameMotif.MATH_BUBBLES),
         // Primer juego de Reconocimiento de Patrones del catálogo: la categoría deja de
         // estar vacía.
@@ -380,8 +405,6 @@ object GameCatalog {
         GameInfo(GameIds.NEON_CIRCUIT, "Conectores", GameCategory.PROBLEM_SOLVING, playable = true, motif = GameMotif.CIRCUIT_FLOW),
         GameInfo(GameIds.HYPERGATE, "Hypergate", GameCategory.REFLEXES, playable = true, motif = GameMotif.HYPERGATE),
         GameInfo(GameIds.NEON_LINE, "Línea Neón", GameCategory.PROBLEM_SOLVING, playable = true, motif = GameMotif.SINGLE_LINE),
-        // Sin motivo de tarjeta propio todavía: usa la textura genérica de su categoría.
-        GameInfo(GameIds.NEON_SHIKAKU, "Neon Shikaku Matrix", GameCategory.SPATIAL, playable = true),
     )
 
     /**

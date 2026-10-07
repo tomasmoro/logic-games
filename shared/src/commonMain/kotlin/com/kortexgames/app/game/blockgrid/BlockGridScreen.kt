@@ -7,6 +7,7 @@ import kortexgames.shared.generated.resources.blockgrid_hud_lines
 import kortexgames.shared.generated.resources.Res
 import com.kortexgames.app.ui.components.rememberBoardClock
 import com.kortexgames.app.ui.components.drawNeonBoardPlate
+import com.kortexgames.app.ui.components.drawNeonGem
 import com.kortexgames.app.ui.components.NeonIcon
 import com.kortexgames.app.ui.components.BoardClock
 import androidx.compose.ui.unit.sp
@@ -1291,42 +1292,14 @@ private fun DrawScope.drawBlock(
     scale: Float = 1f,
     glowBoost: Boolean = false,
 ) {
-    if (alpha <= 0f || scale <= 0f) return
-    val side = cellPx * 0.80f * scale
-    val center = topLeft + Offset(cellPx / 2f, cellPx / 2f)
-    val origin = Offset(center.x - side / 2f, center.y - side / 2f)
-    val corner = CornerRadius(cellPx * 0.18f * scale)
-    drawRoundRect(
-        brush = Brush.verticalGradient(
-            0f to lerp(accent, Color.White, 0.32f),
-            0.45f to accent,
-            1f to lerp(accent, LogicColors.BackgroundDark, 0.48f),
-            startY = origin.y,
-            endY = origin.y + side,
-        ),
-        topLeft = origin,
-        size = Size(side, side),
-        cornerRadius = corner,
-        alpha = alpha,
-    )
-    // Brillo de la cara superior: una franja clara que le da el "pulido" de gema.
-    drawRoundRect(
-        color = Color.White.copy(alpha = 0.26f * alpha),
-        topLeft = Offset(origin.x + side * 0.14f, origin.y + side * 0.12f),
-        size = Size(side * 0.72f, side * 0.20f),
-        cornerRadius = CornerRadius(side * 0.10f),
-    )
-    drawNeonTile(
-        baseColor = accent,
-        activeAmt = if (glowBoost) 0.95f else 0.42f,
-        cornerRadius = (cellPx * 0.22f).toDp(),
-        sparks = false,
-        baseMargin = (cellPx * 0.07f).toDp(),
-        strokeScale = 0.7f,
-        rectTopLeft = topLeft,
-        rectSize = Size(cellPx, cellPx),
+    // El cuerpo y el borde salen del kit compartido (los mismos que Neon 2048).
+    drawNeonGem(
+        topLeft = topLeft,
+        cellPx = cellPx,
+        accent = accent,
         alpha = alpha,
         scale = scale,
+        glow = if (glowBoost) 0.95f else 0.42f,
     )
 }
 

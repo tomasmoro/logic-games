@@ -2,7 +2,6 @@ package com.kortexgames.app.game
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BubbleChart
-import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.GridOn
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.RocketLaunch
@@ -677,15 +676,12 @@ object GameHelpContent {
         ),
     )
 
-    /**
-     * Neon Shikaku Matrix / partición en rectángulos (Visión Espacial). Usa el icono como
-     * arte porque el juego aún no tiene motivo propio de tarjeta.
-     */
+    /** Neon Shikaku Matrix / partición en rectángulos (Visión Espacial). */
     val shikaku = GameHelp(
         title = "Neon Shikaku Matrix",
         summary = "Divide el tablero en rectángulos: cada uno con un solo número, igual a su área.",
         accent = CategoryPalette.SpatialVision,
-        art = iconHelpArt(Icons.Rounded.Dashboard),
+        art = motifHelpArt(GameMotif.SHIKAKU_RECTS),
         steps = listOf(
             HelpStep(
                 icon = Icons.Rounded.TouchApp,
@@ -712,6 +708,41 @@ object GameHelpContent {
             "Empieza por los números primos: un 5 o un 7 solo pueden ser una tira.",
             "Las celdas pegadas a un hueco suelen tener un único rectángulo que las alcance.",
             "Corregir y reiniciar restan puntos: piensa antes de trazar.",
+        ),
+    )
+
+    /** Neon Trees & Tents / una tienda por árbol sin que se toquen (Pensamiento Lógico). */
+    val tents = GameHelp(
+        title = "Neon Trees & Tents",
+        summary = "Planta una tienda junto a cada árbol sin que dos tiendas se toquen.",
+        accent = CategoryPalette.Logic,
+        art = motifHelpArt(GameMotif.TENTS_FOREST),
+        steps = listOf(
+            HelpStep(
+                icon = Icons.Rounded.TouchApp,
+                title = "Toca para marcar",
+                text = "Un toque marca pasto (aquí no va tienda), otro planta la tienda y un tercero limpia la casilla. Arrastra para sembrar pasto de corrido.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Check,
+                title = "Una tienda por árbol",
+                text = "Cada árbol necesita su propia tienda pegada arriba, abajo, a la izquierda o a la derecha. Dos árboles no pueden compartir tienda.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Warning,
+                title = "Las tiendas no se tocan",
+                text = "Ni de lado ni en diagonal. Las que se tocan parpadean en rojo.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Pencil,
+                title = "Cuadra los números",
+                text = "El número de cada fila y columna dice cuántas tiendas lleva. Se enciende en verde al clavarlo y en rojo si te pasas.",
+            ),
+        ),
+        tips = listOf(
+            "Empieza por las filas y columnas con 0: todas sus casillas son pasto.",
+            "Una casilla sin ningún árbol al lado nunca lleva tienda.",
+            "Quitar una tienda ya plantada resta puntos; el pasto es gratis, úsalo para pensar.",
         ),
     )
 }

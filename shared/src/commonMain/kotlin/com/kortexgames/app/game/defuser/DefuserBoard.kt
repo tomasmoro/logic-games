@@ -9,12 +9,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -25,6 +30,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.inset
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -41,7 +48,11 @@ import com.kortexgames.app.core.theme.CategoryPalette
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.ui.components.KortexIcons
 import com.kortexgames.app.ui.components.NeonIcon
+import com.kortexgames.app.ui.components.boardCascade
+import com.kortexgames.app.ui.components.drawNeonBoardPlate
 import com.kortexgames.app.ui.components.drawNeonTile
+import com.kortexgames.app.ui.components.rememberBoardClock
+import kotlinx.coroutines.delay
 import com.kortexgames.app.ui.components.softGlow
 import kotlin.math.PI
 import kotlin.math.cos
@@ -59,6 +70,13 @@ import kotlin.random.Random
  * coordenada por aritmética, en vez de un `clickable` por celda. Las banderas se
  * superponen como iconos vectoriales para poder darles el halo neón con [softGlow]
  * (§9.5: los iconos de UI nunca son geometría cuando existe el vectorial adecuado).
+ *
+ * ## Relieve
+ * El panel se lee por **altura**, no solo por color: una celda oculta es una tecla en relieve
+ * (cara + repisa) que se hunde bajo el dedo, y una celda revelada es un hueco oscuro. Así "lo
+ * que falta por tocar" y "lo ya despejado" se distinguen de un vistazo aunque el panel sea
+ * denso, sin necesidad de un borde de neón por celda (§9.7). Todo descansa sobre la placa
+ * compartida del kit de tableros ([drawNeonBoardPlate]).
  *
  * ## Geometría
  * Todas las celdas son cuadrados del mismo lado `cell`, calculado para que el panel
@@ -97,14 +115,47 @@ fun DefuserBoard(
     val measurer = rememberTextMeasurer()
 
     BoxWithConstraints(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        // La placa asoma [PlatePadding] alrededor de la rejilla: ese marco se descuenta del
+        // espacio disponible antes de repartir las celdas.
+        val platePad = with(density) { PlatePadding.toPx() }
         val availW = with(density) { maxWidth.toPx() }
         val availH = with(density) { maxHeight.toPx() }
         val maxCellPx = with(density) { BoardMaxCellSize.toPx() }
         val board = state.board
 
-        val cell = min(min(availW / board.columns, availH / board.rows), maxCellPx)
+        val cell = min(
+            min((availW - platePad * 2f) / board.columns, (availH - platePad * 2f) / board.rows),
+            maxCellPx,
+        )
         val originX = (availW - cell * board.columns) / 2f
         val originY = (availH - cell * board.rows) / 2f
+
+        // --- Reloj de ambiente ---------------------------------------------------
+        // Solo corre mientras hay algo que animar con él (la entrada en cascada o el pulso
+        // del escáner). El resto de la partida el panel es estático y no debe redibujarse
+        // a 60 fps para nada: es un juego de pensar con la pantalla quieta.
+        var introActive by remember { mutableStateOf(true) }
+        val clock = rememberBoardClock(running = introActive || state.scanning)
+        var introAt by remember { mutableFloatStateOf(0f) }
+        // "Panel intacto" = partida nueva (también tras reiniciar o cambiar de dificultad):
+        // es cuando las teclas entran en cascada. Al retomar una partida guardada el panel
+        // no está intacto, pero la primera composición también la dispara: es la entrada
+        // a la pantalla.
+        val untouched = board.cells.none { it.state != MineCellState.HIDDEN }
+        val firstEntry = remember { booleanArrayOf(true) }
+        LaunchedEffect(untouched, board.columns, board.rows) {
+            // El primer toque también cambia `untouched` (a false): eso NO es una entrada.
+            if (!untouched && !firstEntry[0]) return@LaunchedEffect
+            firstEntry[0] = false
+            introAt = clock.peek()
+            introActive = true
+            delay(introDurationMs(board.rows, board.columns))
+            introActive = false
+        }
+
+        // Celda bajo el dedo mientras dura la pulsación: su tecla se hunde (§9.4, feedback
+        // táctil inmediato, antes incluso de saber si será tap o pulsación larga).
+        var pressed by remember { mutableStateOf<CellPosition?>(null) }
 
         // Tamaño del icono de escudo, derivado del lado de celda para que crezca y
         // encoja con el panel.
@@ -131,6 +182,11 @@ fun DefuserBoard(
                     // lee la geometría vigente de `geometry` en cada toque.
                     .pointerInput(Unit) {
                         detectTapGestures(
+                            onPress = { pos ->
+                                pressed = geometry.positionAt(pos)
+                                tryAwaitRelease()
+                                pressed = null
+                            },
                             onTap = { pos ->
                                 geometry.positionAt(pos)?.let { currentOnReveal(it) }
                             },
@@ -140,18 +196,48 @@ fun DefuserBoard(
                         )
                     },
             ) {
+                // Placa: la rejilla más su marco. `inset` recoloca y redimensiona el
+                // DrawScope para que la función del kit (que pinta a tamaño completo) caiga
+                // justo alrededor del panel.
+                inset(
+                    left = originX - platePad,
+                    top = originY - platePad,
+                    right = size.width - (originX + cell * board.columns) - platePad,
+                    bottom = size.height - (originY + cell * board.rows) - platePad,
+                ) {
+                    drawNeonBoardPlate(accent = CategoryPalette.Attention, corner = PlateCorner)
+                }
+
+                // Lecturas del reloj condicionadas: si no hay nada que animar, el dibujo no
+                // se suscribe y el panel no se invalida por frame.
+                val introElapsed = if (introActive) clock.seconds - introAt else Float.MAX_VALUE
+                val scanTime = if (state.scanning) clock.seconds else -1f
+
                 board.cells.forEach { mineCell ->
-                    drawCell(
-                        cell = mineCell,
-                        topLeft = Offset(
-                            x = originX + mineCell.position.col * cell,
-                            y = originY + mineCell.position.row * cell,
-                        ),
-                        side = cell,
-                        revealAlpha = revealAlphaFor(mineCell),
-                        detonateProgress = detonateProgress,
-                        measurer = measurer,
+                    val position = mineCell.position
+                    val entry = if (introActive) boardCascade(position.row, position.col, introElapsed) else 1f
+                    if (entry <= 0f) return@forEach
+                    val topLeft = Offset(
+                        x = originX + position.col * cell,
+                        y = originY + position.row * cell,
                     )
+                    val paint: DrawScope.() -> Unit = {
+                        drawCell(
+                            cell = mineCell,
+                            topLeft = topLeft,
+                            side = cell,
+                            revealAlpha = revealAlphaFor(mineCell),
+                            detonateProgress = detonateProgress,
+                            measurer = measurer,
+                            pressed = pressed == position,
+                            scanPulse = if (scanTime < 0f) 0f else scanPulse(position, scanTime),
+                        )
+                    }
+                    if (entry == 1f) {
+                        paint()
+                    } else {
+                        scale(entry, entry, pivot = topLeft + Offset(cell / 2f, cell / 2f)) { paint() }
+                    }
                 }
             }
 
@@ -202,15 +288,22 @@ private fun FlagMarker(sizeDp: Dp, modifier: Modifier = Modifier) {
     }
     Box(
         modifier = modifier
+            // Tamaño FIJO igual al del icono: quien nos coloca resta medio icono para
+            // centrarnos en la celda. Sin fijarlo, la caja heredaba el tamaño del halo de
+            // [NeonIcon] (1,9× el icono) y el escudo quedaba corrido abajo a la derecha.
+            .size(sizeDp)
             .graphicsLayer {
                 scaleX = pop.value
                 scaleY = pop.value
             }
             .softGlow(color = LogicColors.Violet, durationMillis = FLAG_GLOW_MS),
+        contentAlignment = Alignment.Center,
     ) {
         NeonIcon(
             icon = KortexIcons.Shield,
             tint = LogicColors.Violet,
+            // `unbounded`: el halo puede desbordar la caja sin agrandarla ni descentrarla.
+            modifier = Modifier.wrapContentSize(unbounded = true),
             size = sizeDp,
             glow = true,
             contentDescription = "Celda marcada con escudo",
@@ -265,6 +358,9 @@ private data class BoardGeometry(
  *
  * @param topLeft esquina superior izquierda del cuadrado de la celda.
  * @param side lado del cuadrado en píxeles.
+ * @param pressed el dedo está sobre esta celda: si está oculta, su tecla se dibuja hundida.
+ * @param scanPulse 0..1: encendido del borde de una celda oculta en modo escáner (son las
+ *   elegibles); 0 fuera de ese modo.
  */
 private fun DrawScope.drawCell(
     cell: MineCell,
@@ -273,9 +369,11 @@ private fun DrawScope.drawCell(
     revealAlpha: Float,
     detonateProgress: Float,
     measurer: TextMeasurer,
+    pressed: Boolean,
+    scanPulse: Float,
 ) {
     when (cell.state) {
-        MineCellState.HIDDEN -> drawHiddenTile(topLeft, side)
+        MineCellState.HIDDEN -> drawHiddenTile(topLeft, side, pressed = pressed, scanPulse = scanPulse)
 
         // Flagged: el tile "blindado" con el tubo neón violeta. Se usa el componente
         // compartido drawNeonTile —con rectTopLeft/rectSize, pensados justo para
@@ -283,7 +381,9 @@ private fun DrawScope.drawCell(
         // del resto de la app (§9.7). El icono de escudo lo superpone la capa de
         // composables.
         MineCellState.FLAGGED -> {
-            drawTileFill(topLeft, side, LogicColors.SurfaceVariantDark)
+            // Misma tecla en relieve que una oculta, teñida de violeta: una celda marcada
+            // sigue SIN tocar, solo que blindada.
+            drawHiddenTile(topLeft, side, pressed = pressed, scanPulse = 0f, tint = LogicColors.Violet)
             drawNeonTile(
                 baseColor = LogicColors.Violet,
                 activeAmt = FLAG_TILE_AMT,
@@ -305,13 +405,88 @@ private fun DrawScope.drawCell(
     }
 }
 
-/** Celda oculta: relleno [LogicColors.SurfaceVariantDark] y contorno sutil del
- *  acento de la categoría. Sin tubo neón pleno por celda: §9.7 advierte que un
- *  borde intenso repetido sobre un panel denso compite con el contenido. */
-private fun DrawScope.drawHiddenTile(topLeft: Offset, side: Float) {
-    drawTileFill(topLeft, side, LogicColors.SurfaceVariantDark)
-    drawTileStroke(topLeft, side, CategoryPalette.Attention.copy(alpha = HIDDEN_BORDER_ALPHA))
+/**
+ * Celda oculta: una **tecla en relieve**. Repisa inferior (la "altura"), cara con degradado y
+ * una línea de brillo arriba; al pulsarla la cara baja sobre la repisa y se enciende.
+ *
+ * Sin tubo neón pleno por celda: §9.7 advierte que un borde intenso repetido sobre un panel
+ * denso compite con el contenido. El relieve hace el trabajo y el acento queda en un filo fino.
+ *
+ * @param pressed el dedo está encima: cara hundida y filo encendido.
+ * @param scanPulse 0..1: pulso del filo en modo escáner.
+ * @param tint color del filo y del baño de la cara (el acento del juego, o violeta si la
+ *   celda lleva escudo).
+ */
+private fun DrawScope.drawHiddenTile(
+    topLeft: Offset,
+    side: Float,
+    pressed: Boolean = false,
+    scanPulse: Float = 0f,
+    tint: Color = CategoryPalette.Attention,
+) {
+    val margin = TileMargin.toPx()
+    // La repisa escala con la celda: en el panel grande (celdas pequeñas) no debe comerse la cara.
+    val ledge = side * LEDGE_FRACTION
+    val corner = CornerRadius(CellCorner.toPx(), CellCorner.toPx())
+    val faceSize = Size(side - margin * 2f, side - margin * 2f - ledge)
+    val base = Offset(topLeft.x + margin, topLeft.y + margin)
+
+    drawRoundRect(
+        color = lerp(LogicColors.BackgroundDark, tint, 0.24f),
+        topLeft = Offset(base.x, base.y + ledge),
+        size = faceSize,
+        cornerRadius = corner,
+    )
+    val faceTop = if (pressed) Offset(base.x, base.y + ledge) else base
+    val lit = if (pressed) 0.30f else 0.10f + 0.14f * scanPulse
+    drawRoundRect(
+        brush = Brush.verticalGradient(
+            colors = listOf(
+                lerp(lerp(LogicColors.SurfaceVariantDark, Color.White, 0.10f), tint, lit),
+                lerp(LogicColors.SurfaceVariantDark, tint, lit * 0.5f),
+            ),
+            startY = faceTop.y,
+            endY = faceTop.y + faceSize.height,
+        ),
+        topLeft = faceTop,
+        size = faceSize,
+        cornerRadius = corner,
+    )
+    // Brillo del canto superior: lo que hace que la cara se lea abombada y no plana.
+    if (!pressed) {
+        drawLine(
+            color = Color.White.copy(alpha = 0.16f),
+            start = Offset(faceTop.x + corner.x, faceTop.y + 1.dp.toPx()),
+            end = Offset(faceTop.x + faceSize.width - corner.x, faceTop.y + 1.dp.toPx()),
+            strokeWidth = 1.dp.toPx(),
+            cap = StrokeCap.Round,
+        )
+    }
+    drawRoundRect(
+        color = tint.copy(alpha = if (pressed) 0.9f else HIDDEN_BORDER_ALPHA + 0.55f * scanPulse),
+        topLeft = faceTop,
+        size = faceSize,
+        cornerRadius = corner,
+        style = Stroke(width = BORDER_DP.dp.toPx()),
+    )
 }
+
+/**
+ * Pulso de una celda oculta en **modo escáner**: una onda diagonal que recorre el panel, de
+ * modo que las celdas elegibles laten por turnos en vez de todas a la vez (un panel entero
+ * parpadeando al unísono cansa; la onda guía la vista y se lee como un barrido de radar).
+ */
+private fun scanPulse(position: CellPosition, time: Float): Float {
+    val phase = time * 2f * PI.toFloat() / SCAN_PULSE_SEC - (position.row + position.col) * SCAN_WAVE_STEP
+    return 0.5f + 0.5f * sin(phase)
+}
+
+/**
+ * Cuánto dura la entrada en cascada de un panel de [rows] × [columns] (ms): la última diagonal
+ * arranca tras `(rows + columns)` pasos de `boardCascade` (35 ms) y tarda 300 ms en asentarse.
+ * Pasado ese tiempo el panel deja de leer el reloj.
+ */
+private fun introDurationMs(rows: Int, columns: Int): Long = (rows + columns) * 35L + 400L
 
 /**
  * Celda segura revelada: un "hueco" oscuro en el panel con su número de peligro.
@@ -349,6 +524,15 @@ private fun DrawScope.drawRevealedSafe(
     }
     // Contorno interior tenue para que el hueco no sea un vacío plano.
     drawTileStroke(topLeft, side, CategoryPalette.Attention.copy(alpha = REVEALED_BORDER_ALPHA * a))
+    // Sombra del canto superior: el hueco queda POR DEBAJO de las teclas vecinas.
+    val margin = TileMargin.toPx()
+    drawLine(
+        color = Color.Black.copy(alpha = 0.40f * a),
+        start = Offset(topLeft.x + margin + CellCorner.toPx(), topLeft.y + margin + 1.dp.toPx()),
+        end = Offset(topLeft.x + side - margin - CellCorner.toPx(), topLeft.y + margin + 1.dp.toPx()),
+        strokeWidth = 1.5.dp.toPx(),
+        cap = StrokeCap.Round,
+    )
 
     // Número de peligro 1..8 con la progresión de color de [dangerColor].
     if (cell.adjacentMines > 0) {
@@ -361,6 +545,17 @@ private fun DrawScope.drawRevealedSafe(
             ),
         )
         val center = Offset(topLeft.x + side / 2f, topLeft.y + side / 2f)
+        // Halo del color de peligro bajo la cifra: el número "emite" sobre el hueco oscuro
+        // y el riesgo se lee por color incluso de reojo.
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(dangerColor(cell.adjacentMines).copy(alpha = DIGIT_GLOW_ALPHA * a), Color.Transparent),
+                center = center,
+                radius = side * 0.46f,
+            ),
+            radius = side * 0.46f,
+            center = center,
+        )
         // El dígito entra sobredimensionado y se asienta: un "golpe" de número que
         // acompaña al pop del hueco. Se escala con la transformación del DrawScope
         // porque `drawText` no admite escala propia.
@@ -581,6 +776,25 @@ private fun dangerColor(count: Int): Color = when (count) {
 
 /** Lado máximo de celda: evita celdas gigantes en tablet. */
 private val BoardMaxCellSize = 46.dp
+
+/** Marco de la placa alrededor de la rejilla. */
+private val PlatePadding = 8.dp
+
+/** Radio de esquina de la placa. Menor que el de otros tableros: las celdas son pequeñas y
+ *  un radio de 24 dp dejaría las de las esquinas asomando fuera de la curva. */
+private val PlateCorner = 14.dp
+
+/** Altura de la repisa de una tecla oculta, como fracción del lado de celda. */
+private const val LEDGE_FRACTION = 0.085f
+
+/** Opacidad del halo de color bajo el número de peligro. */
+private const val DIGIT_GLOW_ALPHA = 0.20f
+
+/** Periodo del pulso de las celdas elegibles en modo escáner (s). */
+private const val SCAN_PULSE_SEC = 1.6f
+
+/** Desfase del pulso del escáner entre una diagonal y la siguiente (rad). */
+private const val SCAN_WAVE_STEP = 0.55f
 
 /** Radio de esquina de una celda (escala `small` de §9.6, a escala de celda). */
 private val CellCorner = 7.dp

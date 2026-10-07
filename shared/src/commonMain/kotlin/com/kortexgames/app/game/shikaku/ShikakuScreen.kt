@@ -67,6 +67,7 @@ import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.di.AppGraph
 import com.kortexgames.app.game.GameHelpContent
 import com.kortexgames.app.game.GameIds
+import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.LeveledGamePhase
 import com.kortexgames.app.ui.components.GameIntroScreen
@@ -163,6 +164,7 @@ fun ShikakuScreen(graph: AppGraph, onExit: () -> Unit) {
         GameIntroScreen(
             help = GameHelpContent.shikaku,
             title = GAME_TITLE,
+            motif = GameMotif.SHIKAKU_RECTS,
             description = stringResource(Res.string.shikaku_intro_description),
             accent = CategoryPalette.SpatialVision,
             icon = Icons.Rounded.Dashboard,

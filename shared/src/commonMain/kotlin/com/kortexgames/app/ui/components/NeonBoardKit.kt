@@ -188,6 +188,73 @@ fun DrawScope.drawNeonBoardPlate(accent: Color, lit: Float = 0f, litColor: Color
 }
 
 /**
+ * Una pieza **maciza** de tablero ("gema"): cuerpo con degradado, franja de brillo en la cara
+ * superior y el tubo de neón compartido ([drawNeonTile], §9.7) rematando el borde.
+ *
+ * Nació en Bloques Neón y la usa también Neon 2048: en ambos el tablero se llena de piezas, y
+ * con solo el contorno hueco costaba distinguir de un vistazo lo ocupado de lo vacío. Vive aquí
+ * para que las dos compartan proporciones y un ajuste de aspecto se haga una sola vez.
+ *
+ * @param topLeft esquina de la **celda** que ocupa la pieza.
+ * @param cellPx lado de la celda en píxeles.
+ * @param bodyFraction lado del cuerpo respecto a la celda. Menor que 1 deja aire para el halo
+ *   cuando las celdas están pegadas; cerca de 1 si la rejilla ya separa las piezas.
+ * @param faceShade 0..1: cuánto se oscurece la cara hacia el fondo. Con 0 la gema es de color
+ *   pleno; súbelo si lleva texto claro encima (un número blanco no se lee sobre ámbar o lima).
+ * @param glow 0..1: encendido del tubo del borde.
+ */
+fun DrawScope.drawNeonGem(
+    topLeft: Offset,
+    cellPx: Float,
+    accent: Color,
+    alpha: Float = 1f,
+    scale: Float = 1f,
+    bodyFraction: Float = 0.80f,
+    faceShade: Float = 0f,
+    glow: Float = 0.42f,
+) {
+    if (alpha <= 0f || scale <= 0f) return
+    val side = cellPx * bodyFraction * scale
+    val center = topLeft + Offset(cellPx / 2f, cellPx / 2f)
+    val origin = Offset(center.x - side / 2f, center.y - side / 2f)
+    val corner = CornerRadius(cellPx * 0.18f * scale)
+    val face = lerp(accent, LogicColors.BackgroundDark, faceShade.coerceIn(0f, 1f))
+    drawRoundRect(
+        brush = Brush.verticalGradient(
+            0f to lerp(face, Color.White, 0.32f * (1f - faceShade * 0.5f)),
+            0.45f to face,
+            1f to lerp(face, LogicColors.BackgroundDark, 0.48f),
+            startY = origin.y,
+            endY = origin.y + side,
+        ),
+        topLeft = origin,
+        size = Size(side, side),
+        cornerRadius = corner,
+        alpha = alpha,
+    )
+    // Brillo de la cara superior: una franja clara que le da el "pulido" de gema.
+    drawRoundRect(
+        color = Color.White.copy(alpha = 0.26f * (1f - faceShade * 0.45f) * alpha),
+        topLeft = Offset(origin.x + side * 0.14f, origin.y + side * 0.12f),
+        size = Size(side * 0.72f, side * 0.20f),
+        cornerRadius = CornerRadius(side * 0.10f),
+    )
+    drawNeonTile(
+        baseColor = accent,
+        activeAmt = glow,
+        cornerRadius = (cellPx * 0.22f).toDp(),
+        sparks = false,
+        // Mismo reparto que tenía Bloques Neón (cuerpo 0.80 → margen 0.07 de celda).
+        baseMargin = (cellPx * (1f - bodyFraction) * 0.35f).toDp(),
+        strokeScale = 0.7f,
+        rectTopLeft = topLeft,
+        rectSize = Size(cellPx, cellPx),
+        alpha = alpha,
+        scale = scale,
+    )
+}
+
+/**
  * Una **celda** del tablero como zócalo: una baldosa hundida que se llena de luz al ocuparse.
  *
  * Sustituye a "líneas de rejilla + un punto": con baldosas el tablero se lee como piezas que hay
@@ -341,6 +408,40 @@ fun DrawScope.drawSparkBurst(center: Offset, color: Color, reach: Float, progres
 }
 
 /**
+ * Barra de progreso de neón: carril oscuro, relleno con brillo superior y un halo corto.
+ *
+ * Es la barra de [NeonBoardHud] extraída para que un HUD con otra composición (p. ej. el de
+ * Sudoku, que no tiene niveles ni botón de reinicio) pinte **la misma** barra sin copiarla.
+ *
+ * No anima por sí misma: quien la usa decide la curva (normalmente un `animateFloatAsState` con
+ * resorte) y le pasa el valor ya animado.
+ *
+ * @param progress fracción 0..1 ya animada.
+ * @param color color del relleno.
+ */
+@Composable
+fun NeonProgressBar(progress: Float, color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier.height(7.dp)) {
+        val corner = CornerRadius(size.height / 2f)
+        drawRoundRect(LogicColors.SurfaceVariantDark, cornerRadius = corner)
+        val filled = Size(size.width * progress.coerceIn(0f, 1f), size.height)
+        if (filled.width > 0f) {
+            drawRoundRect(
+                color = color.copy(alpha = 0.30f),
+                topLeft = Offset(0f, -2.dp.toPx()),
+                size = Size(filled.width, size.height + 4.dp.toPx()),
+                cornerRadius = CornerRadius(size.height),
+            )
+            drawRoundRect(
+                brush = Brush.verticalGradient(listOf(lerp(color, Color.White, 0.35f), color)),
+                size = filled,
+                cornerRadius = corner,
+            )
+        }
+    }
+}
+
+/**
  * HUD superior de un juego de tablero por niveles: píldora de **nivel**, **barra de progreso**
  * con su cifra y botón redondo de **reiniciar**.
  *
@@ -394,24 +495,7 @@ fun NeonBoardHud(
                 color = LogicColors.OnDark,
                 fontWeight = FontWeight.Bold,
             )
-            Canvas(Modifier.fillMaxWidth().height(7.dp)) {
-                val corner = CornerRadius(size.height / 2f)
-                drawRoundRect(LogicColors.SurfaceVariantDark, cornerRadius = corner)
-                val filled = Size(size.width * shown.coerceIn(0f, 1f), size.height)
-                if (filled.width > 0f) {
-                    drawRoundRect(
-                        color = progressColor.copy(alpha = 0.30f),
-                        topLeft = Offset(0f, -2.dp.toPx()),
-                        size = Size(filled.width, size.height + 4.dp.toPx()),
-                        cornerRadius = CornerRadius(size.height),
-                    )
-                    drawRoundRect(
-                        brush = Brush.verticalGradient(listOf(lerp(progressColor, Color.White, 0.35f), progressColor)),
-                        size = filled,
-                        cornerRadius = corner,
-                    )
-                }
-            }
+            NeonProgressBar(progress = shown, color = progressColor, modifier = Modifier.fillMaxWidth())
         }
         Box(
             modifier = Modifier

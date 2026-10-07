@@ -8,7 +8,10 @@
 -- para el nivel 10 — ver `ShikakuLevelGenerator.configFor` en el cliente, que es
 -- la fuente de verdad; `engine_config` es su espejo informativo.
 --
--- Solo cambia `engine_config` de esa fila. No afecta a partidas guardadas: el
+-- De paso enciende `is_new`, espejo de `GameInfo.isNew` en el cliente (insignia
+-- "NUEVO" del catálogo, ver 0043): el juego sale publicado como novedad.
+--
+-- Solo cambia `engine_config` e `is_new` de esa fila. No afecta a partidas guardadas: el
 -- progreso se registra por número de nivel, no por tablero.
 --
 -- Archivo nuevo (no se edita la 0061, ya aplicada) e idempotente.
@@ -16,5 +19,6 @@
 
 update public.games
 set engine_config = '{"tiers": [{"fromLevel": 1, "side": 5, "maxArea": 5}, {"fromLevel": 3, "side": 6, "maxArea": 6}, {"fromLevel": 5, "side": 7, "maxArea": 8}, {"fromLevel": 7, "side": 8, "maxArea": 10}, {"fromLevel": 9, "side": 9, "maxArea": 12}, {"fromLevel": 10, "side": 10, "maxArea": 14}, {"fromLevel": 16, "side": 11, "maxArea": 17}, {"fromLevel": 22, "side": 12, "maxArea": 20}], "maxSide": 12, "maxArea": 24, "targetMsPerCell": 2500, "restartPenalty": 60}'::jsonb,
+    is_new = true,
     updated_at = now()
 where slug = 'neon_shikaku';

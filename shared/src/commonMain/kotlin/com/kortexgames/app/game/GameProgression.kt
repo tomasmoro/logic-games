@@ -193,6 +193,12 @@ object GameProgressions {
             ProgressionKind.LEVELED, MetricDirection.HIGHER_IS_BETTER, "Nivel máx", MetricUnit.LEVEL,
             tracksLevelTime = true,
         ),
+        // Neon Trees & Tents: mismo caso que Shikaku — tablero fijo por nivel (semilla derivada
+        // del nivel) que solo termina al resolverlo, así que el tiempo por nivel es comparable.
+        GameIds.NEON_TENTS to GameProgression(
+            ProgressionKind.LEVELED, MetricDirection.HIGHER_IS_BETTER, "Nivel máx", MetricUnit.LEVEL,
+            tracksLevelTime = true,
+        ),
     )
 
     /** Progresión de un juego, o null si el id es null o no está registrado. */

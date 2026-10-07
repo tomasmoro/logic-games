@@ -87,6 +87,7 @@ object Routes {
     const val HEXA_ORBIT = "game/hexa-orbit"
     const val NEON_GRID_SWITCH = "game/neon-grid-switch"
     const val NEON_SHIKAKU = "game/neon-shikaku"
+    const val NEON_TENTS = "game/neon-tents"
 
     /**
      * Ruta de juego para un [GameIds] concreto, o null si el juego aún no es
@@ -118,6 +119,7 @@ object Routes {
         GameIds.HEXA_ORBIT -> HEXA_ORBIT
         GameIds.NEON_GRID_SWITCH -> NEON_GRID_SWITCH
         GameIds.NEON_SHIKAKU -> NEON_SHIKAKU
+        GameIds.NEON_TENTS -> NEON_TENTS
         else -> null
     }
 
