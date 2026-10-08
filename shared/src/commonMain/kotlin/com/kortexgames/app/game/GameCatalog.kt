@@ -177,6 +177,15 @@ object GameIds {
      * los demás ids del catálogo (mismo criterio anti-transposición que [QUANTUM_MERGE]).
      */
     const val NEON_TENTS = "0240cbed-e818-446d-8a1c-e592a2617a85"
+
+    /**
+     * Neon Hexa Flux / colocar y fusionar fichas en un tablero hexagonal de silueta cambiante
+     * (categoría "patterns" / Reconocimiento de Patrones). UUID v4 aleatorio con prefijo distinto
+     * a todos los demás ids del catálogo (mismo criterio anti-transposición que [QUANTUM_MERGE]).
+     *
+     * Su seed en Supabase es la migración `0064_seed_neon_hexa_flux.sql`.
+     */
+    const val NEON_HEXA_FLUX = "e83d5f1a-2c47-4b90-a6d3-71f09b8e4c25"
 }
 
 /**
@@ -318,6 +327,14 @@ enum class GameMotif {
      * colocadas sin tocarse — la regla del juego resuelta en la miniatura.
      */
     TENTS_FOREST,
+
+    /**
+     * Neon Hexa Flux: panal de siete hexágonos con tres fichas iguales en contacto y la del
+     * centro encendida — el instante justo antes de la fusión. Motivo propio (y no [HEXA_ORBIT],
+     * que también es un panal) porque allí lo que identifica al juego es el trazo curvo que lo
+     * recorre y aquí son las celdas RELLENAS: una tarjeta enseña un camino, la otra, fichas.
+     */
+    HEXA_FLUX,
 }
 
 /**
@@ -384,6 +401,8 @@ object GameCatalog {
         // published = false: recién integrado, a la espera de probarlo en dispositivo. Al
         // publicarlo basta con quitar el flag (su seed de Supabase es la migración 0063).
         GameInfo(GameIds.NEON_TENTS, "Neon Trees & Tents", GameCategory.LOGIC, playable = true, motif = GameMotif.TENTS_FOREST, isNew = true),
+        // Segundo juego de Reconocimiento de Patrones. Su seed de Supabase es la migración 0064.
+        GameInfo(GameIds.NEON_HEXA_FLUX, "Neon Hexa Flux", GameCategory.PATTERNS, playable = true, motif = GameMotif.HEXA_FLUX, isNew = true),
         GameInfo(GameIds.BUBBLE_MATH, "Burbujas de Cálculo", GameCategory.MENTAL_MATH, playable = true, motif = GameMotif.MATH_BUBBLES),
         // Primer juego de Reconocimiento de Patrones del catálogo: la categoría deja de
         // estar vacía.

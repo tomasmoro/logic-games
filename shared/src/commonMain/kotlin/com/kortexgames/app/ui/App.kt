@@ -42,6 +42,7 @@ import com.kortexgames.app.game.memory.SequenceMemoryScreen
 import com.kortexgames.app.game.hexaorbit.HexaOrbitScreen
 import com.kortexgames.app.game.gridswitch.GridSwitchScreen
 import com.kortexgames.app.game.shikaku.ShikakuScreen
+import com.kortexgames.app.game.hexaflux.HexaFluxScreen
 import com.kortexgames.app.game.tents.TentsScreen
 import com.kortexgames.app.game.hypergate.HypergateScreen
 import com.kortexgames.app.game.legion.LegionScreen
@@ -591,6 +592,9 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean, introGamesPlay
                 }
                 composable(Routes.NEON_TENTS) {
                     TentsScreen(graph, exitGame)
+                }
+                composable(Routes.NEON_HEXA_FLUX) {
+                    HexaFluxScreen(graph, exitGame)
                 }
             }
             }

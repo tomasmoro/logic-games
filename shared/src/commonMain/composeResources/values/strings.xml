@@ -710,4 +710,46 @@
     <string name="hypergate_hud_crashed">Choques</string>
     <string name="hypergate_hud_time">Segundos restantes</string>
 
+    <!-- Neon Pulse: reglas, HUD y carteles -->
+    <string name="neonpulse_intro_description">Toca cada nodo antes de que su anillo se cierre; cuanto antes, más puntos. Encadena aciertos para subir el multiplicador y desatar el frenesí, revienta el lienzo con las bombas y no toques los rojos.</string>
+    <string name="neonpulse_hud_wave">HORDA %1$s</string>
+    <string name="neonpulse_hud_multiplier">x%1$s</string>
+    <string name="neonpulse_frenzy_label">FRENESÍ ×%1$s</string>
+    <string name="neonpulse_frenzy_call">¡FRENESÍ!</string>
+    <string name="neonpulse_fast">¡RÁPIDO!</string>
+    <string name="neonpulse_banner_bomb">¡Bombas! Tócalas y revientan las esferas que traen</string>
+    <string name="neonpulse_banner_trap">¡Cuidado con los nodos rojos!</string>
+    <string name="neonpulse_banner_armored">¡Blindados! Necesitan dos toques</string>
+    <string name="neonpulse_banner_move">¡Los pulsos empiezan a moverse!</string>
+    <string name="neonpulse_gameover_headline">Horda %1$s alcanzada</string>
+    <string name="neonpulse_life">Vida</string>
+    <string name="neonpulse_life_lost">Vida perdida</string>
+
+    <!-- Neon Hexa Flux: antesala, HUD, bandeja y carteles -->
+    <string name="hexaflux_intro_description">Coloca piezas en el panal y junta tres fichas iguales para fusionarlas en una más potente. Encadena fusiones, rompe el hielo, desactiva las bombas y cumple el objetivo de cada nivel antes de quedarte sin jugadas.</string>
+    <!-- %1$s = puntos actuales, %2$s = puntos objetivo. -->
+    <string name="hexaflux_hud_score">%1$s/%2$s pts</string>
+    <!-- %1$s = celdas ya limpiadas, %2$s = total a limpiar. -->
+    <string name="hexaflux_hud_clear">%1$s/%2$s limpias</string>
+    <!-- %1$s = turnos resistidos, %2$s = turnos a resistir. -->
+    <string name="hexaflux_hud_survive">Turno %1$s/%2$s</string>
+    <string name="hexaflux_objective_score">Alcanza %1$s puntos</string>
+    <string name="hexaflux_objective_clear">Elimina el hielo y las fichas corruptas</string>
+    <string name="hexaflux_objective_survive">Resiste %1$s turnos</string>
+    <!-- %1$s = jugadas restantes. -->
+    <string name="hexaflux_moves_left">%1$s jugadas</string>
+    <!-- %1$s = fusiones encadenadas en la última jugada. -->
+    <string name="hexaflux_combo">COMBO ×%1$s</string>
+    <string name="hexaflux_tray_hint">Toca una pieza para elegirla y otra vez para girarla. Luego toca el tablero o arrástrala.</string>
+    <!-- %1$s = posición de la pieza en la bandeja, %2$s = número de fichas. -->
+    <string name="hexaflux_tray_piece_description">Pieza %1$s, %2$s fichas</string>
+    <!-- %1$s = celdas libres del tablero. -->
+    <string name="hexaflux_board_description">Tablero hexagonal, %1$s celdas libres</string>
+    <string name="hexaflux_gameover_headline">¡Flujo estabilizado!</string>
+    <string name="hexaflux_lost_title">Flujo colapsado</string>
+    <string name="hexaflux_lost_no_moves">Te quedaste sin jugadas antes de cumplir el objetivo.</string>
+    <string name="hexaflux_lost_blocked">No queda hueco para ninguna de tus piezas.</string>
+    <string name="hexaflux_lost_retry">Reintentar</string>
+    <string name="hexaflux_lost_choose_level">Elegir nivel</string>
+
 </resources>

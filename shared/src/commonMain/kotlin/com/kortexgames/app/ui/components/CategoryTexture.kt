@@ -56,6 +56,7 @@ import kotlin.math.sin
  *  - [GameMotif.LIGHTS_GRID] → rejilla con la cruz de celdas que enciende un toque.
  *  - [GameMotif.SHIKAKU_RECTS] → tablero en L partido en rectángulos con su número.
  *  - [GameMotif.TENTS_FOREST] → mini tablero con pinos y sus tiendas ya colocadas.
+ *  - [GameMotif.HEXA_FLUX] → panal con tres fichas iguales en contacto, a punto de fusionarse.
  *  - Memoria → red neuronal ([NeuralCornerTexture]).
  *  - Cálculo Mental → símbolos matemáticos de distintos tamaños.
  *  - Pensamiento Lógico → piezas de rompecabezas.
@@ -162,6 +163,7 @@ private fun MotifTexture(
         GameMotif.LIGHTS_GRID -> LightsGridTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
         GameMotif.SHIKAKU_RECTS -> ShikakuRectsTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
         GameMotif.TENTS_FOREST -> TentsForestTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
+        GameMotif.HEXA_FLUX -> HexaFluxTexture(accent = accent, modifier = modifier, intensity = intensity, centered = centered)
     }
 }
 
@@ -1802,5 +1804,73 @@ private fun TentsForestTexture(accent: Color, modifier: Modifier, intensity: Flo
             Offset(originX + (cellAt.first + 0.5f) * cell, originY + (cellAt.second + 0.5f) * cell)
         TENTS_MOTIF_TREES.forEach { drawNeonPine(centerOf(it), cell, accent, glow = 0f, alpha = 0.5f * intensity) }
         TENTS_MOTIF_TENTS.forEach { drawNeonTent(centerOf(it), cell, accent, glow = 0.5f, alpha = 0.95f * intensity) }
+    }
+}
+
+/**
+ * Miniatura de **Neon Hexa Flux**: panal de siete hexágonos con tres fichas del mismo color en
+ * contacto (centro, este y sureste). La del centro va encendida y con halo: es la que acaba de
+ * colocarse y la que va a provocar la fusión, que es toda la mecánica en una imagen.
+ *
+ * Comparte geometría *pointy-top* con [HexaOrbitTexture] para que las dos tarjetas de panal se
+ * lean como parientes, pero aquí las celdas van RELLENAS y no hay trazo: es lo que las distingue
+ * de un vistazo (ver [GameMotif.HEXA_FLUX]).
+ */
+@Composable
+private fun HexaFluxTexture(accent: Color, modifier: Modifier, intensity: Float, centered: Boolean = false) {
+    Canvas(modifier = modifier) {
+        val radius = size.minDimension * 0.20f
+        val apothem = radius * 0.8660254f
+        val center = Offset(
+            x = size.width * (if (centered) 0.5f else 0.66f),
+            y = size.height * 0.5f,
+        )
+
+        fun hexPath(at: Offset, r: Float) = Path().apply {
+            for (i in 0 until 6) {
+                val angle = (PI / 3.0 * i + PI / 6.0).toFloat()
+                val x = at.x + r * cos(angle)
+                val y = at.y + r * sin(angle)
+                if (i == 0) moveTo(x, y) else lineTo(x, y)
+            }
+            close()
+        }
+
+        // Índice 0 = centro; 1..6 = vecinos en horario desde el este (mismo orden axial del juego).
+        val centers = buildList {
+            add(center)
+            for (i in 0 until 6) {
+                val angle = (PI / 3.0 * i).toFloat()
+                add(Offset(center.x + 2f * apothem * cos(angle), center.y + 2f * apothem * sin(angle)))
+            }
+        }
+        // Centro + este + sureste: tres celdas mutuamente adyacentes.
+        val filled = setOf(0, 1, 2)
+
+        centers.forEachIndexed { index, at ->
+            drawPath(
+                path = hexPath(at, radius),
+                color = accent.copy(alpha = 0.26f * intensity),
+                style = Stroke(width = radius * 0.07f, join = StrokeJoin.Round),
+            )
+            if (index !in filled) return@forEachIndexed
+            val lit = index == 0
+            if (lit) {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(accent.copy(alpha = 0.40f * intensity), Color.Transparent), at, radius * 1.9f,
+                    ),
+                    radius = radius * 1.9f,
+                    center = at,
+                )
+            }
+            val tile = hexPath(at, radius * 0.80f)
+            drawPath(tile, accent.copy(alpha = (if (lit) 0.85f else 0.42f) * intensity))
+            drawPath(
+                path = tile,
+                color = (if (lit) Color.White else accent).copy(alpha = 0.90f * intensity),
+                style = Stroke(width = radius * 0.08f, join = StrokeJoin.Round),
+            )
+        }
     }
 }

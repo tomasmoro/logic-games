@@ -474,6 +474,25 @@ object GameHelpContent {
                 text = "¡No toques los nodos rojos! Déjalos apagarse solos.",
             ),
             HelpStep(
+                icon = KortexIcons.Streak,
+                title = "Rápido y sin fallar",
+                text = "Tocar un nodo nada más aparecer da puntos extra. Cada 5 aciertos seguidos " +
+                    "sube el multiplicador y cada 10 desata el frenesí: puntos dobles unos segundos. " +
+                    "Un fallo o un toque al vacío lo corta todo.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Sparkle,
+                title = "Bombas",
+                text = "El nodo ámbar con púas llega con dos objetivos pegados: tócalo y revientan " +
+                    "los tres, junto con todo lo demás del lienzo (los rojos desaparecen sin castigo).",
+            ),
+            HelpStep(
+                icon = KortexIcons.Shield,
+                title = "Blindados",
+                text = "Los nodos violeta con placas necesitan dos toques, valen más y, como " +
+                    "cualquier objetivo, cuestan una vida si se te escapan.",
+            ),
+            HelpStep(
                 icon = KortexIcons.Trophy,
                 title = "Hordas sin final",
                 text = "Cada horda trae más nodos, más rápidos y con menos tiempo; " +
@@ -743,6 +762,41 @@ object GameHelpContent {
             "Empieza por las filas y columnas con 0: todas sus casillas son pasto.",
             "Una casilla sin ningún árbol al lado nunca lleva tienda.",
             "Quitar una tienda ya plantada resta puntos; el pasto es gratis, úsalo para pensar.",
+        ),
+    )
+
+    /** Neon Hexa Flux / colocar y fusionar fichas en un tablero hexagonal (Reconocimiento de Patrones). */
+    val hexaFlux = GameHelp(
+        title = "Neon Hexa Flux",
+        summary = "Coloca piezas en el panal y junta tres fichas iguales para fusionarlas.",
+        accent = CategoryPalette.PatternRecognition,
+        art = motifHelpArt(GameMotif.HEXA_FLUX),
+        steps = listOf(
+            HelpStep(
+                icon = Icons.Rounded.TouchApp,
+                title = "Elige, gira y coloca",
+                text = "Toca una pieza para elegirla y tócala otra vez para girarla. Después toca una celda del tablero, o arrastra la pieza hasta su sitio.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Check,
+                title = "Tres iguales se fusionan",
+                text = "Tres o más fichas del mismo color en contacto se funden en una del nivel siguiente. Si esa nueva ficha toca a otras dos iguales, vuelve a fusionar: cada eslabón de la cadena vale más.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Warning,
+                title = "Rompe los obstáculos",
+                text = "Una fusión al lado rompe el hielo, desactiva las bombas y elimina las fichas corruptas. El metal no se rompe. Si una bomba llega a cero, convierte en metal las celdas vacías que la rodean.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Pencil,
+                title = "Cumple el objetivo",
+                text = "Cada nivel pide una cosa: alcanzar una puntuación, limpiar todo el hielo y las corruptas, o resistir un número de turnos. Pierdes si te quedas sin jugadas o si ninguna pieza cabe.",
+            ),
+        ),
+        tips = listOf(
+            "Una ficha colocada en un portal sale por el otro extremo un nivel por encima.",
+            "Prepara dos parejas antes de cerrar la primera fusión: la cadena multiplica los puntos.",
+            "Te sobran jugadas si planificas: terminar con margen y sin reiniciar da más puntos.",
         ),
     )
 }

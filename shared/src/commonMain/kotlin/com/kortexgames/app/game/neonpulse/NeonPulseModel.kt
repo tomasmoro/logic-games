@@ -8,6 +8,15 @@ package com.kortexgames.app.game.neonpulse
  * tiempo" que se contrae hacia el centro; el jugador debe tocarlos antes de que
  * el anillo colapse.
  *
+ * ## Reglas que empujan a jugar agresivo
+ * Además de tocar a tiempo, el juego premia **arriesgar**:
+ *  - **Toque rápido**: acertar con el anillo aún abierto ([NeonPulseConfig.FAST_WINDOW]) da puntos extra.
+ *  - **Combo y frenesí**: cada [NeonPulseConfig.COMBO_STEP] aciertos seguidos sube el multiplicador, y
+ *    cada [NeonPulseConfig.FRENZY_COMBO] disparan unos segundos de **frenesí** con los puntos doblados.
+ *    Cualquier error (trampa, nodo expirado o toque al vacío) lo corta en seco.
+ *  - **Blindados** ([NodeType.ARMORED]) que piden dos toques, y **bombas** ([NodeType.BOMB]) que
+ *    revientan todo el lienzo de una vez.
+ *
  * ## Partida infinita por hordas
  * La partida **no tiene reloj**: se juega hasta quedarse sin vidas. El contenido
  * se organiza en **hordas** ([WaveSpec]) cada vez más exigentes, con una rampa
@@ -40,19 +49,31 @@ package com.kortexgames.app.game.neonpulse
  * (p. ej. bonus dorado) sin romper llamadas existentes.
  */
 enum class NodeType {
-    /** Objetivo válido (naranja coral). Tocarlo suma puntos; dejarlo expirar
-     *  cuesta una vida. */
+    /** Objetivo: hay que tocarlo antes de que su anillo se cierre. */
     NORMAL,
 
-    /** Nodo trampa (rojo/[com.kortexgames.app.core.theme.LogicColors.Error]).
-     *  Aparece a partir de [NeonPulseConfig.TRAP_UNLOCK_WAVE]. Tocarlo penaliza;
-     *  se debe dejar expirar solo (expirar NO penaliza, a diferencia del [NORMAL]). */
+    /** Trampa: tocarla cuesta una vida; se gana ignorándola. */
     TRAP,
 
-    /** Corazón de rescate (verde neón). Tocarlo devuelve una vida hasta el tope
-     *  [NeonPulseConfig.MAX_LIVES]; dejarlo expirar no penaliza —es un premio, no
-     *  un objetivo obligatorio—. Solo aparece cuando el jugador ha perdido vidas. */
+    /** Corazón de rescate: devuelve una vida. No forma parte del cupo de la horda. */
     HEART,
+
+    /**
+     * Objetivo **blindado**: necesita [NeonPulseConfig.ARMORED_HITS] toques. El primero rompe el
+     * blindaje y el segundo lo revienta. Vale más que un nodo normal y, como cualquier objetivo,
+     * dejarlo expirar cuesta una vida. Obliga a quedarse un instante en un punto mientras el
+     * resto del lienzo sigue corriendo: es la decisión de "¿lo remato o voy a por el otro?".
+     */
+    ARMORED,
+
+    /**
+     * **Bomba**: al tocarla revienta todo lo que hay en el lienzo — los objetivos puntúan como
+     * aciertos y las trampas desaparecen sin castigo. Dejarla expirar no cuesta nada: es un
+     * regalo que el jugador decide cuándo gastar (lo ideal, con el lienzo lleno). Nace siempre
+     * acompañada de [NeonPulseConfig.BOMB_ESCORTS] objetivos normales, para que tocarla tenga
+     * premio aunque el resto del lienzo esté vacío.
+     */
+    BOMB,
 }
 
 /**
@@ -92,6 +113,7 @@ data class Node(
     val remainingMs: Long,
     val vx: Float = 0f,
     val vy: Float = 0f,
+    val hitsLeft: Int = 1,
 ) {
     /**
      * Fracción de vida restante en `[0f..1f]`. La UI la usa para interpolar el
@@ -211,6 +233,68 @@ object NeonPulseConfig {
     /** Duración del cartel "HORDA N" entre hordas. Es el respiro que separa una
      *  oleada de la siguiente; sin él la partida infinita se volvería agotadora. */
     const val WAVE_BANNER_MS = 1_300L
+
+    // --- Toque rápido -------------------------------------------------------
+
+    /**
+     * Fracción de vida por encima de la cual un acierto cuenta como **rápido**: tocar el nodo
+     * cuando su anillo aún no se ha cerrado ni un tercio. Premia la agresividad —ir a por el
+     * nodo en cuanto aparece— en vez de esperar a tenerlo cómodo.
+     */
+    const val FAST_WINDOW = 0.66f
+
+    /** Puntos extra de un acierto rápido (se multiplican igual que el resto). */
+    const val FAST_BONUS_POINTS = 50
+
+    // --- Nodos blindados ------------------------------------------------------
+
+    /** Toques que hacen falta para reventar un nodo blindado. */
+    const val ARMORED_HITS = 2
+
+    /** Puntos de reventar un blindado (más que dos normales: retiene al jugador). */
+    const val ARMORED_POINTS = 250
+
+    /** Primera horda con blindados. Después de las trampas: una regla nueva cada vez. */
+    const val ARMORED_UNLOCK_WAVE = 4
+    const val ARMORED_CHANCE_START = 0.12f
+    const val ARMORED_CHANCE_STEP = 0.02f
+    const val ARMORED_CHANCE_MAX = 0.28f
+
+    /** Cuánto más dura encendido un blindado que un nodo normal: hay que tocarlo dos veces. */
+    const val ARMORED_LIFE_FACTOR = 1.4f
+
+    // --- Bombas ---------------------------------------------------------------
+
+    /** Primera horda con bombas. Pronto: es el juguete que engancha. */
+    const val BOMB_UNLOCK_WAVE = 2
+
+    /** Probabilidad de que un nodo de la horda sea una bomba. Baja: es un premio. */
+    const val BOMB_CHANCE = 0.07f
+
+    /** Objetivos normales que nacen pegados a cada bomba, para que siempre tenga algo que reventar. */
+    const val BOMB_ESCORTS = 2
+
+    /**
+     * Corona (distancias normalizadas mínima y máxima al centro de la bomba) dentro de la que
+     * cae cada escolta. El mínimo evita que se toquen o se confundan al pulsar; el máximo las
+     * mantiene lo bastante cerca para que sigan leyéndose como "las de esa bomba".
+     */
+    const val BOMB_ESCORT_MIN_DISTANCE = NODE_RADIUS * 2.8f
+    const val BOMB_ESCORT_MAX_DISTANCE = NODE_RADIUS * 5.5f
+
+    // --- Frenesí --------------------------------------------------------------
+
+    /** Aciertos seguidos que disparan el frenesí (y cada múltiplo lo recarga). */
+    const val FRENZY_COMBO = 10
+
+    /** Duración del frenesí (ms). */
+    const val FRENZY_MS = 6_000L
+
+    /** Multiplicador extra de puntos durante el frenesí (se suma al del combo). */
+    const val FRENZY_MULTIPLIER = 2
+
+    /** Aciertos seguidos por cada escalón del multiplicador de combo (1×, 2×, 3×…). */
+    const val COMBO_STEP = 5
 }
 
 /**
@@ -236,6 +320,8 @@ data class WaveSpec(
     val trapChance: Float,
     val speed: Float,
     val offersHeart: Boolean,
+    val armoredChance: Float = 0f,
+    val bombChance: Float = 0f,
 ) {
     companion object {
         /**
@@ -272,6 +358,15 @@ data class WaveSpec(
                         ).coerceAtMost(NeonPulseConfig.MOVE_SPEED_MAX)
                 },
                 offersHeart = wave % NeonPulseConfig.HEART_EVERY_WAVES == 0,
+                armoredChance = if (wave < NeonPulseConfig.ARMORED_UNLOCK_WAVE) {
+                    0f
+                } else {
+                    (
+                        NeonPulseConfig.ARMORED_CHANCE_START +
+                            (wave - NeonPulseConfig.ARMORED_UNLOCK_WAVE) * NeonPulseConfig.ARMORED_CHANCE_STEP
+                        ).coerceAtMost(NeonPulseConfig.ARMORED_CHANCE_MAX)
+                },
+                bombChance = if (wave < NeonPulseConfig.BOMB_UNLOCK_WAVE) 0f else NeonPulseConfig.BOMB_CHANCE,
             )
         }
     }
