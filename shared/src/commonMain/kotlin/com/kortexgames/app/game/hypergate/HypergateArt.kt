@@ -346,3 +346,177 @@ fun DrawScope.drawGateImpact(center: Offset, radius: Float, angleRad: Float, col
         }
     }
 }
+
+/** Color de un proyectil según su clase: rojo de peligro para el meteorito, su polaridad para el cometa. */
+internal fun Projectile.neon(): Color =
+    if (kind == ProjectileKind.METEOR) LogicColors.Error else required.toNeon()
+
+/**
+ * Color del **modo escudo**. Morado a propósito: tiene que distinguirse a la vez de las dos
+ * polaridades (verde y cian) y del rojo de los meteoritos, porque significa otra cosa — "ahora
+ * mismo nada te afecta" — y no debe leerse como una tercera polaridad.
+ */
+internal val BarrierColor: Color get() = LogicColors.Violet
+
+/** Vértices del contorno irregular de un meteorito. */
+private const val METEOR_VERTICES = 8
+
+/**
+ * Un **meteorito rojo**: roca de contorno irregular que gira, con cola de fuego.
+ *
+ * Igual que las polaridades se distinguen por silueta además de por color (ver cabecera), el
+ * meteorito tiene la suya —un polígono quebrado, ni disco ni rombo— porque exige una respuesta
+ * distinta (mantener pulsado) y hay que reconocerlo de un vistazo, también sin distinguir el rojo.
+ *
+ * @param seed semilla estable (el id del proyectil): cada meteorito tiene su propio contorno.
+ */
+fun DrawScope.drawMeteor(head: Offset, angleRad: Float, speedFactor: Float, time: Float, seed: Int) {
+    val color = LogicColors.Error
+    val rock = 9.dp.toPx()
+    val length = 38.dp.toPx() * (0.7f + 0.6f * speedFactor)
+    val dx = cos(angleRad)
+    val dy = sin(angleRad)
+    // Cola de fuego: más ancha y corta que la estela de un cometa, y parpadea.
+    for (i in 0 until COMET_TRAIL_STEPS) {
+        val t0 = i / COMET_TRAIL_STEPS.toFloat()
+        val t1 = (i + 1) / COMET_TRAIL_STEPS.toFloat()
+        val fade = 1f - t0
+        val flicker = 0.8f + 0.2f * sin(time * 30f + i * 1.7f + seed)
+        drawLine(
+            color = lerp(color, LogicColors.Amber, 0.55f * fade).copy(alpha = 0.70f * fade * fade * flicker),
+            start = Offset(head.x + dx * length * t0, head.y + dy * length * t0),
+            end = Offset(head.x + dx * length * t1, head.y + dy * length * t1),
+            strokeWidth = rock * 2.1f * fade + 1f,
+            cap = StrokeCap.Round,
+        )
+    }
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(color.copy(alpha = 0.60f), Color.Transparent),
+            center = head,
+            radius = rock * 2.8f,
+        ),
+        radius = rock * 2.8f,
+        center = head,
+    )
+    val spin = time * 1.8f + seed
+    fun contour(scale: Float) = Path().apply {
+        for (i in 0 until METEOR_VERTICES) {
+            val a = spin + i * TAU / METEOR_VERTICES
+            val r = rock * scale * (0.78f + 0.44f * artHash(seed * 31 + i))
+            val x = head.x + cos(a) * r
+            val y = head.y + sin(a) * r
+            if (i == 0) moveTo(x, y) else lineTo(x, y)
+        }
+        close()
+    }
+    drawPath(contour(1f), color)
+    // Núcleo oscuro: lo vuelve "roca" y lo separa de los cometas, cuyo núcleo es blanco.
+    drawPath(contour(0.55f), LogicColors.BackgroundDark.copy(alpha = 0.55f))
+    drawPath(contour(1f), Color.White.copy(alpha = 0.55f), style = Stroke(1.dp.toPx()))
+}
+
+/** Fracción del aguante a partir de la que la burbuja del modo escudo avisa de que se agota. */
+private const val BARRIER_WARN_FROM = 0.66f
+
+/**
+ * La burbuja del **modo escudo** alrededor del portal.
+ *
+ * Es un tubo de neón (halo ancho → intermedio → trazo nítido → núcleo blanco, §9.7) con un velo
+ * tenue por dentro, y sobre el aro un **arco blanco que se va consumiendo**: es el aguante que
+ * queda. El jugador mira al portal, no al HUD, así que el contador de 3 s vive aquí. En el último
+ * tercio el aro vira a rojo y parpadea para avisar de que está a punto de agotarse.
+ *
+ * @param gateRadius radio del anillo del portal; la burbuja mide [BARRIER_RADIUS_FACTOR] veces eso,
+ *   igual que la frontera de colisión del motor.
+ * @param amount opacidad 0..1 (la pantalla la anima para que encender y apagar no sean un corte).
+ * @param heldFraction 0..1, parte del aguante ya gastada.
+ */
+fun DrawScope.drawBarrier(center: Offset, gateRadius: Float, amount: Float, heldFraction: Float, time: Float) {
+    if (gateRadius <= 0f || amount <= 0f) return
+    val r = gateRadius * BARRIER_RADIUS_FACTOR
+    val held = heldFraction.coerceIn(0f, 1f)
+    val warn = ((held - BARRIER_WARN_FROM) / (1f - BARRIER_WARN_FROM)).coerceIn(0f, 1f)
+    val blink = if (warn > 0f) 0.65f + 0.35f * sin(time * 26f) else 1f
+    val tone = lerp(BarrierColor, LogicColors.Error, warn)
+    val a = amount * blink
+    val stroke = (gateRadius * 0.05f).coerceAtLeast(1.5.dp.toPx())
+
+    drawCircle(
+        brush = Brush.radialGradient(
+            0.55f to Color.Transparent,
+            1f to tone.copy(alpha = 0.22f * a),
+            center = center,
+            radius = r,
+        ),
+        radius = r,
+        center = center,
+    )
+    drawCircle(tone.copy(alpha = 0.18f * a), r, center, style = Stroke(stroke * 4.5f))
+    drawCircle(tone.copy(alpha = 0.42f * a), r, center, style = Stroke(stroke * 2.1f))
+    drawCircle(tone.copy(alpha = 0.85f * a), r, center, style = Stroke(stroke))
+    // Aguante restante: arranca arriba y se consume en sentido horario.
+    drawArc(
+        color = Color.White.copy(alpha = 0.90f * a),
+        startAngle = -90f,
+        sweepAngle = 360f * (1f - held),
+        useCenter = false,
+        topLeft = Offset(center.x - r, center.y - r),
+        size = Size(r * 2f, r * 2f),
+        style = Stroke(width = stroke * 0.6f, cap = StrokeCap.Round),
+    )
+}
+
+/**
+ * **Recarga** del modo escudo tras agotarlo: un aro apagado, a la altura de la burbuja, que se va
+ * completando. Gris y sin halo a propósito: dice "todavía no" sin competir con el portal.
+ *
+ * @param fraction 0..1, parte de la recarga ya cumplida.
+ */
+fun DrawScope.drawBarrierRecharge(center: Offset, gateRadius: Float, fraction: Float) {
+    if (gateRadius <= 0f) return
+    val r = gateRadius * BARRIER_RADIUS_FACTOR
+    val width = 2.dp.toPx()
+    drawCircle(LogicColors.OnDarkMuted.copy(alpha = 0.14f), r, center, style = Stroke(width))
+    drawArc(
+        color = LogicColors.OnDarkMuted.copy(alpha = 0.70f),
+        startAngle = -90f,
+        sweepAngle = 360f * fraction.coerceIn(0f, 1f),
+        useCenter = false,
+        topLeft = Offset(center.x - r, center.y - r),
+        size = Size(r * 2f, r * 2f),
+        style = Stroke(width = width, cap = StrokeCap.Round),
+    )
+}
+
+/**
+ * Un proyectil **deshecho contra el modo escudo**: un tramo de la burbuja destella y saltan unas
+ * chispas del color de lo que llegó. Más corto y apagado que una absorción ([drawGateImpact]): no
+ * es un acierto que celebrar.
+ *
+ * @param color color del proyectil deshecho.
+ * @param age segundos desde el impacto; fuera de `0..IMPACT_LIFE_SEC` no dibuja nada.
+ */
+fun DrawScope.drawBarrierDeflect(center: Offset, gateRadius: Float, angleRad: Float, color: Color, age: Float, seed: Int) {
+    val p = age / IMPACT_LIFE_SEC
+    if (p <= 0f || p >= 1f) return
+    val fade = 1f - p
+    val r = gateRadius * BARRIER_RADIUS_FACTOR
+    val spread = 14f + 30f * p
+    drawArc(
+        color = Color.White.copy(alpha = 0.85f * fade * fade),
+        startAngle = angleRad * 180f / PI.toFloat() - spread,
+        sweepAngle = spread * 2f,
+        useCenter = false,
+        topLeft = Offset(center.x - r, center.y - r),
+        size = Size(r * 2f, r * 2f),
+        style = Stroke(width = gateRadius * 0.10f * fade + 1f, cap = StrokeCap.Round),
+    )
+    drawSparkBurst(
+        center = Offset(center.x + cos(angleRad) * r, center.y + sin(angleRad) * r),
+        color = color,
+        reach = gateRadius * 0.6f,
+        progress = p * 1.4f,
+        seed = seed,
+    )
+}

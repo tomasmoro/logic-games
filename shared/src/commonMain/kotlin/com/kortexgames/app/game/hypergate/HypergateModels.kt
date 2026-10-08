@@ -54,6 +54,23 @@ enum class ShieldState {
 }
 
 /**
+ * Clase de proyectil. Dominio cerrado: decide **cómo se resuelve el impacto**, no solo el aspecto.
+ */
+enum class ProjectileKind {
+    /** Cometa de polaridad: se absorbe si el portal tiene su mismo color ([Projectile.required]). */
+    COMET,
+
+    /**
+     * Meteorito rojo: **no tiene polaridad que lo absorba**. Solo el modo escudo
+     * ([HypergateState.barrierActive]) lo detiene; sin él, choca siempre.
+     *
+     * Existe para que el juego no sea un único gesto: obliga a alternar entre "tocar para
+     * igualar" y "mantener para protegerse", que es justo la flexibilidad que el juego entrena.
+     */
+    METEOR,
+}
+
+/**
  * Un proyectil que viaja en línea recta desde el borde de la pantalla hacia el centro.
  *
  * Representación **polar** respecto al centro del viewport (ver el bloque de cabecera de este
@@ -74,7 +91,9 @@ enum class ShieldState {
  *   "hacia el centro" ya está implícito en que restamos a [distancePx]). Constante por
  *   proyectil; la rampa de dificultad la fija en el spawn, no la altera en vuelo.
  * @property required estado del escudo que ABSORBE este proyectil. En el impacto se compara
- *   con el estado vigente del escudo: coincide → absorción (+puntos); difiere → daño.
+ *   con el estado vigente del escudo: coincide → absorción (+puntos); difiere → daño. Solo
+ *   tiene sentido para [ProjectileKind.COMET]; en un meteorito se ignora.
+ * @property kind clase de proyectil (cometa de polaridad o meteorito rojo).
  */
 data class Projectile(
     val id: Long,
@@ -82,6 +101,7 @@ data class Projectile(
     val distancePx: Float,
     val speedPx: Float,
     val required: ShieldState,
+    val kind: ProjectileKind = ProjectileKind.COMET,
 )
 
 /**
@@ -104,6 +124,16 @@ data class Projectile(
  * @property absorbed nº de proyectiles absorbidos con la polaridad correcta (para precisión).
  * @property crashed nº de proyectiles que impactaron con polaridad equivocada (para precisión).
  * @property remainingMs milisegundos restantes de la ronda; la partida termina al llegar a 0.
+ * @property barrierActive si el **modo escudo** está encendido ahora mismo (el jugador mantiene
+ *   pulsado y no está recargando). Mientras lo está, NADA de lo que llega hace efecto: ni los
+ *   meteoritos dañan ni los cometas suman o restan.
+ * @property barrierHeldMs cuánto lleva encendido el modo escudo **de forma continua**. Vuelve a 0
+ *   al soltar; al llegar a [BARRIER_MAX_HOLD_MS] el escudo se agota.
+ * @property barrierCooldownMs milisegundos que faltan para poder volver a usar el modo escudo
+ *   tras agotarlo; 0 = disponible.
+ * @property deflected nº de proyectiles (de cualquier clase) deshechos contra el modo escudo. No
+ *   puntúa ni cuenta para la precisión: existe para que la pantalla sepa que hubo un impacto que
+ *   pintar aunque ningún otro contador se haya movido.
  */
 data class HypergateState(
     val shield: ShieldState = ShieldState.A,
@@ -115,6 +145,10 @@ data class HypergateState(
     val absorbed: Int = 0,
     val crashed: Int = 0,
     val remainingMs: Long = ROUND_DURATION_MS,
+    val barrierActive: Boolean = false,
+    val barrierHeldMs: Long = 0L,
+    val barrierCooldownMs: Long = 0L,
+    val deflected: Int = 0,
 )
 
 /**
@@ -124,3 +158,22 @@ data class HypergateState(
  * se sienta consistente.
  */
 internal const val ROUND_DURATION_MS: Long = 30_000L
+
+/**
+ * Tiempo máximo que el modo escudo aguanta encendido de forma continua. Si el jugador lo mantiene
+ * hasta aquí, se agota y entra en recarga ([BARRIER_COOLDOWN_MS]).
+ *
+ * El tope es lo que impide jugar la ronda entera a cubierto: el escudo es una respuesta puntual
+ * a un meteorito, no un sitio donde quedarse.
+ */
+internal const val BARRIER_MAX_HOLD_MS: Long = 3_000L
+
+/** Recarga del modo escudo tras agotarlo: durante este tiempo no se puede encender. */
+internal const val BARRIER_COOLDOWN_MS: Long = 5_000L
+
+/**
+ * Radio del modo escudo, en radios del portal. Es una burbuja MAYOR que el anillo: con ella
+ * encendida los proyectiles se deshacen ahí, no al llegar al portal, para que el impacto ocurra
+ * donde se ve la burbuja. La comparten el motor (colisión) y el render (dibujo).
+ */
+internal const val BARRIER_RADIUS_FACTOR: Float = 1.75f

@@ -58,6 +58,7 @@ class HypergateViewModel(
         when (intent) {
             is HypergateIntent.UpdateViewport -> engine.updateViewport(intent.widthPx, intent.heightPx)
             HypergateIntent.ToggleShield -> engine.toggleShield()
+            is HypergateIntent.SetBarrier -> engine.setBarrierHeld(intent.held)
             is HypergateIntent.Tick -> engine.onFrame(intent.frameNanos)
             HypergateIntent.Pause -> engine.pause()
             HypergateIntent.Resume -> engine.resume()
@@ -75,6 +76,10 @@ class HypergateViewModel(
      * El mapeo a los enums de audio es intencional: `ABSORB→SUCCESS`, `CRASH→ERROR` (sonidos), y
      * `SUCCESS→LIGHT` (un pulso corto y ágil por absorción, no invasivo) frente a `ERROR` (patrón
      * de error marcado) en háptica.
+     *
+     * El modo escudo suena a propósito más discreto que una absorción (`DEFLECT→TAP`, pulso
+     * `LIGHT`): deshacer algo con el escudo no es un logro que celebrar, es no perder. Agotarlo
+     * (`OVERHEAT`) sí avisa fuerte, porque deja al jugador 5 s sin protección.
      */
     private fun onImpactEffect(effect: HypergateEffect) {
         when (effect) {
@@ -82,12 +87,16 @@ class HypergateViewModel(
                 when (effect.cue) {
                     HypergateEffect.PlaySound.Cue.ABSORB -> SoundEffect.SUCCESS
                     HypergateEffect.PlaySound.Cue.CRASH -> SoundEffect.ERROR
+                    HypergateEffect.PlaySound.Cue.DEFLECT -> SoundEffect.TAP
+                    HypergateEffect.PlaySound.Cue.OVERHEAT -> SoundEffect.ERROR
                 },
             )
             is HypergateEffect.Vibrate -> audio.hapticFeedback(
                 when (effect.cue) {
                     HypergateEffect.Vibrate.Cue.SUCCESS -> HapticFeedback.LIGHT
                     HypergateEffect.Vibrate.Cue.ERROR -> HapticFeedback.ERROR
+                    HypergateEffect.Vibrate.Cue.DEFLECT -> HapticFeedback.LIGHT
+                    HypergateEffect.Vibrate.Cue.OVERHEAT -> HapticFeedback.HEAVY
                 },
             )
         }

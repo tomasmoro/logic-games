@@ -176,6 +176,7 @@ fun TentsScreen(graph: AppGraph, onExit: () -> Unit) {
         var selectedLevel by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
         GameIntroScreen(
             help = GameHelpContent.tents,
+            tutorial = TentsTutorial.tutorial,
             title = GAME_TITLE,
             motif = GameMotif.TENTS_FOREST,
             description = stringResource(Res.string.tents_intro_description),

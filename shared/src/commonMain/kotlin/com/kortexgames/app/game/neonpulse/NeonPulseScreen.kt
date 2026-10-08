@@ -207,6 +207,7 @@ fun NeonPulseScreen(graph: AppGraph, onExit: () -> Unit) {
     if (state.status == GameStatus.IDLE) {
         GameIntroScreen(
             help = GameHelpContent.neonPulse,
+            tutorial = NeonPulseTutorial.tutorial,
             title = "Neon Pulse",
             motif = GameMotif.NEON_PULSE,
             description = stringResource(Res.string.neonpulse_intro_description),
@@ -409,7 +410,7 @@ fun NeonPulseScreen(graph: AppGraph, onExit: () -> Unit) {
  * @param tempo latidos por segundo, aproximadamente.
  * @param intensity 0..1, presencia de los anillos (baja en juego normal: es ambiente).
  */
-private fun DrawScope.drawPulseField(time: Float, tempo: Float, tint: Color, intensity: Float) {
+internal fun DrawScope.drawPulseField(time: Float, tempo: Float, tint: Color, intensity: Float) {
     val center = Offset(size.width / 2f, size.height / 2f)
     val reach = maxOf(size.width, size.height) * 0.72f
     for (i in 0 until PULSE_RINGS) {
@@ -436,7 +437,7 @@ private fun DrawScope.drawPulseField(time: Float, tempo: Float, tint: Color, int
  * @param minDim lado menor del lienzo en px: el radio del nodo es normalizado respecto a él.
  * @param time segundos del reloj de la pantalla (giro de las púas de la bomba, temblor).
  */
-private fun DrawScope.drawNode(node: Node, minDim: Float, time: Float) {
+internal fun DrawScope.drawNode(node: Node, minDim: Float, time: Float) {
     val color = node.type.accent()
     val ageMs = (node.totalLifeMs - node.remainingMs).toFloat()
     val pop = EaseOutBack.transform((ageMs / NODE_POP_MS).coerceIn(0f, 1f))
@@ -602,7 +603,7 @@ private fun heartPath(center: Offset, r: Float): Path {
 
 
 /** Color de acento por tipo de nodo (siempre desde la paleta del tema, §9.2). */
-private fun NodeType.accent(): Color = when (this) {
+internal fun NodeType.accent(): Color = when (this) {
     NodeType.NORMAL -> LogicColors.Coral
     NodeType.TRAP -> LogicColors.Error
     NodeType.HEART -> LogicColors.NeonGreen

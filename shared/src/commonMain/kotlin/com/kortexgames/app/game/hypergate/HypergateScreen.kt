@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -11,7 +12,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -76,6 +79,7 @@ import kortexgames.shared.generated.resources.hypergate_hint
 import kortexgames.shared.generated.resources.hypergate_hud_absorbed
 import kortexgames.shared.generated.resources.hypergate_hud_crashed
 import kortexgames.shared.generated.resources.hypergate_hud_time
+import kortexgames.shared.generated.resources.hypergate_intro_description
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.cos
 import kotlin.math.sin
@@ -84,8 +88,17 @@ import kotlin.math.sin
  * # HypergateScreen — renderizado radial (Fase 3)
  *
  * Pantalla del minijuego **Hypergate**. Es, por diseño, solo dos cosas (§3 del spec): un
- * **gestor de toques** (tap en cualquier parte → conmuta el escudo) y un **Canvas** que traduce
- * el estado polar del motor a píxeles. Sin botones genéricos ni emojis.
+ * **gestor de toques** y un **Canvas** que traduce el estado polar del motor a píxeles. Sin
+ * botones genéricos ni emojis.
+ *
+ * ## Un dedo, dos gestos
+ * Toda la pantalla es una única zona táctil, y la duración de la pulsación decide el gesto:
+ *  - **toque corto** → conmuta la polaridad del portal;
+ *  - **mantener pulsado** → modo escudo mientras dure (contra los meteoritos rojos).
+ *
+ * La frontera es [HOLD_THRESHOLD_MS]. La polaridad conmuta **al soltar**, no al apoyar el dedo:
+ * si conmutara al apoyar, cada vez que el jugador fuese a usar el escudo cambiaría además el
+ * color del portal sin quererlo.
  *
  * ## Traducción polar → cartesiana (el corazón del render)
  * El motor mantiene cada proyectil como `(angleRad, distancePx)` respecto al centro (ver
@@ -117,9 +130,10 @@ fun HypergateScreen(graph: AppGraph, onExit: () -> Unit) {
     if (state.status == GameStatus.IDLE) {
         GameIntroScreen(
             help = GameHelpContent.hypergate,
+            tutorial = HypergateTutorial.tutorial,
             title = "Hypergate",
             motif = GameMotif.HYPERGATE,
-            description = "Toca en cualquier parte para alternar la polaridad del escudo. Haz que su color coincida con cada proyectil justo antes del impacto: iguala para absorber, falla y chocarás.",
+            description = stringResource(Res.string.hypergate_intro_description),
             accent = CategoryPalette.Reflexes,
             onStart = {
                 // Cuenta para la misión diaria en cuanto se juega, no hace falta terminar
@@ -179,29 +193,41 @@ fun HypergateScreen(graph: AppGraph, onExit: () -> Unit) {
         impacts.removeAll { now - it.at > IMPACT_LIFE_SEC + 0.5f }
         val absorbed = game.absorbed - before.absorbed
         val crashed = game.crashed - before.crashed
-        if (absorbed < 0 || crashed < 0) {
+        val deflected = game.deflected - before.deflected
+        if (absorbed < 0 || crashed < 0 || deflected < 0) {
             // Partida nueva: fuera lo de la anterior.
             impacts.clear()
             streak = 0
             return@SideEffect
         }
-        if (absorbed == 0 && crashed == 0) return@SideEffect
+        if (absorbed == 0 && crashed == 0 && deflected == 0) return@SideEffect
         val alive = game.projectiles.mapTo(HashSet()) { it.id }
         val gone = before.projectiles.filter { it.id !in alive }
         // Reparto de la puntuación del frame entre lo que impactó, para el "+N" flotante.
         var delta = game.score - before.score
-        gone.forEachIndexed { i, p ->
-            // Si en el mismo frame hubo de los dos tipos, cada uno se decide por su polaridad.
-            val success = if (crashed == 0) true else if (absorbed == 0) false else p.required == before.shield
+        gone.forEach { p ->
+            val outcome = when {
+                // Lo normal: en el frame solo pasó una cosa, y todo lo que desapareció fue eso.
+                crashed == 0 && deflected == 0 -> ImpactOutcome.ABSORBED
+                absorbed == 0 && deflected == 0 -> ImpactOutcome.CRASHED
+                absorbed == 0 && crashed == 0 -> ImpactOutcome.DEFLECTED
+                // Frame mezclado: cada proyectil se decide con las mismas reglas que el motor.
+                before.barrierActive -> ImpactOutcome.DEFLECTED
+                p.kind == ProjectileKind.METEOR -> ImpactOutcome.CRASHED
+                p.required == before.shield -> ImpactOutcome.ABSORBED
+                else -> ImpactOutcome.CRASHED
+            }
+            // El "+N" va con el primer impacto que puntúa; lo deshecho por el escudo no puntúa.
+            val shown = if (outcome == ImpactOutcome.DEFLECTED) 0 else delta
             impacts += GateImpact(
                 id = p.id,
                 angleRad = p.angleRad,
-                required = p.required,
-                success = success,
+                color = p.neon(),
+                outcome = outcome,
                 at = now,
-                scoreDelta = if (i == 0) delta else 0,
+                scoreDelta = shown,
             )
-            delta = 0
+            if (shown != 0) delta = 0
         }
         if (crashed > 0) {
             streak = 0
@@ -239,14 +265,43 @@ fun HypergateScreen(graph: AppGraph, onExit: () -> Unit) {
     }
     val timeFraction = (game.remainingMs.toFloat() / ROUND_DURATION_MS).coerceIn(0f, 1f)
 
+    // Opacidad de la burbuja del modo escudo: encender y apagar con un fundido corto, no un corte.
+    val barrierAmount by animateFloatAsState(
+        targetValue = if (game.barrierActive) 1f else 0f,
+        animationSpec = tween(durationMillis = 120),
+        label = "hypergateBarrier",
+    )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(LogicColors.BackgroundDark)
             .onSizeChanged { viewportSize = it }
             .pointerInput(Unit) {
-                // Tap-anywhere: la posición del toque es irrelevante, solo conmuta el escudo.
-                detectTapGestures { vm.onIntent(HypergateIntent.ToggleShield) }
+                // Toca-donde-sea: la posición es irrelevante; lo que cuenta es cuánto dura la
+                // pulsación (ver "Un dedo, dos gestos" en el KDoc).
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    var released = false
+                    var tapped = false
+                    withTimeoutOrNull(HOLD_THRESHOLD_MS) {
+                        // `null` = gesto cancelado (no un toque): no debe conmutar nada.
+                        tapped = waitForUpOrCancellation() != null
+                        released = true
+                    }
+                    if (released) {
+                        if (tapped) vm.onIntent(HypergateIntent.ToggleShield)
+                    } else {
+                        vm.onIntent(HypergateIntent.SetBarrier(held = true))
+                        try {
+                            waitForUpOrCancellation()
+                        } finally {
+                            // En `finally`: si el gesto se cancela (pausa, salir de la pantalla)
+                            // el escudo no puede quedarse "pulsado" y gastándose.
+                            vm.onIntent(HypergateIntent.SetBarrier(held = false))
+                        }
+                    }
+                }
             },
     ) {
         SpaceBackdrop(modifier = Modifier.fillMaxSize())
@@ -284,22 +339,23 @@ fun HypergateScreen(graph: AppGraph, onExit: () -> Unit) {
                         center.y + sin(nearest.angleRad) * nearest.distancePx,
                     ),
                     angleRad = nearest.angleRad,
-                    color = nearest.required.toNeon(),
+                    color = nearest.neon(),
                     urgency = 1f - travel / (radius * MARKER_RANGE),
                 )
             }
 
             // Cometas: polar → cartesiano.
             for (p in game.projectiles) {
-                drawComet(
-                    head = Offset(
-                        x = center.x + cos(p.angleRad) * p.distancePx,
-                        y = center.y + sin(p.angleRad) * p.distancePx,
-                    ),
-                    angleRad = p.angleRad,
-                    required = p.required,
-                    speedFactor = p.speedPx / REFERENCE_SPEED_PX,
+                val head = Offset(
+                    x = center.x + cos(p.angleRad) * p.distancePx,
+                    y = center.y + sin(p.angleRad) * p.distancePx,
                 )
+                val speedFactor = p.speedPx / REFERENCE_SPEED_PX
+                if (p.kind == ProjectileKind.METEOR) {
+                    drawMeteor(head, p.angleRad, speedFactor, time = now, seed = p.id.toInt())
+                } else {
+                    drawComet(head, p.angleRad, p.required, speedFactor)
+                }
             }
 
             drawGate(
@@ -322,17 +378,33 @@ fun HypergateScreen(graph: AppGraph, onExit: () -> Unit) {
                 )
             }
 
+            // Modo escudo: la burbuja mientras está encendido, o el aro de recarga si se agotó.
+            if (game.barrierCooldownMs > 0L) {
+                drawBarrierRecharge(center, radius, 1f - game.barrierCooldownMs.toFloat() / BARRIER_COOLDOWN_MS)
+            }
+            drawBarrier(
+                center = center,
+                gateRadius = radius,
+                amount = barrierAmount,
+                heldFraction = game.barrierHeldMs.toFloat() / BARRIER_MAX_HOLD_MS,
+                time = now,
+            )
+
             impacts.forEach { impact ->
                 val age = now - impact.at
-                drawGateImpact(
-                    center = center,
-                    radius = radius,
-                    angleRad = impact.angleRad,
-                    color = impact.required.toNeon(),
-                    success = impact.success,
-                    age = age,
-                    seed = impact.id.toInt(),
-                )
+                if (impact.outcome == ImpactOutcome.DEFLECTED) {
+                    drawBarrierDeflect(center, radius, impact.angleRad, impact.color, age, seed = impact.id.toInt())
+                } else {
+                    drawGateImpact(
+                        center = center,
+                        radius = radius,
+                        angleRad = impact.angleRad,
+                        color = impact.color,
+                        success = impact.outcome == ImpactOutcome.ABSORBED,
+                        age = age,
+                        seed = impact.id.toInt(),
+                    )
+                }
                 // "+N" (o la penalización) que sale del punto de impacto y se aleja apagándose.
                 val p = age / FLOAT_TEXT_SEC
                 if (impact.scoreDelta != 0 && p in 0f..1f) {
@@ -343,7 +415,7 @@ fun HypergateScreen(graph: AppGraph, onExit: () -> Unit) {
                     val distance = radius * (1.75f + 0.5f * p)
                     drawText(
                         textLayoutResult = layout,
-                        color = (if (impact.success) impact.required.toNeon() else LogicColors.Error).copy(alpha = 1f - p * p),
+                        color = (if (impact.outcome == ImpactOutcome.ABSORBED) impact.color else LogicColors.Error).copy(alpha = 1f - p * p),
                         topLeft = Offset(
                             center.x + cos(impact.angleRad) * distance - layout.size.width / 2f,
                             center.y + sin(impact.angleRad) * distance - layout.size.height / 2f,
@@ -411,22 +483,25 @@ fun HypergateScreen(graph: AppGraph, onExit: () -> Unit) {
     }
 }
 
+/** Cómo terminó un proyectil al llegar al portal; decide qué efecto se dibuja. */
+private enum class ImpactOutcome { ABSORBED, CRASHED, DEFLECTED }
+
 /**
  * Un impacto reciente en el portal, deducido por la pantalla (ver el `SideEffect` de
  * [HypergateScreen]).
  *
  * @property id el del proyectil; sirve de semilla para que cada impacto chispee distinto.
  * @property angleRad ángulo polar por el que llegó: sitúa el efecto sobre el anillo.
- * @property required polaridad del proyectil (su color).
- * @property success absorbido (`true`) o choque.
+ * @property color color del proyectil (su polaridad, o rojo si era un meteorito).
+ * @property outcome cómo acabó: absorbido, choque o deshecho contra el modo escudo.
  * @property at instante del reloj de la pantalla en que ocurrió.
  * @property scoreDelta puntos que sumó o restó, para el texto flotante; 0 = sin texto.
  */
 private data class GateImpact(
     val id: Long,
     val angleRad: Float,
-    val required: ShieldState,
-    val success: Boolean,
+    val color: Color,
+    val outcome: ImpactOutcome,
     val at: Float,
     val scoreDelta: Int,
 )
@@ -541,6 +616,13 @@ private fun HudChip(icon: ImageVector, tint: Color, value: String, description: 
         Text(text = value, style = MaterialTheme.typography.labelLarge, color = LogicColors.OnDark, fontWeight = FontWeight.Black)
     }
 }
+
+/**
+ * Milisegundos de pulsación a partir de los que deja de ser un toque (cambiar polaridad) y pasa a
+ * ser "mantener" (modo escudo). Corto, porque es el retardo con el que se enciende el escudo ante
+ * un meteorito; pero no tanto como para que un toque normal, algo lento, se quede sin conmutar.
+ */
+private const val HOLD_THRESHOLD_MS = 160L
 
 /** Racha de aciertos a partir de la que el núcleo del portal enseña el multiplicador. */
 private const val STREAK_SHOWN_FROM = 2

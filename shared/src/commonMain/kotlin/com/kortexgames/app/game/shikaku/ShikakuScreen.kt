@@ -102,10 +102,10 @@ import kotlin.math.sin
 private const val GAME_TITLE = "Neon Shikaku Matrix"
 
 /** Tamaño de la pista como fracción de la celda: legible en 12×12 sin tocar los bordes. */
-private const val CLUE_FONT_FRACTION = 0.44f
+internal const val CLUE_FONT_FRACTION = 0.44f
 
 /** Encendido en reposo del tubo de un rectángulo sellado (0 = apagado, 1 = núcleo blanco). */
-private const val SEALED_GLOW = 0.45f
+internal const val SEALED_GLOW = 0.45f
 
 /** Opacidad mínima del parpadeo de error: "sutil" = nunca llega a apagarse del todo. */
 private const val ERROR_BLINK_MIN = 0.45f
@@ -122,19 +122,19 @@ private const val CELL_GAP_DP = 1.5f
 // --- Encendido de un rectángulo correcto ---------------------------------------
 
 /** Retraso del encendido entre una celda y la siguiente, por paso de distancia a la pista (s). */
-private const val LIGHT_STEP_SEC = 0.045f
+internal const val LIGHT_STEP_SEC = 0.045f
 
 /** Lo que tarda una celda en encenderse con su rebote (s). */
-private const val LIGHT_POP_SEC = 0.30f
+internal const val LIGHT_POP_SEC = 0.30f
 
 /** Lo que tarda el tubo del rectángulo en bajar de pleno al reposo tras sellarse (s). */
-private const val SEAL_FLASH_SEC = 0.75f
+internal const val SEAL_FLASH_SEC = 0.75f
 
 /** Duración del "pop" con que la pista se convierte en ficha (s). */
 private const val CHIP_POP_SEC = 0.38f
 
 /** Duración de la ráfaga de chispas de la pista resuelta (s). */
-private const val SEAL_SPARKS_SEC = 0.55f
+internal const val SEAL_SPARKS_SEC = 0.55f
 
 /** Radio de la ficha de una pista, en lados de celda. */
 private const val CHIP_RADIUS = 0.34f
@@ -179,7 +179,7 @@ private const val SOLVE_SPARK_STAGGER_SEC = 0.05f
 private const val SOLVE_HOLD_MS = 1_150L
 
 /** Único punto donde un tinte de dominio se vuelve un color de `LogicColors`. */
-private fun ShikakuTint.toColor(): Color = when (this) {
+internal fun ShikakuTint.toColor(): Color = when (this) {
     ShikakuTint.CYAN -> LogicColors.NeonCyan
     ShikakuTint.MAGENTA -> LogicColors.Magenta
     ShikakuTint.GREEN -> LogicColors.NeonGreen
@@ -190,7 +190,7 @@ private fun ShikakuTint.toColor(): Color = when (this) {
  * imposible" (pisa un agujero o encierra dos pistas) y ámbar/cian para lo que simplemente aún no
  * está terminado. Pintar de rojo un arrastre a medio camino castigaría el gesto antes de acabarlo.
  */
-private fun ShikakuRectValidity.toSelectionColor(): Color = when (this) {
+internal fun ShikakuRectValidity.toSelectionColor(): Color = when (this) {
     ShikakuRectValidity.VALID -> LogicColors.NeonGreen
     ShikakuRectValidity.WRONG_AREA -> LogicColors.Amber
     ShikakuRectValidity.NO_NUMBER -> LogicColors.NeonCyan
@@ -235,6 +235,7 @@ fun ShikakuScreen(graph: AppGraph, onExit: () -> Unit) {
         var selectedLevel by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
         GameIntroScreen(
             help = GameHelpContent.shikaku,
+            tutorial = ShikakuTutorial.tutorial,
             title = GAME_TITLE,
             motif = GameMotif.SHIKAKU_RECTS,
             description = stringResource(Res.string.shikaku_intro_description),
@@ -666,7 +667,7 @@ private class SolvedLookup(
  * @param sheen 0..1: cuánto la toca ahora el brillo de ambiente.
  * @param wave 0..1: destello de la onda de nivel completado.
  */
-private fun DrawScope.drawSolvedCell(
+internal fun DrawScope.drawSolvedCell(
     center: Offset,
     side: Float,
     color: Color,
@@ -721,7 +722,7 @@ private fun DrawScope.drawSolvedCell(
  * @param sinceSolved segundos desde que se resolvió (solo si [solvedColor] no es `null`).
  * @param armed la selección en curso la resolvería al soltar: se pinta en verde y crece.
  */
-private fun DrawScope.drawClue(
+internal fun DrawScope.drawClue(
     layout: TextLayoutResult,
     center: Offset,
     cell: Float,

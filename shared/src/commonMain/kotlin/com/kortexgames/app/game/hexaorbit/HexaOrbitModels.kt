@@ -537,11 +537,11 @@ object HexaOrbitBalance {
      * `√3 ≈ 1.73` radios, así que 2.8 equivale a ~1.6 azulejos rectos por segundo: cómodo para
      * leer el primer trazado antes de que la rampa apriete.
      *
-     * Rebajada un 15% (de 2.8 a 2.38) a petición de producto: el puntero se sentía demasiado
-     * rápido. [SPEED_RAMP_PER_SEC] baja en la misma proporción para que toda la curva de rapidez
-     * —no solo el arranque— quede uniformemente un 15% más lenta en cada instante de la partida.
+     * Rebajada dos veces un 15% a petición de producto (2.8 → 2.38 → 2.02): el puntero se sentía
+     * demasiado rápido. [SPEED_RAMP_PER_SEC] baja en la misma proporción para que toda la curva
+     * de rapidez —no solo el arranque— quede uniformemente más lenta en cada instante.
      */
-    const val INITIAL_SPEED: Float = 2.38f
+    const val INITIAL_SPEED: Float = 1.82f
 
     /**
      * Incremento de rapidez por segundo de partida (rampa lineal), en radios/s².
@@ -552,11 +552,11 @@ object HexaOrbitBalance {
      * primeros segundos. Con 0.03 se tarda algo más de 90 s en alcanzar el techo, así que la
      * mayoría de partidas terminan (por fuga) mucho antes de aplanarse.
      *
-     * Escalado un 15% a la baja junto a [INITIAL_SPEED] (mismo factor) para que el tiempo hasta
+     * Escalado a la baja (dos veces un 15%: 0.03 → 0.0255 → 0.0217) junto a [INITIAL_SPEED] (mismo factor) para que el tiempo hasta
      * el techo no cambie: si solo se bajara la rapidez inicial, la rampa alcanzaría [MAX_SPEED]
      * antes, porque el rango recorrido (siempre [INITIAL_SPEED]) también se habría reducido.
      */
-    const val SPEED_RAMP_PER_SEC: Float = 0.0255f
+    const val SPEED_RAMP_PER_SEC: Float = 0.0200f
 
     /**
      * Techo de rapidez: el **doble** de [INITIAL_SPEED] (~3,2 azulejos rectos por segundo). Un
@@ -566,7 +566,7 @@ object HexaOrbitBalance {
      * de alarma ([ESCAPE_ALERT_TILES]) y el juego pasa a decidirse por azar, que es justo lo
      * contrario de un juego táctico.
      */
-    const val MAX_SPEED: Float = INITIAL_SPEED * 2f
+    const val MAX_SPEED: Float = INITIAL_SPEED * 2.2f
 
     /** Radio de recogida de un orbe, en unidades de radio de hex. */
     const val COLLECT_RADIUS: Float = 0.32f

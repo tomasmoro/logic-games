@@ -55,6 +55,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.core.theme.LogicGradients
 import com.kortexgames.app.domain.model.formatDurationShort
@@ -64,6 +65,7 @@ import kortexgames.shared.generated.resources.Res
 import kortexgames.shared.generated.resources.firstrun_age_notice
 import kortexgames.shared.generated.resources.firstrun_progress
 import kortexgames.shared.generated.resources.gameintro_level_upcoming
+import kortexgames.shared.generated.resources.gameintro_watch_tutorial
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -162,6 +164,10 @@ data class ResumeState(
  *        [com.kortexgames.app.game.GameHelpContent]). Si no es null, el botón de ayuda
  *        de la cabecera abre la pantalla de ayuda genérica ([GameHelpSheet]); si es null,
  *        el botón cae en [onHelp].
+ * @param tutorial tutorial animado del juego ([GameTutorial]). Si no es null, se abre **solo la
+ *        primera vez** que el jugador entra en esta antesala (lo recuerda
+ *        [com.kortexgames.app.data.settings.TutorialStore]) y, después, a mano desde el botón
+ *        "Ver tutorial" bajo la descripción. **null** = juego sin tutorial todavía.
  * @param onHelp acción del botón de ayuda cuando no se inyecta [help]; por defecto un no-op.
  * @param startLabel texto del CTA (por defecto "Comenzar").
  * @param resume partida pendiente de continuar (ver [ResumeState]); **null** en los
@@ -195,6 +201,7 @@ fun GameIntroScreen(
     motif: GameMotif? = null,
     levels: LevelStripState? = null,
     help: GameHelp? = null,
+    tutorial: GameTutorial? = null,
     onHelp: () -> Unit = {},
     startLabel: String = "Comenzar",
     resume: ResumeState? = null,
@@ -206,6 +213,23 @@ fun GameIntroScreen(
     // cabecera abre la pantalla de ayuda genérica sin que la pantalla llamante tenga que
     // orquestar nada (por eso [onHelp] solo se usa como respaldo si no hay [help]).
     var showHelp by remember { mutableStateOf(false) }
+
+    // Tutorial animado: se abre solo la primera vez. Se marca como visto al ABRIRLO y no al
+    // cerrarlo: quien lo salta ya ha dicho que no lo quiere, y no debe volver a saltarle.
+    var showTutorial by remember { mutableStateOf(false) }
+    val tutorialStore = LocalTutorialStore.current
+    if (tutorial != null && tutorialStore != null) {
+        val seenTutorials by tutorialStore.seen.collectAsStateWithLifecycle()
+        // La clave solo cambia una vez (cuando DataStore responde), así que marcarlo como
+        // visto —que vuelve a emitir— no relanza el efecto.
+        LaunchedEffect(tutorial.gameId, seenTutorials == null) {
+            val seen = seenTutorials ?: return@LaunchedEffect
+            if (tutorial.gameId !in seen) {
+                showTutorial = true
+                tutorialStore.markSeen(tutorial.gameId)
+            }
+        }
+    }
 
     // Bienvenida de primera apertura: si esta antesala es uno de sus juegos, se le
     // añaden las dos piezas que la bienvenida necesita —indicador de paso y aviso
@@ -287,6 +311,32 @@ fun GameIntroScreen(
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(horizontal = 32.dp),
                     )
+                }
+
+                // Volver a ver el tutorial. Discreto (sin acento ni halo): es consulta, no
+                // debe competir con el CTA (§9.1). Entra junto a la descripción, de la que
+                // es un apéndice, en vez de gastar un escalón más de la cascada de entrada.
+                if (tutorial != null) {
+                    Spacer(Modifier.height(10.dp))
+                    ModalReveal(index = 2, visible = true) {
+                        Row(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(LogicColors.SurfaceVariantDark.copy(alpha = 0.6f))
+                                .bounceClick { showTutorial = true }
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            NeonIcon(icon = KortexIcons.Play, tint = accent, size = 18.dp, glow = false)
+                            Text(
+                                stringResource(Res.string.gameintro_watch_tutorial),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = LogicColors.OnDark,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
                 }
 
                 if (levels != null) {
@@ -403,6 +453,15 @@ fun GameIntroScreen(
                 help = help,
                 visible = showHelp,
                 onDismiss = { showHelp = false },
+            )
+        }
+
+        // Tutorial animado: mismo sitio y por el mismo motivo que la hoja de ayuda.
+        if (tutorial != null) {
+            GameTutorialDialog(
+                tutorial = tutorial,
+                visible = showTutorial,
+                onClose = { showTutorial = false },
             )
         }
     }

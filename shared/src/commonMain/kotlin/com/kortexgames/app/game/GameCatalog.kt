@@ -402,11 +402,11 @@ object GameCatalog {
         // publicarlo basta con quitar el flag (su seed de Supabase es la migración 0063).
         GameInfo(GameIds.NEON_TENTS, "Neon Trees & Tents", GameCategory.LOGIC, playable = true, motif = GameMotif.TENTS_FOREST, isNew = true),
         // Segundo juego de Reconocimiento de Patrones. Su seed de Supabase es la migración 0064.
-        GameInfo(GameIds.NEON_HEXA_FLUX, "Neon Hexa Flux", GameCategory.PATTERNS, playable = true, motif = GameMotif.HEXA_FLUX, isNew = true),
+        GameInfo(GameIds.NEON_HEXA_FLUX, "Neon Hexa Flux", GameCategory.PATTERNS, playable = true, published = false, motif = GameMotif.HEXA_FLUX, isNew = true),
         GameInfo(GameIds.BUBBLE_MATH, "Burbujas de Cálculo", GameCategory.MENTAL_MATH, playable = true, motif = GameMotif.MATH_BUBBLES),
         // Primer juego de Reconocimiento de Patrones del catálogo: la categoría deja de
         // estar vacía.
-        GameInfo(GameIds.NEON_GRID_SWITCH, "Neon Grid Switch", GameCategory.PATTERNS, playable = true, motif = GameMotif.LIGHTS_GRID, isNew = true),
+        GameInfo(GameIds.NEON_GRID_SWITCH, "Neon Grid Switch", GameCategory.PATTERNS, playable = true, motif = GameMotif.LIGHTS_GRID),
         GameInfo(GameIds.NEON_BLOCK_GRID, "Bloques Neón", GameCategory.LOGIC, playable = true, motif = GameMotif.TETROMINO),
         GameInfo(GameIds.QUANTUM_MERGE, "Quantum Merge", GameCategory.SPATIAL, playable = true, motif = GameMotif.QUANTUM_SPHERES),
         GameInfo(GameIds.WORD_CONNECT, "Palabras Conectadas", GameCategory.LANGUAGE, playable = true, published = false, motif = GameMotif.WORD_WHEEL),

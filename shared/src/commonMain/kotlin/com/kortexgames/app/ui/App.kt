@@ -75,6 +75,7 @@ import com.kortexgames.app.ui.navigation.Routes
 import com.kortexgames.app.ui.navigation.TopLevelTab
 import com.kortexgames.app.ui.onboarding.FirstRunFlow
 import com.kortexgames.app.ui.onboarding.FirstRunWelcomeScreen
+import com.kortexgames.app.ui.components.LocalTutorialStore
 import com.kortexgames.app.ui.onboarding.LocalFirstRunFlow
 import com.kortexgames.app.ui.onboarding.PlayerNameScreen
 import com.kortexgames.app.ui.profile.ProfileScreen
@@ -362,7 +363,12 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean, introGamesPlay
             // El flujo de bienvenida se publica para TODA la navegación: quien lo
             // consume es la antesala de cada juego ([GameIntroScreen]), a la que la
             // navegación no puede inyectarle nada porque la monta el propio juego.
-            CompositionLocalProvider(LocalFirstRunFlow provides firstRun) {
+            // Igual con el almacén de tutoriales vistos: la antesala lo necesita para abrir
+            // el tutorial de un juego solo la primera vez (ver [LocalTutorialStore]).
+            CompositionLocalProvider(
+                LocalFirstRunFlow provides firstRun,
+                LocalTutorialStore provides graph.tutorialStore,
+            ) {
             NavHost(
                 navController = navController,
                 startDestination = startDestination,

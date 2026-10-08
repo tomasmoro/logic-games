@@ -361,8 +361,11 @@ private data class BoardGeometry(
  * @param pressed el dedo está sobre esta celda: si está oculta, su tecla se dibuja hundida.
  * @param scanPulse 0..1: encendido del borde de una celda oculta en modo escáner (son las
  *   elegibles); 0 fuera de ese modo.
+ *
+ * `internal` y no privada porque también la usa el tutorial animado (`DefuserTutorial`), para
+ * que su mini-panel sea exactamente el de la partida.
  */
-private fun DrawScope.drawCell(
+internal fun DrawScope.drawCell(
     cell: MineCell,
     topLeft: Offset,
     side: Float,

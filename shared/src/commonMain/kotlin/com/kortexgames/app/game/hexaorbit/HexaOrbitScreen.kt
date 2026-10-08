@@ -157,6 +157,7 @@ fun HexaOrbitScreen(graph: AppGraph, onExit: () -> Unit) {
     if (state.status == GameStatus.IDLE) {
         GameIntroScreen(
             help = GameHelpContent.hexaOrbit,
+            tutorial = HexaOrbitTutorial.tutorial,
             title = "Hexa Orbit",
             motif = GameMotif.HEXA_ORBIT,
             description = stringResource(Res.string.hexa_orbit_intro_description),

@@ -147,25 +147,34 @@ object GameHelpContent {
     /** Hypergate (Reflejos). */
     val hypergate = GameHelp(
         title = "Hypergate",
-        summary = "Iguala la polaridad del escudo a cada proyectil antes del impacto.",
+        summary = "Iguala el color del portal al de cada cometa antes del impacto, y protégete de los meteoritos rojos.",
         accent = CategoryPalette.Reflexes,
         art = motifHelpArt(GameMotif.HYPERGATE),
         steps = listOf(
             HelpStep(
                 icon = KortexIcons.Play,
                 title = "Cambia de polaridad",
-                text = "Toca en cualquier parte para alternar el color del escudo.",
+                text = "Toca en cualquier parte para alternar el color del portal.",
             ),
             HelpStep(
                 icon = KortexIcons.Shield,
                 title = "Iguala para absorber",
-                text = "Haz que el escudo coincida con el proyectil justo antes de que llegue.",
+                text = "Haz que el portal coincida con el cometa justo antes de que llegue.",
             ),
             HelpStep(
                 icon = KortexIcons.Warning,
                 title = "No falles",
                 text = "Si los colores no coinciden en el impacto, chocarás.",
             ),
+            HelpStep(
+                icon = KortexIcons.Shield,
+                title = "Escudo contra meteoritos",
+                text = "Ningún color absorbe un meteorito rojo: mantén pulsado para activar el escudo y se deshará.",
+            ),
+        ),
+        tips = listOf(
+            "Con el escudo activo nada te afecta, pero tampoco sumas puntos: suéltalo en cuanto pase el meteorito.",
+            "El escudo aguanta 3 segundos seguidos. Si lo agotas, tarda 5 en recargarse.",
         ),
     )
 

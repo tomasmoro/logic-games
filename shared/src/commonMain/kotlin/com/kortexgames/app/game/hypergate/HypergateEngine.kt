@@ -32,6 +32,17 @@ import kotlin.random.Random
  *  - En el impacto (`distancePx <= shieldRadiusPx`): si la polaridad del escudo coincide con la
  *    del proyectil → **absorción** (+puntos); si no → **choque** (penalización). La ronda termina
  *    SOLO al agotarse el tiempo (score-attack), como en *Atracción Geométrica*.
+ *  - Cada pocos segundos llega un **meteorito rojo** ([ProjectileKind.METEOR]) que ninguna
+ *    polaridad absorbe: choca siempre, salvo que esté encendido el **modo escudo**.
+ *  - El **modo escudo** se enciende manteniendo pulsado ([setBarrierHeld]). Mientras dura, todo
+ *    lo que llega se deshace sin efecto: los meteoritos no dañan, y los cometas ni suman ni
+ *    restan. Aguanta [BARRIER_MAX_HOLD_MS] seguidos; si se agota, recarga [BARRIER_COOLDOWN_MS].
+ *
+ * ## Por qué el escudo anula también los cometas (y no solo protege)
+ * Si con el escudo encendido los cometas siguieran absorbiéndose, mantener pulsado sería
+ * estrictamente mejor que jugar y el tope de 3 s sería la única regla del juego. Al no puntuar,
+ * cada instante a cubierto es puntuación que se deja pasar: el jugador quiere encenderlo lo
+ * justo para el meteorito y soltarlo, que es la decisión interesante.
  *
  * ## Decisión del bucle (Tick) y su rendimiento
  * La física corre dirigida por el render (`withFrameNanos` en Compose emite [onFrame]); el motor
@@ -84,10 +95,21 @@ class HypergateEngine(
     private var spawnAccumulatorSec = 0f
     private var nextProjectileId = 1L
 
+    /** Segundos que faltan para el próximo meteorito. */
+    private var meteorCountdownSec = 0f
+
+    /**
+     * Si el jugador está manteniendo pulsado AHORA. Es entrada, no estado de juego: lo que el
+     * motor decide con ella (si el escudo llega a encenderse) sí va en [HypergateState].
+     */
+    private var barrierRequested = false
+
     override fun onStart() {
         frameClock.reset()
         spawnAccumulatorSec = 0f
         nextProjectileId = 1L
+        meteorCountdownSec = FIRST_METEOR_DELAY_SEC
+        barrierRequested = false
         // Conserva el viewport ya conocido para no "ciega" la primera ronda si la pantalla ya
         // reportó su tamaño antes de pulsar Comenzar.
         val current = _state.value
@@ -101,6 +123,10 @@ class HypergateEngine(
     override fun onPause() {
         // Descartar el delta acumulado evita un salto de física al reanudar.
         frameClock.reset()
+        // El menú de pausa se lleva el dedo: sin esto el escudo seguiría "pulsado" al reanudar
+        // (y gastándose) aunque el jugador ya no esté tocando la pantalla.
+        barrierRequested = false
+        _state.update { it.copy(barrierActive = false, barrierHeldMs = 0L) }
     }
 
     /**
@@ -128,6 +154,24 @@ class HypergateEngine(
     fun toggleShield() {
         if (status.value != GameStatus.RUNNING) return
         _state.update { it.copy(shield = it.shield.toggled()) }
+    }
+
+    /**
+     * Registra si el jugador mantiene pulsado, es decir, si **pide** el modo escudo. Encenderlo o
+     * no lo decide [step] en el siguiente frame: durante la recarga la petición no hace nada.
+     *
+     * Soltar apaga el escudo en el acto (no espera al frame) para que la pantalla lo vea ya.
+     * Ignora las pulsaciones fuera de RUNNING, pero **siempre** acepta soltar: si no, pausar con
+     * el dedo puesto dejaría la petición colgada.
+     */
+    fun setBarrierHeld(held: Boolean) {
+        if (!held) {
+            barrierRequested = false
+            _state.update { if (it.barrierActive) it.copy(barrierActive = false, barrierHeldMs = 0L) else it }
+            return
+        }
+        if (status.value != GameStatus.RUNNING) return
+        barrierRequested = true
     }
 
     /**
@@ -169,14 +213,36 @@ class HypergateEngine(
     override fun reachedMetric(): Int? = calculateScore().takeIf { it > 0 }
 
     /**
-     * Un paso de simulación de [dtSec] segundos: (1) spawnea según la cadencia rampada, (2) avanza
-     * cada proyectil hacia el centro, (3) resuelve impactos, (4) descuenta el tiempo.
+     * Un paso de simulación de [dtSec] segundos: (0) resuelve el modo escudo, (1) spawnea según la
+     * cadencia rampada, (2) avanza cada proyectil hacia el centro, (3) resuelve impactos,
+     * (4) descuenta el tiempo.
      *
      * Devuelve un estado NUEVO (inmutabilidad MVI); los efectos de impacto se publican como
      * side-effect controlado en [_effects].
      */
     private fun step(state: HypergateState, dtSec: Float): HypergateState {
         val progression = roundProgress(state)
+        val dtMs = (dtSec * 1_000f).toLong()
+
+        // --- (0) Modo escudo: recarga, encendido y agotamiento -------------------------------
+        var barrierActive = false
+        var barrierHeldMs = 0L
+        var barrierCooldownMs = (state.barrierCooldownMs - dtMs).coerceAtLeast(0L)
+        if (barrierRequested && state.barrierCooldownMs == 0L) {
+            barrierHeldMs = state.barrierHeldMs + dtMs
+            if (barrierHeldMs >= BARRIER_MAX_HOLD_MS) {
+                // Agotado: se apaga y recarga. Se descarta la petición para que, pasada la
+                // recarga, haga falta volver a pulsar: si se reencendiera solo con el dedo aún
+                // puesto, el jugador lo gastaría otra vez sin haberlo decidido.
+                barrierHeldMs = 0L
+                barrierCooldownMs = BARRIER_COOLDOWN_MS
+                barrierRequested = false
+                _effects.trySend(HypergateEffect.PlaySound(HypergateEffect.PlaySound.Cue.OVERHEAT))
+                _effects.trySend(HypergateEffect.Vibrate(HypergateEffect.Vibrate.Cue.OVERHEAT))
+            } else {
+                barrierActive = true
+            }
+        }
 
         // --- (1) Spawn con cadencia que se acelera con el tiempo y la dificultad -------------
         val spawnInterval = spawnIntervalSec(progression)
@@ -186,10 +252,20 @@ class HypergateEngine(
             spawnAccumulatorSec -= spawnInterval
             projectiles = projectiles + spawnProjectile(state, progression)
         }
+        // Los meteoritos van con su propio reloj y no como un % de los spawns normales: así
+        // llegan espaciados seguro. Dos seguidos obligarían a mantener el escudo más de lo que
+        // aguanta, y eso no sería dificultad sino un castigo sin salida.
+        meteorCountdownSec -= dtSec
+        if (meteorCountdownSec <= 0f) {
+            meteorCountdownSec = METEOR_MIN_GAP_SEC + random.nextFloat() * METEOR_GAP_VARIANCE_SEC
+            projectiles = projectiles + spawnProjectile(state, progression, ProjectileKind.METEOR)
+        }
 
         // --- (2)+(3) Avance radial y resolución de impactos ----------------------------------
-        val shieldRadius = state.shieldRadiusPx
+        // Con el modo escudo encendido la frontera es su burbuja, no el anillo del portal.
+        val shieldRadius = if (barrierActive) state.shieldRadiusPx * BARRIER_RADIUS_FACTOR else state.shieldRadiusPx
         var scoreDelta = 0
+        var deflectedDelta = 0
         var absorbedDelta = 0
         var crashedDelta = 0
         val survivors = ArrayList<Projectile>(projectiles.size)
@@ -202,8 +278,17 @@ class HypergateEngine(
                 continue
             }
 
-            // Impacto: comparación de polaridad contra el escudo VIGENTE en este frame.
-            if (p.required == state.shield) {
+            if (barrierActive) {
+                // Modo escudo: se deshace sin más, sea lo que sea. Ni puntos ni penalización.
+                deflectedDelta++
+                _effects.trySend(HypergateEffect.PlaySound(HypergateEffect.PlaySound.Cue.DEFLECT))
+                _effects.trySend(HypergateEffect.Vibrate(HypergateEffect.Vibrate.Cue.DEFLECT))
+                continue
+            }
+
+            // Impacto: comparación de polaridad contra el escudo VIGENTE en este frame. Un
+            // meteorito no tiene polaridad que valga: sin modo escudo, choca siempre.
+            if (p.kind == ProjectileKind.COMET && p.required == state.shield) {
                 absorbedDelta++
                 // Premia la velocidad: absorber un proyectil rápido vale más (mayor riesgo).
                 scoreDelta += ABSORB_BASE_SCORE + (p.speedPx * SPEED_SCORE_FACTOR).toInt()
@@ -224,7 +309,11 @@ class HypergateEngine(
             score = (state.score + scoreDelta).coerceAtLeast(0),
             absorbed = state.absorbed + absorbedDelta,
             crashed = state.crashed + crashedDelta,
-            remainingMs = (state.remainingMs - (dtSec * 1_000f).toLong()).coerceAtLeast(0L),
+            remainingMs = (state.remainingMs - dtMs).coerceAtLeast(0L),
+            barrierActive = barrierActive,
+            barrierHeldMs = barrierHeldMs,
+            barrierCooldownMs = barrierCooldownMs,
+            deflected = state.deflected + deflectedDelta,
         )
     }
 
@@ -236,8 +325,16 @@ class HypergateEngine(
      * viewport ([edgeDistanceForAngle]) y se le suma un margen. Así todo proyectil "asoma" por el
      * borde con una entrada perceptualmente consistente, en lugar de nacer más lejos en las
      * direcciones cardinales que en las diagonales (detalle de pulido §9).
+     *
+     * @param kind clase a generar. Un meteorito va algo más lento que un cometa
+     *   ([METEOR_SPEED_FACTOR]): su respuesta es mantener pulsado, que tarda un instante más en
+     *   reconocerse que un toque, y sin ese margen llegaría antes de poder reaccionar.
      */
-    private fun spawnProjectile(state: HypergateState, progression: Float): Projectile {
+    private fun spawnProjectile(
+        state: HypergateState,
+        progression: Float,
+        kind: ProjectileKind = ProjectileKind.COMET,
+    ): Projectile {
         val angle = (random.nextFloat() * 2f * PI.toFloat())
         val spawnDistance = edgeDistanceForAngle(
             angleRad = angle,
@@ -247,7 +344,8 @@ class HypergateEngine(
 
         val baseSpeed = BASE_SPEED_PX + random.nextFloat() * SPEED_VARIANCE_PX
         val difficultySpeed = baseSpeed * (1f + (difficulty.coerceIn(1, 5) - 1) * 0.08f)
-        val speed = difficultySpeed * lerp(INITIAL_SPEED_MULTIPLIER, END_SPEED_MULTIPLIER, progression)
+        val kindFactor = if (kind == ProjectileKind.METEOR) METEOR_SPEED_FACTOR else 1f
+        val speed = difficultySpeed * lerp(INITIAL_SPEED_MULTIPLIER, END_SPEED_MULTIPLIER, progression) * kindFactor
 
         return Projectile(
             id = nextProjectileId++,
@@ -256,6 +354,7 @@ class HypergateEngine(
             speedPx = speed,
             // 50/50 A/B: la discriminación es el núcleo del juego, no sesgar ninguna polaridad.
             required = if (random.nextBoolean()) ShieldState.A else ShieldState.B,
+            kind = kind,
         )
     }
 
@@ -318,5 +417,12 @@ class HypergateEngine(
         const val SPEED_SCORE_FACTOR = 0.12f
         const val MISMATCH_PENALTY = 90
         const val SURVIVAL_BONUS_PER_SEC = 12L
+
+        // Meteoritos rojos. El primero tarda: los primeros segundos son para coger el ritmo de
+        // las polaridades. El hueco mínimo entre dos es mayor que lo que aguanta el escudo.
+        const val FIRST_METEOR_DELAY_SEC = 6f
+        const val METEOR_MIN_GAP_SEC = 4f
+        const val METEOR_GAP_VARIANCE_SEC = 3f
+        const val METEOR_SPEED_FACTOR = 0.85f
     }
 }

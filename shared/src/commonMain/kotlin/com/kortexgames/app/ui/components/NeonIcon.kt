@@ -45,6 +45,7 @@ import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
@@ -217,6 +218,12 @@ object KortexIcons {
 
     /** Rayo: acción de "láser" (p. ej. el despeje de zona de peligro de Quantum Merge). */
     val Laser: ImageVector = Icons.Rounded.Bolt
+
+    /**
+     * Mano que toca: el "dedo fantasma" de los tutoriales animados, que señala dónde
+     * tendría que pulsar el jugador (ver `drawTutorialTap`).
+     */
+    val Tap: ImageVector = Icons.Rounded.TouchApp
 }
 
 /**

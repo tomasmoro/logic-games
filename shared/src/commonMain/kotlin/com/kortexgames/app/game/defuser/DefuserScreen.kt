@@ -235,6 +235,7 @@ fun DefuserScreen(graph: AppGraph, onExit: () -> Unit) {
     if (state.status == GameStatus.IDLE) {
         GameIntroScreen(
             help = GameHelpContent.defuser,
+            tutorial = DefuserTutorial.tutorial,
             title = "Neon Defuser",
             motif = GameMotif.MINESWEEPER,
             description = DEFUSER_HELP,

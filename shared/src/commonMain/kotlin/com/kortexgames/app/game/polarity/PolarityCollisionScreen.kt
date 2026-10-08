@@ -116,7 +116,7 @@ import kotlin.math.sin
  * no poder separar dos colores. Los parecidos entran después, cuando ya domina el
  * gesto y distinguirlos ES parte de la dificultad.
  */
-private val SectorPalette = listOf(
+internal val SectorPalette = listOf(
     LogicColors.NeonCyan,
     LogicColors.NeonGreen,
     LogicColors.Amber,
@@ -148,6 +148,7 @@ fun PolarityCollisionScreen(graph: AppGraph, onExit: () -> Unit) {
     if (state.status == GameStatus.IDLE) {
         GameIntroScreen(
             help = GameHelpContent.polarity,
+            tutorial = PolarityTutorial.tutorial,
             title = title,
             motif = GameMotif.POLARITY_SECTORS,
             description = stringResource(Res.string.polarity_intro_description),
@@ -610,7 +611,7 @@ private fun PolarityHeart(alive: Boolean) {
  * pintan apagados y en gris, nunca en rojo — no ha pasado nada malo, y teñir de error
  * lo que no castiga enseñaría a temer la fase de regalo.
  */
-private fun DrawScope.drawImpactBurst(impact: PolarityImpact, sectorColor: Color) {
+internal fun DrawScope.drawImpactBurst(impact: PolarityImpact, sectorColor: Color) {
     val progress = (impact.ageMs.toFloat() / IMPACT_LIFETIME_MS.toFloat()).coerceIn(0f, 1f)
     val fade = 1f - progress
     if (fade <= 0f) return
