@@ -70,13 +70,13 @@ import org.jetbrains.compose.resources.stringResource
  * no un logro — el verde de acción se reserva a la celebración de etapa
  * completada ([com.kortexgames.app.ui.components.GameOverOverlay]).
  */
-private val LitAccent = LogicColors.NeonCyan
+internal val LitAccent = LogicColors.NeonCyan
 
 /**
  * Duración del "pop" de conmutación: escala + destello breve sobre las celdas
  * afectadas por el último toque (spring/tween corto, §9.4 micro-feedback).
  */
-private const val TOGGLE_FLASH_MS = 220
+internal const val TOGGLE_FLASH_MS = 220
 
 /**
  * Pantalla de "Neon Grid Switch".
@@ -130,6 +130,7 @@ fun GridSwitchScreen(graph: AppGraph, onExit: () -> Unit) {
         var selectedStage by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
         GameIntroScreen(
             help = GameHelpContent.gridSwitch,
+            tutorial = GridSwitchTutorial.tutorial,
             title = "Neon Grid Switch",
             description = stringResource(Res.string.grid_switch_intro_description),
             accent = CategoryPalette.PatternRecognition,
@@ -354,7 +355,7 @@ private fun GridSwitchBoard(
  * Deliberadamente discreto (no un borde de neón encendido, §9.7): encima van
  * hasta 36 tubos de neón propios, y un bezel intenso competiría con ellos.
  */
-private fun DrawScope.drawBoardBackdrop() {
+internal fun DrawScope.drawBoardBackdrop() {
     val corner = CornerRadius(18.dp.toPx(), 18.dp.toPx())
     drawRoundRect(
         color = LogicColors.SurfaceDark,

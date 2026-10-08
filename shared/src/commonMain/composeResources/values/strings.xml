@@ -296,6 +296,12 @@
     <!-- ===================== Neon Grid Switch (Reconocimiento de Patrones) ===================== -->
     <!-- Antesala: qué se hace en el juego, antes de la primera partida. -->
     <string name="grid_switch_intro_description">Apaga todas las luces del tablero. Cada toque cambia esa celda y sus vecinas (las apaga o las enciende): encuentra el patrón antes de que la cuadrícula crezca.</string>
+    <!-- Grid Switch: pasos del tutorial animado (un texto por tramo de la animación). -->
+    <string name="grid_switch_tutorial_step_1">Hay que apagar todas las luces del tablero.</string>
+    <string name="grid_switch_tutorial_step_2">Cada toque cambia esa celda y sus vecinas: arriba, abajo y a los lados.</string>
+    <string name="grid_switch_tutorial_step_3">Cambiar es darle la vuelta: la encendida se apaga, pero las apagadas se encienden.</string>
+    <string name="grid_switch_tutorial_step_4">Busca el toque que lo apague todo de una vez.</string>
+    <string name="grid_switch_tutorial_step_5">¡Tablero apagado! Cada etapa trae una cuadrícula más grande.</string>
     <!-- Recordatorio del gesto, bajo el título, mientras se juega. -->
     <string name="grid_switch_subtitle">Apaga todas las luces: cada toque cambia la celda y sus vecinas</string>
     <!-- Etiquetas del marcador. -->
@@ -699,6 +705,12 @@
     <string name="sudoku_key_hint_desc">Ver un anuncio y revelar el número correcto de la celda seleccionada</string>
 
     <!-- Neon Grid 2048: HUD y overlay del hito -->
+    <!-- 2048: pasos del tutorial animado (un texto por tramo de la animación). -->
+    <string name="neon2048_tutorial_step_1">Desliza el dedo: todas las fichas se van hasta el borde en esa dirección.</string>
+    <string name="neon2048_tutorial_step_2">Después de cada movimiento aparece una ficha nueva.</string>
+    <string name="neon2048_tutorial_step_3">Dos fichas iguales que chocan se suman en una sola.</string>
+    <string name="neon2048_tutorial_step_4">Y lo sumado se vuelve a sumar: 4 y 4 hacen 8.</string>
+    <string name="neon2048_tutorial_step_5">Llega hasta 2048. Si el tablero se llena y no puedes mover, se acaba la partida.</string>
     <string name="neon2048_hud_score">Puntos</string>
     <string name="neon2048_hud_best">Récord</string>
     <string name="neon2048_hud_max">Ficha más alta</string>
@@ -730,6 +742,14 @@
     <string name="tents_tutorial_step_6">Un toque más y la tienda se quita.</string>
     <string name="tents_tutorial_step_7">Plántalas donde no toquen a ninguna otra y los números cuadren.</string>
     <string name="tents_tutorial_step_8">¡Listo! Cada árbol tiene su tienda y todos los números están en verde.</string>
+    <string name="sudoku_tutorial_step_1">El Sudoku es muy fácil: rellena todas las casillas vacías con los números del 1 al 4. Aquí lo vemos en pequeño.</string>
+    <string name="sudoku_tutorial_step_2">Solo hay una regla. En cada fila, ningún número se puede repetir.</string>
+    <string name="sudoku_tutorial_step_3">Lo mismo en cada columna: nada de números repetidos.</string>
+    <string name="sudoku_tutorial_step_4">Y en cada recuadro de 2×2, el de las líneas gruesas, tampoco.</string>
+    <string name="sudoku_tutorial_step_5">¿Qué número falta? En esta fila ya están el 1, el 2 y el 3, así que aquí va el 4. Toca la casilla y luego el número.</string>
+    <string name="sudoku_tutorial_step_6">Si repites un número, se pone en rojo: ese no va. Prueba con otro hasta que deje de estar en rojo.</string>
+    <string name="sudoku_tutorial_step_7">Sigue igual con las demás: mira qué números ya están en su fila, columna y recuadro, y elige el que falta.</string>
+    <string name="sudoku_tutorial_step_8">¡Listo! No hay ningún número repetido y todo está en verde.</string>
 
     <!-- Neon Defuser (buscaminas): HUD -->
     <string name="defuser_hud_time">Tiempo de partida</string>

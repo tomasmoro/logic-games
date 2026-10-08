@@ -309,6 +309,7 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
     if (state.status == GameStatus.IDLE) {
         GameIntroScreen(
             help = GameHelpContent.neonSudoku,
+            tutorial = NeonSudokuTutorial.tutorial,
             title = "Neon Sudoku Matrix",
             motif = GameMotif.SUDOKU_GRID,
             description = NEON_SUDOKU_HELP,
