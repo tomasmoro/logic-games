@@ -1,5 +1,22 @@
 package com.kortexgames.app.game.energyflow
 
+import org.jetbrains.compose.resources.stringResource
+import kortexgames.shared.generated.resources.energyflow_hud_rotations_one
+import kortexgames.shared.generated.resources.energyflow_hud_rotations
+import kortexgames.shared.generated.resources.Res
+import com.kortexgames.app.ui.components.rememberBoardClock
+import com.kortexgames.app.ui.components.drawSparkBurst
+import com.kortexgames.app.ui.components.drawNeonWire
+import com.kortexgames.app.ui.components.drawNeonNode
+import com.kortexgames.app.ui.components.boardCascade
+import com.kortexgames.app.ui.components.NeonBoardHud
+import com.kortexgames.app.ui.components.BoardClock
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Size
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -75,8 +92,12 @@ import kotlin.math.sin
 /** Color de las tuberías **energizadas** (energía cian que fluye desde la batería). */
 private val PipePowered = LogicColors.NeonCyan
 
-/** Color de las tuberías apagadas (aún sin energía): tenue para no competir con el neón. */
-private val PipeIdle = LogicColors.OnDarkMuted.copy(alpha = 0.40f)
+/**
+ * Filamento de una tubería apagada: claro y bien visible. La tubería sin energía es lo que el
+ * jugador estudia para decidir qué girar, así que tiene que leerse sin esfuerzo; la energizada
+ * se distingue por su color y su halo, no porque la apagada esté a oscuras.
+ */
+private val PipeIdle = lerp(LogicColors.OnDark, CategoryPalette.SpatialVision, 0.30f)
 
 /** Color de la batería (fuente): verde neón, siempre encendida. */
 private val SourceColor = LogicColors.NeonGreen
@@ -168,6 +189,11 @@ fun EnergyFlowScreen(graph: AppGraph, onExit: () -> Unit) {
     }
 
     // Latido lento y de baja amplitud del halo de energía (ambiente, §9.4).
+    // Reloj del tablero (kit compartido): entrada en cascada de las piezas y giro del aro de la
+    // batería. `boardBorn` se renueva con cada tablero nuevo (nivel o reinicio).
+    val clock = rememberBoardClock(running = state.status != GameStatus.PAUSED)
+    val boardBorn = remember(boardGen, game.round) { clock.peek() }
+
     val pulse by rememberInfiniteTransition(label = "energyPulse").animateFloat(
         initialValue = 0.55f,
         targetValue = 1f,
@@ -186,37 +212,35 @@ fun EnergyFlowScreen(graph: AppGraph, onExit: () -> Unit) {
         )
 
         Column(
-            modifier = Modifier.fillMaxSize().padding(20.dp),
+            modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(
-                "Flujo de Energía",
-                style = MaterialTheme.typography.headlineMedium,
-                color = LogicColors.OnDark,
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "${game.rotations} giros",
-                style = MaterialTheme.typography.titleMedium,
-                color = LogicColors.Electric,
-            )
-            Text(
-                "Nivel ${game.round}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = LogicColors.NeonGreen,
-            )
-            Text(
-                "Gira las piezas para llevar la energía de la batería a la bombilla",
-                style = MaterialTheme.typography.bodyMedium,
-                color = LogicColors.OnDarkMuted,
-                textAlign = TextAlign.Center,
+            // HUD común de los juegos de tablero (el mismo de Línea Neón y Conectores). La
+            // barra muestra cuánta placa tiene energía; el reinicio vive aquí y ya no abajo.
+            val tileCount = game.grid.tiles.size
+            NeonBoardHud(
+                level = game.round,
+                progress = if (tileCount > 0) game.powered.size.toFloat() / tileCount else 0f,
+                progressLabel = if (game.rotations == 1) {
+                    stringResource(Res.string.energyflow_hud_rotations_one)
+                } else {
+                    stringResource(Res.string.energyflow_hud_rotations, game.rotations.toString())
+                },
+                accent = CategoryPalette.SpatialVision,
+                progressColor = PipePowered,
+                onRestart = {
+                    if (!game.solved) {
+                        boardGen++
+                        vm.onIntent(EnergyFlowIntent.Restart)
+                    }
+                },
             )
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(16.dp))
 
             // Tablero cuadrado centrado, ocupa el espacio disponible.
             BoxWithConstraints(
-                modifier = Modifier.weight(1f).fillMaxSize(),
+                modifier = Modifier.weight(1f).fillMaxSize().padding(horizontal = 16.dp, vertical = 20.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 val grid = game.grid
@@ -235,6 +259,10 @@ fun EnergyFlowScreen(graph: AppGraph, onExit: () -> Unit) {
                                             powered = index in game.powered,
                                             pulse = pulse,
                                             sparkTick = sparkTicks[index] ?: 0L,
+                                            row = row,
+                                            col = col,
+                                            clock = clock,
+                                            boardBorn = boardBorn,
                                             onRotate = { vm.onIntent(EnergyFlowIntent.RotateTile(index)) },
                                             modifier = Modifier.size(cell),
                                         )
@@ -246,16 +274,6 @@ fun EnergyFlowScreen(graph: AppGraph, onExit: () -> Unit) {
                 }
             }
 
-            Spacer(Modifier.height(20.dp))
-
-            // Reiniciar el mismo nivel (vuelve al barajado inicial).
-            RestartButton(
-                enabled = !game.solved,
-                onClick = {
-                    boardGen++
-                    vm.onIntent(EnergyFlowIntent.Restart)
-                },
-            )
         }
 
         if (state.status == GameStatus.FINISHED && state.gameOver != null) {
@@ -295,13 +313,20 @@ fun EnergyFlowScreen(graph: AppGraph, onExit: () -> Unit) {
 /**
  * Una pieza del tablero. Dibuja sus tuberías en la orientación **resuelta** y delega
  * el giro a `graphicsLayer { rotationZ }`, animado con resorte para que el giro se
- * sienta táctil (§9.4). Las tuberías se pintan con el color de energía si la pieza
- * está [powered], o apagadas en caso contrario; la fuente/destino añaden su nodo.
+ * sienta táctil (§9.4). La fuente/destino añaden su nodo.
+ *
+ * ## La pieza apagada es sobria; el neón es la energía
+ * Antes TODAS las piezas llevaban su tubo de neón cian encendido, energizadas o no: 16 marcos
+ * brillantes en un 4×4 (64 en un 8×8), con las tuberías —lo que hay que leer— como rectángulos
+ * grises debajo. Ahora la pieza sin energía es una baldosa oscura de borde tenue, y el tubo de
+ * neón ([drawNeonTile], §9.7) se reserva para la que SÍ tiene energía: el camino encendido se
+ * ve de un vistazo porque es lo único que brilla (§9.1: el neón vale porque es escaso).
  *
  * @param sparkTick giro (`rotationSeq`) en el que esta celda **acaba de energizarse**,
- *        o `0` si no aplica. Dispara una ráfaga de chispas (mismo lenguaje visual que
- *        el crucigrama, vía [drawTileConnectSparks]) para reforzar el "engancha" del
- *        circuito al cerrarse un tramo nuevo.
+ *        o `0` si no aplica. Dispara un estallido de chispas ([drawSparkBurst], del kit de
+ *        tablero) para reforzar el "engancha" del circuito al cerrarse un tramo nuevo.
+ * @param row fila de la pieza y [col] su columna: ordenan la entrada en cascada.
+ * @param clock reloj del tablero; [boardBorn] es el instante en que se montó este tablero.
  */
 @Composable
 private fun EnergyTileView(
@@ -309,6 +334,10 @@ private fun EnergyTileView(
     powered: Boolean,
     pulse: Float,
     sparkTick: Long,
+    row: Int,
+    col: Int,
+    clock: BoardClock,
+    boardBorn: Float,
     onRotate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -321,6 +350,12 @@ private fun EnergyTileView(
             stiffness = Spring.StiffnessLow,
         ),
         label = "tileRotation",
+    )
+    // Encendido/apagado suave de la pieza al ganar o perder energía.
+    val energy by animateFloatAsState(
+        targetValue = if (powered) 1f else 0f,
+        animationSpec = tween(durationMillis = if (powered) 160 else 260),
+        label = "tileEnergy",
     )
 
     val spark = remember { Animatable(0f) }
@@ -336,20 +371,58 @@ private fun EnergyTileView(
         TileKind.PIPE -> PipePowered
     }
 
-    Box(modifier = modifier.bounceClick(onClick = onRotate), contentAlignment = Alignment.Center) {
+    Box(
+        modifier = modifier
+            // Entrada en cascada por diagonales al montar el tablero (kit compartido).
+            .graphicsLayer {
+                val appear = boardCascade(row, col, clock.seconds - boardBorn)
+                scaleX = appear
+                scaleY = appear
+                alpha = appear.coerceIn(0f, 1f)
+            }
+            .bounceClick(onClick = onRotate),
+        contentAlignment = Alignment.Center,
+    ) {
         // Capa 1 — fondo de la celda ESTÁTICO: no rota, así sus esquinas cuadradas
-        // nunca barren sobre las celdas vecinas al girar la pieza. Reutiliza el tubo de
-        // neón de [drawNeonTile] (mismo lenguaje visual que Memoria y Crucigrama, §9.2)
-        // en vez de un panel plano, y encima las chispas de conexión.
+        // nunca barren sobre las celdas vecinas al girar la pieza.
         Canvas(modifier = Modifier.fillMaxSize()) {
-            // Base opaca de la celda: sin esto el "tubo" de [drawNeonTile] es hueco
-            // (solo contorno + halo) y el skyline de fondo se colaba por dentro de
-            // cada pieza (pedido del usuario: la cuadrícula debe tapar la ciudad).
-            drawRoundRect(color = LogicColors.SurfaceDark, cornerRadius = CornerRadius(10.dp.toPx()))
-            val activeAmt = if (powered) (0.55f + 0.45f * pulse) else 0f
-            drawNeonTile(tileColor, activeAmt, cornerRadius = 10.dp, sparks = false, baseMargin = 4.dp)
-            val sp = spark.value
-            if (sp > 0f && sp < 1f) drawTileConnectSparks(tileColor, sp)
+            val margin = 3.dp.toPx()
+            val corner = CornerRadius(12.dp.toPx())
+            val topLeft = Offset(margin, margin)
+            val tileSize = Size(size.width - margin * 2f, size.height - margin * 2f)
+            // Base opaca: la cuadrícula debe tapar la ciudad del fondo (pedido del usuario).
+            drawRoundRect(
+                brush = Brush.verticalGradient(
+                    listOf(lerp(LogicColors.SurfaceDark, LogicColors.SurfaceVariantDark, 0.55f), LogicColors.SurfaceDark),
+                ),
+                topLeft = topLeft,
+                size = tileSize,
+                cornerRadius = corner,
+            )
+            // La batería y la bombilla llevan siempre un borde de su color, aunque tenue:
+            // son los dos extremos del circuito y hay que localizarlos sin buscar.
+            val restEdge = if (tile.kind == TileKind.PIPE) {
+                lerp(LogicColors.SurfaceVariantDark, CategoryPalette.SpatialVision, 0.45f)
+            } else {
+                tileColor.copy(alpha = 0.55f)
+            }
+            drawRoundRect(restEdge, topLeft, tileSize, corner, style = Stroke(1.5.dp.toPx()))
+            // Con energía: el tubo de neón compartido, respirando. En las tuberías va fino y
+            // a media intensidad —el protagonista es el cable encendido, y un marco a pleno
+            // brillo del mismo cian lo emborronaba—; batería y bombilla sí lo llevan entero.
+            if (energy > 0f) {
+                val isPipe = tile.kind == TileKind.PIPE
+                drawNeonTile(
+                    baseColor = tileColor,
+                    activeAmt = (if (isPipe) 0.22f + 0.16f * pulse else 0.55f + 0.45f * pulse) * energy,
+                    cornerRadius = 12.dp,
+                    sparks = false,
+                    baseMargin = 3.dp,
+                    strokeScale = if (isPipe) 0.6f else 1f,
+                    alpha = energy,
+                )
+            }
+            drawSparkBurst(center, tileColor, reach = size.minDimension * 0.75f, progress = spark.value, seed = row * 31 + col)
         }
         // Capa 2 — tuberías + nodo, que SÍ rotan. `clip = true` en el graphicsLayer
         // recorta el dibujo a los límites propios de la celda en TODO ángulo de giro:
@@ -361,10 +434,17 @@ private fun EnergyTileView(
                 .fillMaxSize()
                 .graphicsLayer { rotationZ = angle; clip = true },
         ) {
-            drawPipes(tile.connectors, powered, pulse)
+            drawPipes(tile.connectors, energy, pulse)
             when (tile.kind) {
-                TileKind.SOURCE -> drawNode(SourceColor, lit = true, pulse = pulse)
-                TileKind.TARGET -> drawNode(TargetLit, lit = powered, pulse = pulse)
+                TileKind.SOURCE -> drawNeonNode(
+                    center = center,
+                    radius = size.width * 0.17f,
+                    color = SourceColor,
+                    pulse = pulse,
+                    time = clock.seconds,
+                    active = true,
+                )
+                TileKind.TARGET -> drawTarget(lit = energy, pulse = pulse)
                 TileKind.PIPE -> Unit
             }
         }
@@ -372,37 +452,25 @@ private fun EnergyTileView(
 }
 
 /**
- * Ráfaga de chispas radiales que salen del centro de la celda al energizarse, con
- * alfa decreciente conforme avanza [amt] (0→1). Mismo patrón que las chispas de
- * celda del crucigrama, adaptado al color de energía de la pieza.
+ * Dibuja las tuberías de la pieza: un tramo del centro a cada lado con [connectors].
+ *
+ * - **Apagada:** una ranura oscura con un filamento claro dentro ([PipeIdle]) — un tubo de neón
+ *   sin corriente. Es nítida a propósito: es lo que el jugador lee para decidir qué girar.
+ * - **Con energía:** el cable de neón del kit de tablero ([drawNeonWire]: halo ancho → intermedio
+ *   → nítido → núcleo blanco), el mismo que traza Línea Neón.
+ *
+ * Los tramos de la pieza se unen en UN solo `Path` que pasa por el centro, de modo que el halo
+ * no se duplica (y no se ve más brillante) en el cruce.
+ *
+ * @param energy 0 = apagada, 1 = energizada; los valores intermedios funden una en otra.
  */
-private fun DrawScope.drawTileConnectSparks(color: Color, amt: Float) {
-    val count = 7
-    val dist = size.minDimension * (0.3f + 0.8f * amt)
-    val fade = 1f - amt
-    val dot = 2.6.dp.toPx() * (1f - amt * 0.4f)
-    for (i in 0 until count) {
-        val ang = i * (2f * PI.toFloat() / count)
-        drawCircle(
-            color = color.copy(alpha = fade),
-            radius = dot,
-            center = Offset(center.x + cos(ang) * dist, center.y + sin(ang) * dist),
-        )
-    }
-}
-
-/**
- * Dibuja las tuberías de la pieza: un tramo del centro a cada lado con [connectors],
- * más un buje central. Si está [powered], añade un halo neón (más ancho y translúcido,
- * pulsando con [pulse]) tras el núcleo brillante; si no, un trazo tenue.
- */
-private fun DrawScope.drawPipes(connectors: Set<Direction>, powered: Boolean, pulse: Float) {
+private fun DrawScope.drawPipes(connectors: Set<Direction>, energy: Float, pulse: Float) {
     val w = size.width
     val h = size.height
     val center = Offset(w / 2f, h / 2f)
-    val pipeWidth = w * 0.24f
-    val color = if (powered) PipePowered else PipeIdle
+    val pipeWidth = w * 0.15f
 
+    val pipes = Path()
     for (dir in connectors) {
         // Las tuberías llegan hasta el borde para "tocar" las de la celda vecina.
         val end = when (dir) {
@@ -411,55 +479,70 @@ private fun DrawScope.drawPipes(connectors: Set<Direction>, powered: Boolean, pu
             Direction.SOUTH -> Offset(center.x, h)
             Direction.WEST -> Offset(0f, center.y)
         }
-        if (powered) {
-            drawLine(color.copy(alpha = 0.22f * pulse), center, end, strokeWidth = pipeWidth * 1.9f, cap = StrokeCap.Round)
-        }
-        drawLine(color, center, end, strokeWidth = pipeWidth, cap = StrokeCap.Round)
+        pipes.moveTo(end.x, end.y)
+        pipes.lineTo(center.x, center.y)
     }
 
-    if (powered) {
-        drawCircle(color.copy(alpha = 0.22f * pulse), radius = pipeWidth * 1.1f, center = center)
+    if (energy < 1f) {
+        val idle = 1f - energy
+        drawPath(
+            pipes,
+            LogicColors.BackgroundDark.copy(alpha = 0.90f * idle),
+            style = Stroke(pipeWidth * 1.75f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
+        drawPath(
+            pipes,
+            PipeIdle.copy(alpha = idle),
+            style = Stroke(pipeWidth * 0.62f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
+        drawCircle(PipeIdle.copy(alpha = idle), pipeWidth * 0.58f, center)
     }
-    drawCircle(color, radius = pipeWidth * 0.62f, center = center)
+    if (energy > 0f) {
+        drawNeonWire(
+            path = pipes,
+            color = PipePowered.copy(alpha = energy),
+            strokeWidth = pipeWidth,
+            glow = (0.80f + 0.35f * pulse) * energy,
+            core = 0.55f * energy,
+        )
+        drawCircle(Color.White.copy(alpha = 0.85f * energy), pipeWidth * 0.34f, center)
+    }
 }
 
 /**
- * Dibuja el nodo de fuente/destino: un disco de [color] con un anillo interior oscuro
- * (aspecto de "borne"). Cuando está [lit] añade un halo pulsante; apagado (destino sin
- * energía) se pinta atenuado para invitar a completarlo.
+ * La **bombilla** (destino). Apagada es un borne gris con el centro hueco, que invita a
+ * completarlo; al recibir energía se enciende en ámbar con halo y rayos — el premio del nivel.
+ *
+ * @param lit 0 = apagada, 1 = encendida.
  */
-private fun DrawScope.drawNode(color: Color, lit: Boolean, pulse: Float) {
-    val center = Offset(size.width / 2f, size.height / 2f)
-    val radius = size.width * 0.22f
-    val drawColor = if (lit) color else LogicColors.OnDarkMuted
-
-    if (lit) {
-        drawCircle(color.copy(alpha = 0.35f * pulse), radius = radius * 2.1f, center = center)
-    }
-    drawCircle(drawColor, radius = radius, center = center)
-    drawCircle(LogicColors.BackgroundDark, radius = radius * 0.5f, center = center)
-    drawCircle(drawColor, radius = radius * 0.28f, center = center)
-}
-
-/**
- * Botón de "Reiniciar" con icono neón. Envuelve el icono en un contenedor de tamaño
- * fijo para que activar/desactivar el halo no cambie su footprint (mismo patrón que
- * en "Ordena las Pociones").
- */
-@Composable
-private fun RestartButton(enabled: Boolean, onClick: () -> Unit) {
-    val tint = if (enabled) LogicColors.Amber else LogicColors.OnDarkMuted
-    Column(
-        modifier = Modifier
-            .clip(RoundedCornerShape(16.dp))
-            .bounceClick(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(Modifier.size(54.dp), contentAlignment = Alignment.Center) {
-            NeonIcon(icon = KortexIcons.Refresh, tint = tint, glow = enabled, size = 28.dp)
+private fun DrawScope.drawTarget(lit: Float, pulse: Float) {
+    val radius = size.width * 0.19f
+    if (lit > 0f) {
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(TargetLit.copy(alpha = (0.55f + 0.25f * pulse) * lit), Color.Transparent),
+                center = center,
+                radius = radius * 3.0f,
+            ),
+            radius = radius * 3.0f,
+            center = center,
+        )
+        // Rayos cortos alrededor: lo que la hace leerse como bombilla y no como otro nodo.
+        val rays = 8
+        for (i in 0 until rays) {
+            val a = i * (2f * PI.toFloat() / rays)
+            val inner = radius * 1.45f
+            val outer = radius * (1.80f + 0.20f * pulse)
+            drawLine(
+                color = TargetLit.copy(alpha = 0.9f * lit),
+                start = Offset(center.x + cos(a) * inner, center.y + sin(a) * inner),
+                end = Offset(center.x + cos(a) * outer, center.y + sin(a) * outer),
+                strokeWidth = radius * 0.16f,
+                cap = StrokeCap.Round,
+            )
         }
-        Spacer(Modifier.height(4.dp))
-        Text("Reiniciar", style = MaterialTheme.typography.labelLarge, color = tint)
     }
+    val body = lerp(LogicColors.OnDarkMuted, TargetLit, lit)
+    drawCircle(body, radius, center)
+    drawCircle(lerp(LogicColors.BackgroundDark, Color.White, lit), radius * 0.52f, center)
 }

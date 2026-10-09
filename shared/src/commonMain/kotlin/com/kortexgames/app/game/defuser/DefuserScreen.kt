@@ -1,5 +1,19 @@
 package com.kortexgames.app.game.defuser
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.kortexgames.app.ui.components.NeonProgressBar
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.defuser_hud_mines
+import kortexgames.shared.generated.resources.defuser_hud_time
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -221,6 +235,7 @@ fun DefuserScreen(graph: AppGraph, onExit: () -> Unit) {
     if (state.status == GameStatus.IDLE) {
         GameIntroScreen(
             help = GameHelpContent.defuser,
+            tutorial = DefuserTutorial.tutorial,
             title = "Neon Defuser",
             motif = GameMotif.MINESWEEPER,
             description = DEFUSER_HELP,
@@ -293,6 +308,10 @@ fun DefuserScreen(graph: AppGraph, onExit: () -> Unit) {
                 elapsedMs = state.elapsedMs,
                 minesRemaining = state.minesRemaining,
                 difficulty = state.difficulty,
+                safeRevealed = state.board.cells.count { it.state == MineCellState.REVEALED && !it.hasMine },
+                // Del catálogo de la dificultad y no de `board.mineCount`: antes del primer
+                // toque las minas aún no están sembradas y el panel diría "0 minas".
+                safeTotal = state.board.cells.size - state.difficulty.mineCount,
             )
 
             Box(
@@ -437,55 +456,110 @@ fun DefuserScreen(graph: AppGraph, onExit: () -> Unit) {
 // ---------------------------------------------------------------------------
 
 /**
- * Cabecera: tiempo, minas restantes (con icono de escudo) y dificultad. Son las
- * métricas que el jugador consulta de un vistazo; van en una fila con el mismo
- * peso visual, dejando hueco a la derecha para el botón de pausa.
+ * Cabecera: tiempo, avance del despeje y minas por marcar, dejando hueco a la derecha para el
+ * botón de pausa.
+ *
+ * Misma composición que el HUD de Neon Sudoku (píldora de tiempo · barra · contador), para que
+ * los juegos de pensar compartan lenguaje. La **barra** es nueva: cuántas celdas seguras llevas
+ * abiertas del total — en un buscaminas "¿cuánto me falta?" no se podía saber sin contar el
+ * panel. Sobre ella va la dificultad, que antes ocupaba una columna entera para un dato fijo.
+ *
+ * @param safeRevealed celdas seguras ya reveladas.
+ * @param safeTotal celdas seguras del panel (todas menos las minas).
  */
 @Composable
-private fun DefuserHud(elapsedMs: Long, minesRemaining: Int, difficulty: MineDifficulty) {
+private fun DefuserHud(
+    elapsedMs: Long,
+    minesRemaining: Int,
+    difficulty: MineDifficulty,
+    safeRevealed: Int,
+    safeTotal: Int,
+) {
+    val accent = CategoryPalette.Attention
+    val progress by animateFloatAsState(
+        targetValue = if (safeTotal <= 0) 0f else safeRevealed.toFloat() / safeTotal,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
+        label = "defuserHudProgress",
+    )
+    // El contador late al cambiar: poner o quitar un escudo se nota también arriba.
+    val minesPop = remember { Animatable(1f) }
+    var lastMines by remember { mutableIntStateOf(minesRemaining) }
+    LaunchedEffect(minesRemaining) {
+        val changed = minesRemaining != lastMines
+        lastMines = minesRemaining
+        if (!changed) return@LaunchedEffect
+        minesPop.snapTo(1.3f)
+        minesPop.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
+    }
+
     Row(
-        modifier = Modifier.fillMaxWidth().padding(end = PauseButtonReserve),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = PauseButtonReserve),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        HudStat(label = "TIEMPO", value = formatElapsed(elapsedMs), tint = LogicColors.OnDark)
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = "MINAS",
-                style = MaterialTheme.typography.labelLarge,
-                color = LogicColors.OnDarkMuted,
+        Row(
+            modifier = Modifier
+                .background(LogicColors.SurfaceDark.copy(alpha = 0.85f), CircleShape)
+                .border(1.5.dp, accent.copy(alpha = 0.55f), CircleShape)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            NeonIcon(
+                icon = KortexIcons.Timer,
+                tint = accent,
+                size = 18.dp,
+                glow = false,
+                contentDescription = stringResource(Res.string.defuser_hud_time),
             )
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                NeonIcon(
-                    icon = KortexIcons.Shield,
-                    tint = LogicColors.Violet,
-                    size = 18.dp,
-                    glow = false,
-                    contentDescription = null,
-                )
-                Text(
-                    text = minesRemaining.toString(),
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Black,
-                    color = LogicColors.OnDark,
-                )
-            }
+            Text(
+                text = formatElapsed(elapsedMs),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black,
+                color = LogicColors.OnDark,
+                // Ancho mínimo: sin él la píldora cambia de tamaño cada segundo y empuja la barra.
+                modifier = Modifier.widthIn(min = 42.dp),
+            )
         }
-        HudStat(label = "NIVEL", value = difficulty.displayName, tint = CategoryPalette.Attention)
-    }
-}
 
-/** Una métrica del HUD: etiqueta pequeña arriba y valor destacado debajo. */
-@Composable
-private fun HudStat(label: String, value: String, tint: Color) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = label, style = MaterialTheme.typography.labelLarge, color = LogicColors.OnDarkMuted)
-        Text(
-            text = value,
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Black,
-            color = tint,
-        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = difficulty.displayName,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = LogicColors.OnDark,
+            )
+            NeonProgressBar(progress = progress, color = accent, modifier = Modifier.fillMaxWidth())
+        }
+
+        val minesLabel = stringResource(Res.string.defuser_hud_mines, minesRemaining.toString())
+        Row(
+            modifier = Modifier
+                .background(LogicColors.SurfaceDark.copy(alpha = 0.85f), CircleShape)
+                .border(1.5.dp, LogicColors.Violet.copy(alpha = 0.55f), CircleShape)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .semantics(mergeDescendants = true) { contentDescription = minesLabel },
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            NeonIcon(
+                icon = KortexIcons.Shield,
+                tint = LogicColors.Violet,
+                size = 18.dp,
+                glow = false,
+                contentDescription = null,
+            )
+            Text(
+                text = minesRemaining.toString(),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black,
+                color = LogicColors.OnDark,
+                modifier = Modifier.graphicsLayer {
+                    scaleX = minesPop.value
+                    scaleY = minesPop.value
+                },
+            )
+        }
     }
 }
 

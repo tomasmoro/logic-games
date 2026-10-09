@@ -1,5 +1,14 @@
 package com.kortexgames.app.ui.components
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -34,8 +43,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -44,6 +55,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kortexgames.app.core.theme.LogicColors
 import com.kortexgames.app.core.theme.LogicGradients
 import com.kortexgames.app.domain.model.formatDurationShort
@@ -53,6 +65,7 @@ import kortexgames.shared.generated.resources.Res
 import kortexgames.shared.generated.resources.firstrun_age_notice
 import kortexgames.shared.generated.resources.firstrun_progress
 import kortexgames.shared.generated.resources.gameintro_level_upcoming
+import kortexgames.shared.generated.resources.gameintro_watch_tutorial
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -151,6 +164,10 @@ data class ResumeState(
  *        [com.kortexgames.app.game.GameHelpContent]). Si no es null, el botón de ayuda
  *        de la cabecera abre la pantalla de ayuda genérica ([GameHelpSheet]); si es null,
  *        el botón cae en [onHelp].
+ * @param tutorial tutorial animado del juego ([GameTutorial]). Si no es null, se abre **solo la
+ *        primera vez** que el jugador entra en esta antesala (lo recuerda
+ *        [com.kortexgames.app.data.settings.TutorialStore]) y, después, a mano desde el botón
+ *        "Ver tutorial" bajo la descripción. **null** = juego sin tutorial todavía.
  * @param onHelp acción del botón de ayuda cuando no se inyecta [help]; por defecto un no-op.
  * @param startLabel texto del CTA (por defecto "Comenzar").
  * @param resume partida pendiente de continuar (ver [ResumeState]); **null** en los
@@ -184,6 +201,7 @@ fun GameIntroScreen(
     motif: GameMotif? = null,
     levels: LevelStripState? = null,
     help: GameHelp? = null,
+    tutorial: GameTutorial? = null,
     onHelp: () -> Unit = {},
     startLabel: String = "Comenzar",
     resume: ResumeState? = null,
@@ -195,6 +213,23 @@ fun GameIntroScreen(
     // cabecera abre la pantalla de ayuda genérica sin que la pantalla llamante tenga que
     // orquestar nada (por eso [onHelp] solo se usa como respaldo si no hay [help]).
     var showHelp by remember { mutableStateOf(false) }
+
+    // Tutorial animado: se abre solo la primera vez. Se marca como visto al ABRIRLO y no al
+    // cerrarlo: quien lo salta ya ha dicho que no lo quiere, y no debe volver a saltarle.
+    var showTutorial by remember { mutableStateOf(false) }
+    val tutorialStore = LocalTutorialStore.current
+    if (tutorial != null && tutorialStore != null) {
+        val seenTutorials by tutorialStore.seen.collectAsStateWithLifecycle()
+        // La clave solo cambia una vez (cuando DataStore responde), así que marcarlo como
+        // visto —que vuelve a emitir— no relanza el efecto.
+        LaunchedEffect(tutorial.gameId, seenTutorials == null) {
+            val seen = seenTutorials ?: return@LaunchedEffect
+            if (tutorial.gameId !in seen) {
+                showTutorial = true
+                tutorialStore.markSeen(tutorial.gameId)
+            }
+        }
+    }
 
     // Bienvenida de primera apertura: si esta antesala es uno de sus juegos, se le
     // añaden las dos piezas que la bienvenida necesita —indicador de paso y aviso
@@ -248,30 +283,67 @@ fun GameIntroScreen(
                 // Sin Spacer previo y con solo 8dp debajo: el propio héroe ya aporta el
                 // padding que reserva sitio a su halo (HERO_GLOW_SPREAD), así que el
                 // ritmo vertical visible sigue siendo el de antes (16 arriba / 24 abajo).
-                GameIconHero(icon = icon, motif = motif, accent = accent)
+                // La antesala se "monta" de arriba abajo ([ModalReveal]): héroe → título
+                // → descripción → niveles → CTA. Es la presentación del juego; que entre
+                // por partes la hace sentir pantalla de título y no un formulario.
+                ModalReveal(index = 0, visible = true) {
+                    GameIconHero(icon = icon, motif = motif, accent = accent)
+                }
 
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    title,
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = LogicColors.OnDark,
-                    fontWeight = FontWeight.ExtraBold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 24.dp),
-                )
+                ModalReveal(index = 1, visible = true) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = LogicColors.OnDark,
+                        fontWeight = FontWeight.ExtraBold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                    )
+                }
 
                 Spacer(Modifier.height(12.dp))
-                Text(
-                    description,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = LogicColors.OnDarkMuted,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 32.dp),
-                )
+                ModalReveal(index = 2, visible = true) {
+                    Text(
+                        description,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = LogicColors.OnDarkMuted,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 32.dp),
+                    )
+                }
+
+                // Volver a ver el tutorial. Discreto (sin acento ni halo): es consulta, no
+                // debe competir con el CTA (§9.1). Entra junto a la descripción, de la que
+                // es un apéndice, en vez de gastar un escalón más de la cascada de entrada.
+                if (tutorial != null) {
+                    Spacer(Modifier.height(10.dp))
+                    ModalReveal(index = 2, visible = true) {
+                        Row(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(LogicColors.SurfaceVariantDark.copy(alpha = 0.6f))
+                                .bounceClick { showTutorial = true }
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            NeonIcon(icon = KortexIcons.Play, tint = accent, size = 18.dp, glow = false)
+                            Text(
+                                stringResource(Res.string.gameintro_watch_tutorial),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = LogicColors.OnDark,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                }
 
                 if (levels != null) {
                     Spacer(Modifier.height(28.dp))
-                    LevelStrip(state = levels, accent = accent)
+                    ModalReveal(index = 3, visible = true) {
+                        LevelStrip(state = levels, accent = accent)
+                    }
                 }
 
                 Spacer(Modifier.height(24.dp))
@@ -282,6 +354,7 @@ fun GameIntroScreen(
             // partida pendiente ese papel lo toma "Continuar" —lo que el jugador
             // quiere al volver— y empezar de cero baja a acción secundaria, para que
             // un toque distraído no borre el progreso guardado.
+            ModalReveal(index = 4, visible = true) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -308,6 +381,7 @@ fun GameIntroScreen(
                         .pulse()
                         .softGlow(LogicColors.NeonGreen),
                     contentPadding = PaddingValues(vertical = 18.dp),
+                    shimmer = true,
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -368,6 +442,7 @@ fun GameIntroScreen(
                     )
                 }
             }
+            }
         }
 
         // Hoja de ayuda genérica, encima de todo: se abre desde el botón de la cabecera
@@ -378,6 +453,15 @@ fun GameIntroScreen(
                 help = help,
                 visible = showHelp,
                 onDismiss = { showHelp = false },
+            )
+        }
+
+        // Tutorial animado: mismo sitio y por el mismo motivo que la hoja de ayuda.
+        if (tutorial != null) {
+            GameTutorialDialog(
+                tutorial = tutorial,
+                visible = showTutorial,
+                onClose = { showTutorial = false },
             )
         }
     }
@@ -507,9 +591,25 @@ private val HERO_GLOW_SPREAD = 16.dp
 private fun GameIconHero(icon: ImageVector?, motif: GameMotif?, accent: Color) {
     val corner = 28.dp
     val shape = RoundedCornerShape(corner)
+    // Flotación lenta y de muy baja amplitud (§9.4: ambiente). Va a compás del
+    // halo que respira —es el mismo "latido" del héroe, no un segundo bucle que
+    // compita con él—: hace que el arte del juego parezca suspendido, no pegado.
+    val float by rememberInfiniteTransition(label = "heroFloat").animateFloat(
+        initialValue = -1f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "heroFloatOffset",
+    )
     // El halo se dibuja fuera del recuadro: este padding le reserva sitio dentro de los
     // límites del contenedor para que el scroll del cuerpo no lo recorte.
-    Box(modifier = Modifier.padding(HERO_GLOW_SPREAD)) {
+    Box(
+        modifier = Modifier
+            .padding(HERO_GLOW_SPREAD)
+            .graphicsLayer { translationY = float * 3.dp.toPx() },
+    ) {
         Box(
             modifier = Modifier
                 .size(132.dp)
@@ -537,6 +637,12 @@ private fun GameIconHero(icon: ImageVector?, motif: GameMotif?, accent: Color) {
         }
     }
 }
+
+/** Separación entre casillas del carril de niveles (el hueco que cruza el conector). */
+private val LEVEL_GAP = 14.dp
+
+/** Margen entre el borde de la casilla y su tubo de neón (el `baseMargin` de [drawNeonTile]). */
+private val LEVEL_TILE_MARGIN = 7.dp
 
 /**
  * Carril **horizontal** de niveles (petición: "que los niveles se vean así"). Cada nivel
@@ -579,7 +685,7 @@ private fun LevelStrip(state: LevelStripState, accent: Color) {
         LazyRow(
             state = listState,
             contentPadding = PaddingValues(horizontal = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(LEVEL_GAP),
         ) {
             items(levels) { level ->
                 LevelDot(
@@ -589,6 +695,7 @@ private fun LevelStrip(state: LevelStripState, accent: Color) {
                     accent = accent,
                     bestTimeMs = state.bestTimes[level],
                     playableLevels = state.playableLevels,
+                    isLast = level == total,
                     onClick = { state.onSelect(level) },
                 )
             }
@@ -603,6 +710,7 @@ private fun LevelStrip(state: LevelStripState, accent: Color) {
  *   aún no lo jugó. Cuando existe, se muestra bajo el número como récord de tiempo.
  * @param playableLevels último nivel con contenido real, o null si son ilimitados.
  *   Por encima, la casilla es "Próximamente": candado + etiqueta, nunca jugable.
+ * @param isLast última casilla del carril: no dibuja conector hacia la derecha.
  */
 @Composable
 private fun LevelDot(
@@ -612,6 +720,7 @@ private fun LevelDot(
     accent: Color,
     bestTimeMs: Long?,
     playableLevels: Int?,
+    isLast: Boolean,
     onClick: () -> Unit,
 ) {
     val frontier = maxUnlocked + 1
@@ -634,10 +743,43 @@ private fun LevelDot(
     // Los bloqueados pierden el acento y viran a gris: aún no forman parte del "juego".
     val tileColor = if (locked) LogicColors.OnDarkMuted else accent
 
+    // "Pop" del nivel elegido: crece con rebote al seleccionarlo (feedback táctil
+    // dirigido por estado, §9.4), así cambiar de nivel se siente como pulsar algo.
+    val pop by animateFloatAsState(
+        targetValue = if (selected) 1.10f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
+        label = "levelPop",
+    )
+
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
                 .size(64.dp)
+                // Conector hacia el nivel siguiente: convierte la fila de casillas en
+                // un CAMINO (mapa de niveles). Encendido si el siguiente ya es
+                // alcanzable; apagado si aún está por desbloquear. Se dibuja solo en
+                // el hueco entre casillas (el tile es hueco: por dentro se vería).
+                .drawBehind {
+                    if (isLast) return@drawBehind
+                    val reached = level <= maxUnlocked
+                    val y = size.height / 2f
+                    val from = Offset(size.width - LEVEL_TILE_MARGIN.toPx() + 3.dp.toPx(), y)
+                    val to = Offset(size.width + LEVEL_GAP.toPx() + LEVEL_TILE_MARGIN.toPx() - 3.dp.toPx(), y)
+                    if (reached) {
+                        drawLine(accent.copy(alpha = 0.22f), from, to, strokeWidth = 7.dp.toPx(), cap = StrokeCap.Round)
+                    }
+                    drawLine(
+                        color = if (reached) accent.copy(alpha = 0.85f) else LogicColors.SurfaceVariantDark,
+                        start = from,
+                        end = to,
+                        strokeWidth = 2.5.dp.toPx(),
+                        cap = StrokeCap.Round,
+                    )
+                }
+                .graphicsLayer {
+                    scaleX = pop
+                    scaleY = pop
+                }
                 // Tile de neón compartido (§9.7): mismo lenguaje que las celdas del juego.
                 // Sin chispas: el carril es estático, las chispas son remate de celebración.
                 .drawBehind {

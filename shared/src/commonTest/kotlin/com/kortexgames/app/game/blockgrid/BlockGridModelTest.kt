@@ -96,6 +96,9 @@ class BlockGridModelTest {
         assertEquals(10, scoreForLines(1))
         assertEquals(40, scoreForLines(2))
         assertEquals(90, scoreForLines(3))
+        // Pieza de 4 bloques: x10 sobre bloques + líneas.
+        assertEquals(40, scoreForPlacement(4, 0))
+        assertEquals(140, scoreForPlacement(4, 1))
     }
 
     // --- Game Over (canPlaceAnywhere) --------------------------------------------

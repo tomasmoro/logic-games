@@ -1,5 +1,22 @@
 package com.kortexgames.app.game.blockgrid
 
+import org.jetbrains.compose.resources.stringResource
+import kortexgames.shared.generated.resources.blockgrid_hud_score
+import kortexgames.shared.generated.resources.blockgrid_hud_restart
+import kortexgames.shared.generated.resources.blockgrid_hud_lines
+import kortexgames.shared.generated.resources.Res
+import com.kortexgames.app.ui.components.rememberBoardClock
+import com.kortexgames.app.ui.components.drawNeonBoardPlate
+import com.kortexgames.app.ui.components.drawNeonGem
+import com.kortexgames.app.ui.components.NeonIcon
+import com.kortexgames.app.ui.components.BoardClock
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.border
+import androidx.compose.animation.core.EaseOutBack
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -92,7 +109,7 @@ import kotlin.random.Random
 private val DRAG_LIFT = 56.dp
 
 /** Lado del mini-bloque con el que se dibujan las piezas en la mano. */
-private val HAND_CELL = 13.dp
+private val HAND_CELL = 18.dp
 
 /**
  * Duración total de la limpieza (reloj único). Algo más larga que un fade simple
@@ -108,6 +125,9 @@ private const val CLEAR_ANIM_MS = 460
  * hace la onda más marcada; bajarlo la acerca a una limpieza simultánea.
  */
 private const val CLEAR_STAGGER_SPAN = 0.5f
+
+/** Duración del "pop" con que un bloque se asienta al colocarse. */
+private const val BLOCK_POP_SEC = 0.22f
 
 /**
  * Mapa acento semántico → token de [LogicColors]. Vive en la UI (el dominio no
@@ -247,6 +267,10 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
 
     val currentState by rememberUpdatedState(state)
 
+    // Reloj de animación (kit de tablero): "pop" de los bloques al asentarse y flotación de
+    // las piezas de la mano. Se congela en pausa.
+    val clock = rememberBoardClock(running = state.status != GameStatus.PAUSED)
+
     /**
      * Celda de anclaje candidata para [piece] con el dedo en [finger]: el origen
      * visual de la pieza (centrada en X sobre el dedo, elevada [DRAG_LIFT]) se
@@ -292,11 +316,14 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
                     previewAccent = state.drag?.let { d -> state.hand.firstOrNull { it.id == d.pieceId } }
                         ?.accent?.color(),
                     clearOrigin = lastPlacedCenter,
+                    clock = clock,
                     onClearFinished = { vm.onIntent(BlockGridIntent.LineClearFinished) },
                     modifier = Modifier
                         .padding(horizontal = 18.dp)
                         .aspectRatio(1f)
-                        .background(LogicColors.SurfaceDark.copy(alpha = 0.92f), RoundedCornerShape(24.dp))
+                        // Placa del kit de tablero neón (la misma de Línea Neón y Conectores)
+                        // en vez de un rectángulo plano de superficie.
+                        .drawBehind { drawNeonBoardPlate(accent = CategoryPalette.SpatialVision) }
                         .padding(10.dp)
                         .onGloballyPositioned { boardRect = it.boundsInRoot() },
                 )
@@ -307,8 +334,15 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(112.dp)
-                    .padding(horizontal = 18.dp, vertical = 8.dp),
+                    .height(128.dp)
+                    .padding(horizontal = 18.dp, vertical = 8.dp)
+                    // Bandeja de la mano: un único "muelle" oscuro de borde tenue bajo las
+                    // tres piezas. Antes flotaban sueltas sobre el fondo; con la bandeja la
+                    // mano se lee como el sitio del que se cogen las fichas. Es UNA para toda
+                    // la fila (y no una por pieza) porque los huecos se reparten el ancho: al
+                    // gastar una pieza, tres bandejas sueltas cambiaban de tamaño de golpe.
+                    .background(LogicColors.SurfaceDark.copy(alpha = 0.55f), RoundedCornerShape(24.dp))
+                    .border(1.dp, CategoryPalette.SpatialVision.copy(alpha = 0.30f), RoundedCornerShape(24.dp)),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -320,6 +354,7 @@ fun BlockGridScreen(graph: AppGraph, onExit: () -> Unit) {
                             // vuela de vuelta: así el "vuelo de vuelta" aterriza sobre
                             // un hueco vacío y no sobre una copia ya visible.
                             hidden = state.drag?.pieceId == piece.id || returnFlight?.piece?.id == piece.id,
+                            clock = clock,
                             modifier = Modifier.weight(1f),
                             onCenter = { center -> slotCenters[piece.id] = center },
                             onDragStart = { finger ->
@@ -466,7 +501,13 @@ private fun cellChanged(piece: Polyomino, preview: PlacementPreview, cell: GridP
 
 // --- HUD ----------------------------------------------------------------------
 
-/** HUD superior: título, puntaje, líneas y reinicio (mismo lenguaje que Tornillos). */
+/**
+ * HUD superior: la **puntuación en grande** (con "pop" al sumar), las líneas rotas y el botón
+ * de reiniciar. Sin título: ya está en la antesala y en el menú de pausa, y ese sitio lo
+ * aprovecha mejor la cifra que el jugador persigue.
+ *
+ * Deja libre la esquina superior derecha (el botón de pausa vive ahí).
+ */
 @Composable
 private fun BlockGridHud(
     score: Int,
@@ -474,50 +515,84 @@ private fun BlockGridHud(
     onRestart: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier.fillMaxWidth().padding(top = 18.dp, start = 20.dp, end = 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = "Bloques Neón",
-            style = MaterialTheme.typography.headlineSmall,
-            color = LogicColors.OnDark,
-            fontWeight = FontWeight.ExtraBold,
-        )
-        Row(
-            modifier = Modifier.padding(top = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            HudPill(label = "Puntos", value = score.toString())
-            HudPill(label = "Líneas", value = lines.toString())
-            Box(
-                modifier = Modifier
-                    .bounceClick(onClick = onRestart)
-                    .background(LogicColors.SurfaceDark.copy(alpha = 0.8f), shape = MaterialTheme.shapes.medium)
-                    .padding(8.dp),
-            ) {
-                Icon(
-                    imageVector = KortexIcons.Refresh,
-                    contentDescription = "Reiniciar partida",
-                    tint = LogicColors.OnDarkMuted,
-                    modifier = Modifier.size(22.dp),
-                )
-            }
+    val accent = CategoryPalette.SpatialVision
+    val scorePop = remember { Animatable(1f) }
+    LaunchedEffect(score) {
+        if (score > 0) {
+            scorePop.snapTo(1.22f)
+            scorePop.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
         }
     }
-}
-
-@Composable
-private fun HudPill(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .background(LogicColors.SurfaceDark.copy(alpha = 0.8f), shape = MaterialTheme.shapes.medium)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+    val linesPop = remember { Animatable(1f) }
+    LaunchedEffect(lines) {
+        if (lines > 0) {
+            linesPop.snapTo(1.35f)
+            linesPop.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
+        }
+    }
+    Row(
+        modifier = modifier.fillMaxWidth().padding(top = 10.dp, start = 20.dp, end = 72.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text(text = label, style = MaterialTheme.typography.labelSmall, color = LogicColors.OnDarkMuted)
-        Text(text = value, style = MaterialTheme.typography.labelLarge, color = LogicColors.OnDark)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(Res.string.blockgrid_hud_score).uppercase(),
+                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.6.sp),
+                color = LogicColors.OnDarkMuted,
+            )
+            Text(
+                text = score.toString(),
+                style = MaterialTheme.typography.displayLarge,
+                color = LogicColors.OnDark,
+                modifier = Modifier.graphicsLayer {
+                    scaleX = scorePop.value
+                    scaleY = scorePop.value
+                    // Crece desde la izquierda: el número está alineado a ese lado.
+                    transformOrigin = TransformOrigin(0f, 0.5f)
+                },
+            )
+        }
+        Row(
+            modifier = Modifier
+                .background(LogicColors.SurfaceDark.copy(alpha = 0.85f), CircleShape)
+                .border(1.dp, accent.copy(alpha = 0.50f), CircleShape)
+                .padding(horizontal = 14.dp, vertical = 9.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = lines.toString(),
+                style = MaterialTheme.typography.labelLarge,
+                color = accent,
+                fontWeight = FontWeight.Black,
+                modifier = Modifier.graphicsLayer {
+                    scaleX = linesPop.value
+                    scaleY = linesPop.value
+                },
+            )
+            Text(
+                text = stringResource(Res.string.blockgrid_hud_lines),
+                style = MaterialTheme.typography.labelSmall,
+                color = LogicColors.OnDarkMuted,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .background(LogicColors.SurfaceDark.copy(alpha = 0.85f), CircleShape)
+                .border(1.dp, LogicColors.SurfaceVariantDark, CircleShape)
+                .bounceClick(onClick = onRestart),
+            contentAlignment = Alignment.Center,
+        ) {
+            NeonIcon(
+                icon = KortexIcons.Refresh,
+                tint = accent,
+                size = 22.dp,
+                glow = false,
+                contentDescription = stringResource(Res.string.blockgrid_hud_restart),
+            )
+        }
     }
 }
 
@@ -552,9 +627,13 @@ private fun BoardCanvas(
     preview: PlacementPreview?,
     previewAccent: Color?,
     clearOrigin: Offset?,
+    clock: BoardClock,
     onClearFinished: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Instante en que se asentó cada bloque, para su "pop". No es estado observable: lo
+    // rellena y lo poda el propio dibujo, que ya se repinta en cada frame.
+    val placedAt = remember { mutableMapOf<GridPos, Float>() }
     val clearingCells = remember(board) {
         buildSet {
             for (r in 0 until BOARD_SIZE) for (c in 0 until BOARD_SIZE) {
@@ -600,6 +679,7 @@ private fun BoardCanvas(
 
     Canvas(modifier = modifier) {
         val cellPx = size.width / BOARD_SIZE
+        val time = clock.seconds
         val previewCells = preview?.cells.orEmpty()
         val clearingLines = preview?.clearingLines?.takeIf { preview.isValid } ?: FullLines(emptySet(), emptySet())
 
@@ -608,14 +688,25 @@ private fun BoardCanvas(
                 val topLeft = Offset(c * cellPx, r * cellPx)
                 when (val cell = board.cells[r][c]) {
                     BoardCell.Empty -> {
+                        placedAt.remove(GridPos(r, c))
                         drawEmptyCell(topLeft, cellPx)
                         if (GridPos(r, c) in previewCells) {
-                            drawGhostCell(topLeft, cellPx, valid = preview?.isValid == true)
+                            drawGhostCell(topLeft, cellPx, valid = preview?.isValid == true, accent = previewAccent)
                         }
                     }
 
-                    is BoardCell.Filled ->
-                        drawBlock(topLeft, cellPx, cell.accent.color())
+                    is BoardCell.Filled -> {
+                        // "Pop" al asentarse: el bloque entra algo pequeño y rebota a su
+                        // tamaño. Es el acuse de la jugada en el propio tablero.
+                        val age = (time - placedAt.getOrPut(GridPos(r, c)) { time }) / BLOCK_POP_SEC
+                        drawEmptyCell(topLeft, cellPx)
+                        drawBlock(
+                            topLeft = topLeft,
+                            cellPx = cellPx,
+                            accent = cell.accent.color(),
+                            scale = if (age >= 1f) 1f else 0.62f + 0.38f * EaseOutBack.transform(age.coerceAtLeast(0f)),
+                        )
+                    }
 
                     is BoardCell.Clearing -> {
                         // Progreso LOCAL de esta celda: descuenta su demora y
@@ -665,6 +756,7 @@ private fun BoardCanvas(
 private fun HandSlot(
     piece: Polyomino,
     hidden: Boolean,
+    clock: BoardClock,
     onCenter: (Offset) -> Unit,
     onDragStart: (Offset) -> Unit,
     onDragMove: (Offset, Float) -> Unit,
@@ -673,6 +765,13 @@ private fun HandSlot(
     modifier: Modifier = Modifier,
 ) {
     var slotOrigin by remember { mutableStateOf(Offset.Zero) }
+
+    // Entrada de la pieza recién repartida: crece con rebote (el slot se rekeya por
+    // `piece.id`, así que cada pieza nueva hace su propia entrada).
+    val appear = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        appear.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow))
+    }
 
     Box(
         modifier = modifier
@@ -698,13 +797,21 @@ private fun HandSlot(
                     onDragEnd = { onDragEnd(finger, liftPx) },
                     onDragCancel = onDragCancel,
                 )
-            }
-            .alphaIf(hidden, 0f),
+            },
         contentAlignment = Alignment.Center,
     ) {
         PolyominoBlocks(
             piece = piece,
             cell = HAND_CELL,
+            modifier = Modifier
+                .graphicsLayer {
+                    scaleX = appear.value
+                    scaleY = appear.value
+                    // Flotación mínima, desfasada por pieza: la mano está "viva" e invita a
+                    // cogerla, sin llegar a distraer del tablero.
+                    translationY = sin(clock.seconds * 2.2f + piece.id * 1.7f) * 2.dp.toPx()
+                }
+                .alphaIf(hidden, 0f),
         )
     }
 }
@@ -1142,28 +1249,40 @@ private fun DrawScope.drawEmptyCell(topLeft: Offset, cellPx: Float) {
 }
 
 /**
- * Fantasma de colocación: **gris** si el hueco es válido (anticipa dónde caerá
- * la pieza) y rojizo tenue si no cabe — información, no castigo.
+ * Fantasma de colocación: la silueta de la pieza **en su propio color** si el hueco es válido
+ * (anticipa exactamente qué va a caer ahí) y rojizo tenue si no cabe — información, no castigo.
+ *
+ * Antes el fantasma válido era gris: sobre las celdas vacías, también grises, costaba verlo.
+ *
+ * @param accent color de la pieza que se arrastra; null cae al gris de siempre.
  */
-private fun DrawScope.drawGhostCell(topLeft: Offset, cellPx: Float, valid: Boolean) {
+private fun DrawScope.drawGhostCell(topLeft: Offset, cellPx: Float, valid: Boolean, accent: Color? = null) {
     val inset = cellPx * 0.06f
     val corner = CornerRadius(cellPx * 0.20f)
-    val tint = if (valid) LogicColors.OnDarkMuted else LogicColors.Error
-    drawRoundRect(
-        color = tint.copy(alpha = if (valid) 0.38f else 0.20f),
-        topLeft = topLeft + Offset(inset, inset),
-        size = Size(cellPx - inset * 2, cellPx - inset * 2),
-        cornerRadius = corner,
-    )
+    val tint = if (valid) accent ?: LogicColors.OnDarkMuted else LogicColors.Error
+    val origin = topLeft + Offset(inset, inset)
+    val cellSize = Size(cellPx - inset * 2, cellPx - inset * 2)
+    drawRoundRect(tint.copy(alpha = if (valid) 0.30f else 0.20f), origin, cellSize, corner)
+    if (valid) {
+        drawRoundRect(tint.copy(alpha = 0.85f), origin, cellSize, corner, style = Stroke(1.5.dp.toPx()))
+    }
 }
 
 /**
- * Bloque neón: **tubo hueco**, mismo lenguaje que las celdas de Crucigrama Neón
- * ([drawNeonTile]) — contorno luminoso con halo y núcleo blanco, interior apenas
- * teñido (no relleno sólido). [scale]/[alpha] sirven a la animación de limpieza
- * (encoge alrededor de su centro mientras se funde); [glowBoost] sube el
- * encendido a pleno para la pieza en vuelo (es el foco de atención en ese
- * momento) frente al brillo algo más contenido de un bloque ya asentado.
+ * Bloque neón: una **gema** maciza con borde de neón.
+ *
+ * El cuerpo es un relleno con volumen (más claro arriba, sombreado abajo, con un brillo en la
+ * cara superior); el borde sigue siendo el tubo de neón compartido ([drawNeonTile], §9.7), a
+ * menos intensidad porque ya no carga solo con todo el peso visual.
+ *
+ * Antes el bloque era únicamente el tubo hueco: con el tablero medio lleno, decenas de
+ * contornos huecos se leían como una malla de alambre y costaba ver de un vistazo qué celdas
+ * estaban ocupadas — que es la lectura de la que depende todo el juego. Macizo, lo ocupado se
+ * distingue de lo vacío al instante.
+ *
+ * [scale]/[alpha] sirven a las animaciones (pop al asentarse, encogerse al limpiar: siempre
+ * alrededor de su centro); [glowBoost] sube el encendido para la pieza en vuelo, que es el
+ * foco de atención en ese momento.
  */
 private fun DrawScope.drawBlock(
     topLeft: Offset,
@@ -1173,17 +1292,14 @@ private fun DrawScope.drawBlock(
     scale: Float = 1f,
     glowBoost: Boolean = false,
 ) {
-    drawNeonTile(
-        baseColor = accent,
-        activeAmt = if (glowBoost) 1f else 0.78f,
-        cornerRadius = (cellPx * 0.22f).toDp(),
-        sparks = false,
-        baseMargin = (cellPx * 0.07f).toDp(),
-        strokeScale = 0.8f,
-        rectTopLeft = topLeft,
-        rectSize = Size(cellPx, cellPx),
+    // El cuerpo y el borde salen del kit compartido (los mismos que Neon 2048).
+    drawNeonGem(
+        topLeft = topLeft,
+        cellPx = cellPx,
+        accent = accent,
         alpha = alpha,
         scale = scale,
+        glow = if (glowBoost) 0.95f else 0.42f,
     )
 }
 

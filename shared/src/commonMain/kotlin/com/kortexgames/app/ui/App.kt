@@ -41,6 +41,9 @@ import com.kortexgames.app.game.energyflow.EnergyFlowScreen
 import com.kortexgames.app.game.memory.SequenceMemoryScreen
 import com.kortexgames.app.game.hexaorbit.HexaOrbitScreen
 import com.kortexgames.app.game.gridswitch.GridSwitchScreen
+import com.kortexgames.app.game.shikaku.ShikakuScreen
+import com.kortexgames.app.game.hexaflux.HexaFluxScreen
+import com.kortexgames.app.game.tents.TentsScreen
 import com.kortexgames.app.game.hypergate.HypergateScreen
 import com.kortexgames.app.game.legion.LegionScreen
 import com.kortexgames.app.game.quantummerge.QuantumMergeScreen
@@ -72,6 +75,7 @@ import com.kortexgames.app.ui.navigation.Routes
 import com.kortexgames.app.ui.navigation.TopLevelTab
 import com.kortexgames.app.ui.onboarding.FirstRunFlow
 import com.kortexgames.app.ui.onboarding.FirstRunWelcomeScreen
+import com.kortexgames.app.ui.components.LocalTutorialStore
 import com.kortexgames.app.ui.onboarding.LocalFirstRunFlow
 import com.kortexgames.app.ui.onboarding.PlayerNameScreen
 import com.kortexgames.app.ui.profile.ProfileScreen
@@ -359,7 +363,12 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean, introGamesPlay
             // El flujo de bienvenida se publica para TODA la navegación: quien lo
             // consume es la antesala de cada juego ([GameIntroScreen]), a la que la
             // navegación no puede inyectarle nada porque la monta el propio juego.
-            CompositionLocalProvider(LocalFirstRunFlow provides firstRun) {
+            // Igual con el almacén de tutoriales vistos: la antesala lo necesita para abrir
+            // el tutorial de un juego solo la primera vez (ver [LocalTutorialStore]).
+            CompositionLocalProvider(
+                LocalFirstRunFlow provides firstRun,
+                LocalTutorialStore provides graph.tutorialStore,
+            ) {
             NavHost(
                 navController = navController,
                 startDestination = startDestination,
@@ -583,6 +592,15 @@ private fun MainNavigation(graph: AppGraph, startAtAuth: Boolean, introGamesPlay
                 }
                 composable(Routes.NEON_GRID_SWITCH) {
                     GridSwitchScreen(graph, exitGame)
+                }
+                composable(Routes.NEON_SHIKAKU) {
+                    ShikakuScreen(graph, exitGame)
+                }
+                composable(Routes.NEON_TENTS) {
+                    TentsScreen(graph, exitGame)
+                }
+                composable(Routes.NEON_HEXA_FLUX) {
+                    HexaFluxScreen(graph, exitGame)
                 }
             }
             }

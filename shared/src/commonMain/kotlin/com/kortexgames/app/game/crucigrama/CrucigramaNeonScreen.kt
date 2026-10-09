@@ -88,11 +88,30 @@ import com.kortexgames.app.ui.components.collectPressGlow
 import com.kortexgames.app.ui.components.drawNeonTile
 import kortexgames.shared.generated.resources.Res
 import kortexgames.shared.generated.resources.gameintro_levels_cleared_notice
+import androidx.compose.foundation.Canvas
+import com.kortexgames.app.ui.components.drawEdgeFlash
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.PI
 import kotlin.math.cos
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import com.kortexgames.app.ui.components.NeonProgressBar
+import kortexgames.shared.generated.resources.crucigrama_hud_combo
+import kortexgames.shared.generated.resources.crucigrama_hud_words
+import kortexgames.shared.generated.resources.gameboard_hud_level
+import kotlinx.coroutines.delay
 import kotlin.math.sin
 
 // +10% respecto al tamaño original (60dp) para compensar el hueco entre celdas
@@ -106,6 +125,15 @@ private val BankLetterGap = 12.dp
 // letras) no cabe en el ancho disponible. Por debajo la letra se volvería ilegible;
 // preferimos ese piso a seguir achicando.
 private val BankLetterMinSize = 40.dp
+
+/** Retraso de la entrada en cascada entre una diagonal de la rejilla y la siguiente (ms). */
+private const val ENTRY_STEP_MS = 28L
+
+/** Retraso del encendido entre una letra de la palabra y la siguiente (ms). */
+private const val IGNITION_STEP_MS = 55L
+
+/** Capas del resplandor interior del cristal de una celda (se suman hacia el borde). */
+private const val GLASS_GLOW_LAYERS = 6
 
 /**
  * Colores neón asignados por palabra. Cada slot recibe un color estable según su
@@ -247,12 +275,16 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 contentAlignment = Alignment.Center,
             ) {
-                CrosswordGrid(
-                    rows = game.rows,
-                    cols = game.cols,
-                    cells = game.cells,
-                    slots = game.slots,
-                )
+                // `key(nivel)`: al cambiar de nivel la rejilla se monta de cero y repite su
+                // entrada en cascada, en vez de reutilizar las celdas del nivel anterior.
+                key(game.level) {
+                    CrosswordGrid(
+                        rows = game.rows,
+                        cols = game.cols,
+                        cells = game.cells,
+                        slots = game.slots,
+                    )
+                }
             }
 
             // Palabra en curso con sus dos acciones al lado: papelera (borrar todo) y
@@ -260,6 +292,8 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
             CurrentWord(
                 input = game.inputBuffer,
                 hint = state.revealedHint,
+                feedbackTick = game.feedbackTick,
+                wrong = game.lastOutcome == CrucigramaNeonOutcome.WRONG,
                 onBackspace = { vm.onIntent(CrucigramaNeonIntent.Backspace) },
                 onClearAll = { vm.onIntent(CrucigramaNeonIntent.ClearWord) },
             )
@@ -350,6 +384,16 @@ fun CrucigramaNeonScreen(graph: AppGraph, onExit: () -> Unit) {
     }
 }
 
+/**
+ * Cabecera: nivel, avance del crucigrama y puntuación con su combo.
+ *
+ * Mismo esqueleto que el HUD de los demás tableros por niveles (píldora de nivel + barra): la
+ * barra responde a "¿cuántas palabras me faltan?" de un vistazo, que antes era un "3/7" suelto
+ * en la esquina —justo debajo del botón de pausa—. La puntuación late al sumar y el combo es
+ * una insignia que entra con rebote y late en cada acierto encadenado.
+ *
+ * Deja libre la esquina superior derecha (el botón de pausa vive ahí).
+ */
 @Composable
 private fun CrosswordHud(
     level: Int,
@@ -358,31 +402,83 @@ private fun CrosswordHud(
     total: Int,
     combo: Int,
 ) {
+    val accent = CategoryPalette.Language
+    val progress by animateFloatAsState(
+        targetValue = if (total <= 0) 0f else solved.toFloat() / total,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
+        label = "crosswordProgress",
+    )
+    val scorePop = remember { Animatable(1f) }
+    var lastScore by remember { mutableIntStateOf(score) }
+    LaunchedEffect(score) {
+        val grew = score > lastScore
+        lastScore = score
+        if (!grew) return@LaunchedEffect
+        scorePop.snapTo(1.25f)
+        scorePop.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
+    }
+    val comboVisible by animateFloatAsState(
+        targetValue = if (combo >= 2) 1f else 0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "comboVisible",
+    )
+    val comboBeat = remember { Animatable(1f) }
+    LaunchedEffect(combo) {
+        if (combo < 2) return@LaunchedEffect
+        comboBeat.snapTo(1.3f)
+        comboBeat.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
+    }
+
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.Top,
+        modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 64.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column {
-            Text("Nivel $level", style = MaterialTheme.typography.labelLarge, color = CategoryPalette.Language, fontWeight = FontWeight.Bold)
-            Text("$score", style = MaterialTheme.typography.headlineMedium, color = LogicColors.OnDark, fontWeight = FontWeight.Black)
-        }
-        Column(
-            horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            val comboScale by animateFloatAsState(
-                targetValue = if (combo >= 2) 1f else 0.8f,
-                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-                label = "comboScale",
-            )
-            Text("$solved/$total", style = MaterialTheme.typography.titleMedium, color = LogicColors.OnDark, fontWeight = FontWeight.Bold)
+        Text(
+            text = stringResource(Res.string.gameboard_hud_level, level.toString()).uppercase(),
+            style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 1.4.sp),
+            color = accent,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .background(LogicColors.SurfaceDark.copy(alpha = 0.85f), CircleShape)
+                .border(1.5.dp, accent.copy(alpha = 0.55f), CircleShape)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
-                if (combo >= 2) "x$combo" else "",
+                text = stringResource(Res.string.crucigrama_hud_words, solved.toString(), total.toString()),
+                style = MaterialTheme.typography.labelLarge,
+                color = LogicColors.OnDark,
+                fontWeight = FontWeight.Bold,
+            )
+            NeonProgressBar(progress = progress, color = accent, modifier = Modifier.fillMaxWidth())
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                text = "$score",
                 style = MaterialTheme.typography.titleLarge,
+                color = LogicColors.OnDark,
+                fontWeight = FontWeight.Black,
+                modifier = Modifier.graphicsLayer {
+                    scaleX = scorePop.value
+                    scaleY = scorePop.value
+                    // Crece desde la derecha: el número está alineado a ese lado.
+                    transformOrigin = TransformOrigin(1f, 0.5f)
+                },
+            )
+            Text(
+                // Sigue mostrando la última racha mientras la insignia se encoge al romperse.
+                text = stringResource(Res.string.crucigrama_hud_combo, combo.coerceAtLeast(2).toString()),
+                style = MaterialTheme.typography.labelLarge,
                 color = LogicColors.NeonGreen,
                 fontWeight = FontWeight.Black,
-                modifier = Modifier.alpha(comboScale),
+                modifier = Modifier.graphicsLayer {
+                    val scale = comboVisible * comboBeat.value
+                    scaleX = scale
+                    scaleY = scale
+                    alpha = comboVisible.coerceIn(0f, 1f)
+                    transformOrigin = TransformOrigin(1f, 0.5f)
+                },
             )
         }
     }
@@ -412,15 +508,41 @@ private fun HintButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
  * la papelera (borrar todo, [onClearAll]) y a la derecha el retroceso (borrar la última
  * letra, [onBackspace]). El texto va al centro (peso 1) para quedar ópticamente centrado
  * entre botones simétricos. Ambos botones se atenúan cuando no hay nada que borrar.
+ *
+ * La palabra **responde a lo que se escribe**: da un pequeño golpe con cada letra nueva y, si el
+ * intento no era una palabra del nivel, se sacude y parpadea en rojo. Antes el fallo solo se
+ * notaba por un velo de color en toda la pantalla, lejos de donde el jugador está mirando.
+ *
+ * @param feedbackTick contador de intentos resueltos; cada cambio dispara una reacción.
+ * @param wrong si el último intento fue fallido (decide entre sacudida y nada).
  */
 @Composable
 private fun CurrentWord(
     input: String,
     hint: String?,
+    feedbackTick: Long,
+    wrong: Boolean,
     onBackspace: () -> Unit,
     onClearAll: () -> Unit,
 ) {
     val hasInput = input.isNotEmpty()
+    // Golpe al teclear: solo al CRECER la palabra (borrar no es un logro).
+    val typePop = remember { Animatable(1f) }
+    var lastLength by remember { mutableIntStateOf(input.length) }
+    LaunchedEffect(input.length) {
+        val grew = input.length > lastLength
+        lastLength = input.length
+        if (!grew) return@LaunchedEffect
+        typePop.snapTo(1.12f)
+        typePop.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
+    }
+    // Sacudida del fallo, 0→1 una vez por intento fallido.
+    val shake = remember { Animatable(1f) }
+    LaunchedEffect(feedbackTick) {
+        if (feedbackTick == 0L || !wrong) return@LaunchedEffect
+        shake.snapTo(0f)
+        shake.animateTo(1f, tween(360, easing = LinearEasing))
+    }
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -441,14 +563,28 @@ private fun CurrentWord(
             )
             Text(
                 text = if (input.isBlank()) "_" else input.toCharArray().joinToString(" "),
-                // displaySmall (~36sp) escalado ~25% -> 45sp para agrandar las letras.
-                fontSize = 45.sp,
+                // displaySmall (~36sp) escalado ~25% -> 45sp para agrandar las letras. A partir de
+                // la sexta letra el cuerpo encoge para que la palabra siga en UNA línea: al
+                // partirse en dos empujaba la rejilla hacia arriba a mitad de escritura.
+                fontSize = (45f * (5.2f / input.length.coerceAtLeast(1)).coerceAtMost(1f)).sp,
+                maxLines = 1,
+                softWrap = false,
                 style = MaterialTheme.typography.displaySmall,
-                color = if (input.isBlank()) LogicColors.OnDarkMuted else LogicColors.OnDark,
+                color = when {
+                    shake.value < 1f -> lerp(LogicColors.Error, LogicColors.OnDarkMuted, shake.value)
+                    input.isBlank() -> LogicColors.OnDarkMuted
+                    else -> LogicColors.OnDark
+                },
                 fontWeight = FontWeight.Black,
                 letterSpacing = 2.sp,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).graphicsLayer {
+                    scaleX = typePop.value
+                    scaleY = typePop.value
+                    val p = shake.value
+                    // Sinusoide amortiguada: se frena sola en su sitio (como en Neon Sudoku).
+                    if (p < 1f) translationX = sin(p * 3f * 2f * PI.toFloat()) * 9.dp.toPx() * (1f - p)
+                },
             )
             // Retroceso: borra solo la última letra.
             WordActionButton(
@@ -527,6 +663,21 @@ private fun CrosswordGrid(
             cell.index to (slotColor[owner?.number] to owner?.solvedAtTick)
         }
     }
+    // Puesto de cada celda dentro de la palabra que la enciende (0 = su primera letra). Con él
+    // el encendido recorre la palabra letra a letra, como un rótulo que se va prendiendo, en
+    // vez de titilar todas las celdas a la vez.
+    val cellOrder = remember(cells, slots) {
+        val solved = slots.filter { it.solved }
+        cells.associate { cell ->
+            val owner = solved
+                .filter { it.number in cell.slotNumbers }
+                .maxByOrNull { it.solvedAtTick ?: 0L }
+            val start = if (owner == null) 0 else {
+                cells.filter { owner.number in it.slotNumbers }.minOf { it.row + it.col }
+            }
+            cell.index to (cell.row + cell.col - start).coerceAtLeast(0)
+        }
+    }
 
     // Tamaño de celda adaptativo: crece hasta [CellSize] pero se encoge para que la
     // rejilla completa quepa (los niveles avanzados tienen más columnas/filas).
@@ -554,6 +705,7 @@ private fun CrosswordGrid(
                                 cell = cellState,
                                 wordColor = wordColor ?: CategoryPalette.Language,
                                 solvedTick = tick,
+                                order = cellOrder[cellState.index] ?: 0,
                                 cellSize = cell,
                             )
                         }
@@ -567,38 +719,60 @@ private fun CrosswordGrid(
 /**
  * Celda del crucigrama con estética de juego y encendido de neón real.
  *
- * Al resolverse la palabra que la contiene, la celda se enciende como un tubo de
- * neón: una secuencia de [ignition] con **parpadeos irregulares** que "engancha" y
- * queda encendida, más una **respiración** sutil continua ([breath]) y una ráfaga
- * de **chispas** ([spark]) que salen del centro. El resplandor se dibuja como un
- * halo radial difuminado en [drawBehind] (no una sombra), evitando el artefacto de
- * "recuadro interno" que producía el glow anterior.
+ * Vacía es un **zócalo** oscuro con un filo tenue. Al resolverse la palabra que la contiene se
+ * enciende como un tubo de neón: una secuencia de [ignition] con **parpadeos irregulares** que
+ * "engancha" y queda encendida, una **respiración** sutil continua ([breath]) y una ráfaga de
+ * **chispas** ([spark]). La luz del tubo se derrama sobre el cristal de la celda ([drawCellGlass])
+ * y la letra entra con un rebote y un halo del color de su palabra.
+ *
+ * @param order puesto de la celda dentro de la palabra que la enciende: retrasa su encendido
+ *   para que la palabra se prenda letra a letra (ver [IGNITION_STEP_MS]).
  */
 @Composable
 private fun GridCell(
     cell: CrucigramaNeonCellState,
     wordColor: Color,
     solvedTick: Long?,
+    order: Int,
     cellSize: androidx.compose.ui.unit.Dp,
 ) {
     val solved = cell.fixed
     val shape = RoundedCornerShape(12.dp)
 
+    // Entrada del nivel: las celdas aparecen en cascada diagonal, una sola vez al montarse.
+    val entry = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        delay((cell.row + cell.col) * ENTRY_STEP_MS)
+        entry.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow))
+    }
+
     val ignition = remember { Animatable(0f) }
     val spark = remember { Animatable(0f) }
+    // Rebote de la letra al encenderse su celda (1 = asentada).
+    val letterPop = remember { Animatable(if (solved) 1f else 0f) }
     LaunchedEffect(solvedTick) {
         if (solvedTick == null || solvedTick == 0L) {
             ignition.snapTo(if (solved) 1f else 0f)
             spark.snapTo(0f)
+            // Solo las ya resueltas muestran su letra asentada: si las vacías quedaran en 1, la
+            // letra asomaría un frame entero antes de que arranque su encendido.
+            letterPop.snapTo(if (solved) 1f else 0f)
             return@LaunchedEffect
         }
-        // Chispas en paralelo al encendido.
+        ignition.snapTo(0f)
+        letterPop.snapTo(0f)
+        // La palabra se prende letra a letra.
+        delay(order * IGNITION_STEP_MS)
+        // Chispas y rebote de la letra, en paralelo al encendido.
         launch {
             spark.snapTo(0f)
             spark.animateTo(1f, tween(560, easing = LinearEasing))
         }
+        launch {
+            letterPop.snapTo(0.4f)
+            letterPop.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
+        }
         // Parpadeo tipo tubo de neón que titila y "engancha".
-        ignition.snapTo(0f)
         ignition.animateTo(0.85f, tween(55))
         ignition.animateTo(0.08f, tween(45))
         ignition.animateTo(0.7f, tween(35))
@@ -622,7 +796,19 @@ private fun GridCell(
     Box(
         modifier = Modifier
             .size(cellSize)
+            .graphicsLayer {
+                scaleX = entry.value
+                scaleY = entry.value
+                alpha = entry.value.coerceIn(0f, 1f)
+            }
             .drawBehind {
+                // Cristal de la celda bajo el tubo: zócalo oscuro, teñido por la luz al encender.
+                drawCellGlass(
+                    margin = 5.6.dp.toPx(),
+                    corner = 12.dp.toPx(),
+                    color = wordColor,
+                    lit = if (solved) ignition.value * breath else 0f,
+                )
                 // Borde neón tipo tubo (misma estética que Memoria vía [drawNeonTile]).
                 // baseMargin reducido ~20% (7 -> 5.6dp) para que el tubo llene más la celda.
                 // strokeScale 0.6 = tubo un 40% más fino: en niveles con muchas palabras las
@@ -662,12 +848,58 @@ private fun GridCell(
     ) {
         Text(
             text = cell.entry?.toString() ?: "",
-            style = MaterialTheme.typography.headlineSmall,
+            style = MaterialTheme.typography.headlineSmall.copy(
+                // Halo del color de la palabra: la letra se lee como rótulo de neón encendido.
+                shadow = if (solved) Shadow(color = wordColor.copy(alpha = 0.9f), offset = Offset.Zero, blurRadius = 14f) else null,
+            ),
             color = LogicColors.OnDark,
             fontWeight = FontWeight.Black,
             textAlign = TextAlign.Center,
             // Letra un 10% más pequeña (16 -> 14.4sp) para respirar dentro del tubo fino.
-            fontSize = 14.4.sp
+            fontSize = 14.4.sp,
+            modifier = Modifier.graphicsLayer {
+                scaleX = letterPop.value
+                scaleY = letterPop.value
+                alpha = letterPop.value.coerceIn(0f, 1f)
+            },
+        )
+    }
+}
+
+/**
+ * Cristal de una celda o tecla: un fondo oscuro opaco bajo el tubo de neón y, al encenderse, la
+ * luz del tubo derramándose hacia dentro (intensa junto al borde, apagada en el centro).
+ *
+ * Sin él las celdas eran contornos huecos sobre el fondo estrellado y las estrellas asomaban
+ * entre las letras. El resplandor son varias capas finas que se solapan, para que la caída sea
+ * suave; se pintan como trazos sobre el propio contorno y solo cuenta la mitad interior.
+ *
+ * @param margin separación entre el cristal y el borde del composable (la del tubo).
+ * @param lit 0..1, cuánta luz del color [color] recibe el cristal.
+ */
+private fun DrawScope.drawCellGlass(margin: Float, corner: Float, color: Color, lit: Float) {
+    val topLeft = Offset(margin, margin)
+    val body = Size(size.width - margin * 2f, size.height - margin * 2f)
+    val radius = CornerRadius(corner)
+    drawRoundRect(
+        color = lerp(LogicColors.BackgroundDark, LogicColors.SurfaceDark, 0.55f).copy(alpha = 0.92f),
+        topLeft = topLeft,
+        size = body,
+        cornerRadius = radius,
+    )
+    val amount = lit.coerceIn(0f, 1f)
+    if (amount <= 0f) return
+    val reach = body.width * 0.26f
+    for (i in 1..GLASS_GLOW_LAYERS) {
+        // El trazo se centra en el contorno: se mete medio ancho hacia dentro para que toda
+        // la capa caiga dentro del cristal y no ensucie el hueco entre celdas.
+        val width = reach * i / GLASS_GLOW_LAYERS
+        drawRoundRect(
+            color = color.copy(alpha = 0.055f * amount),
+            topLeft = Offset(topLeft.x + width / 2f, topLeft.y + width / 2f),
+            size = Size(body.width - width, body.height - width),
+            cornerRadius = CornerRadius((corner - width / 2f).coerceAtLeast(0f)),
+            style = Stroke(width = width),
         )
     }
 }
@@ -735,6 +967,9 @@ private fun LetterKey(letter: Char, size: Dp, accent: Color, onClick: () -> Unit
         modifier = Modifier
             .size(size)
             .drawBehind {
+                // Cristal bajo el tubo: la tecla deja de ser un contorno hueco sobre las
+                // estrellas, y al pulsarla se llena de luz.
+                drawCellGlass(margin = 5.dp.toPx(), corner = 16.dp.toPx(), color = accent, lit = 0.55f + 0.45f * pressGlow)
                 drawNeonTile(accent, activeAmt = 0.85f, pressAmt = pressGlow, cornerRadius = 16.dp, sparks = false, baseMargin = 5.dp)
             }
             .clip(shape)
@@ -961,5 +1196,7 @@ private fun FeedbackFlash(eventId: Long, result: CrucigramaNeonOutcome?) {
     }
     if (alpha.value <= 0f || result == null) return
     val color = if (result == CrucigramaNeonOutcome.CORRECT) LogicColors.Success else LogicColors.Error
-    Box(modifier = Modifier.fillMaxSize().background(color.copy(alpha = alpha.value)))
+    // Por los cantos y no como velo plano: el velo teñía también la rejilla justo cuando la
+    // palabra se está encendiendo con su propio color.
+    Canvas(modifier = Modifier.fillMaxSize()) { drawEdgeFlash(color, alpha.value / 0.27f) }
 }

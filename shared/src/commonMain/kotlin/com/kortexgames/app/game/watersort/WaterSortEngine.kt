@@ -31,6 +31,24 @@ data class PourEvent(
 )
 
 /**
+ * Evento efímero de **vertido rechazado** (color que no corresponde o destino
+ * lleno), para que la pantalla sacuda el frasco que "dijo que no". Mismo mecanismo
+ * que [PourEvent]: vive en el estado hasta la siguiente acción y su [id]
+ * incremental permite repetir la sacudida ante dos rechazos idénticos seguidos.
+ * Sin él la UI no podía distinguir un rechazo de una simple deselección (ambos
+ * dejan `selected = null`) y el error solo se oía, no se veía.
+ *
+ * @property from tubo origen que se había levantado.
+ * @property to tubo destino que rechazó el vertido.
+ */
+@Serializable
+data class RejectEvent(
+    val id: Long,
+    val from: Int,
+    val to: Int,
+)
+
+/**
  * Máximo de tubos extra que el jugador puede añadir por partida viendo un anuncio
  * recompensado. Se limita a **uno**: un solo tubo vacío ya da un margen de maniobra
  * decisivo cuando el jugador se atasca; permitir más trivializaría el nivel. Es la
@@ -59,6 +77,7 @@ const val FREE_UNDOS: Int = 1
  * @property solved true cuando todos los tubos están resueltos (victoria).
  * @property canUndo hay historial para deshacer el último vertido.
  * @property lastPour último vertido correcto, para animar el chorro (o null).
+ * @property lastReject último vertido rechazado, para sacudir el destino (o null).
  * @property extraTubesUsed tubos extra ya añadidos (vía anuncio) en esta partida.
  * @property canAddTube aún queda cupo de tubos extra ([MAX_EXTRA_TUBES]) y la
  *   partida sigue en curso → la UI puede ofrecer el botón "Tubo extra".
@@ -76,6 +95,7 @@ data class WaterSortState(
     val solved: Boolean = false,
     val canUndo: Boolean = false,
     val lastPour: PourEvent? = null,
+    val lastReject: RejectEvent? = null,
     val extraTubesUsed: Int = 0,
     val canAddTube: Boolean = true,
     val undosUsed: Int = 0,
@@ -132,6 +152,7 @@ class WaterSortEngine(
     private val history = ArrayDeque<List<Tube>>()
     private var currentRoundMinMoves = 0
     private var pourSeq = 0L
+    private var rejectSeq = 0L
 
     /** Partida guardada a restaurar en el próximo [onStart]; la consume y limpia. */
     private var pendingResume: WaterSortSavedState? = null
@@ -198,11 +219,12 @@ class WaterSortEngine(
 
     /**
      * Vuelca la partida en curso a su forma serializable para guardarla al salir.
-     * [WaterSortState.lastPour] se descarta: es un disparador de animación de una
-     * sola vez (no hay dedo en pantalla esperando verlo al reanudar).
+     * [WaterSortState.lastPour] y [WaterSortState.lastReject] se descartan: son
+     * disparadores de animación de una sola vez (no hay dedo en pantalla esperando
+     * verlos al reanudar).
      */
     fun captureSavedState(): WaterSortSavedState = WaterSortSavedState(
-        game = _state.value.copy(lastPour = null),
+        game = _state.value.copy(lastPour = null, lastReject = null),
         initialTubes = initialTubes,
         minMoves = currentRoundMinMoves,
         history = history.toList(),
@@ -278,7 +300,7 @@ class WaterSortEngine(
             // mantiene el origen seleccionado para reintentar con otro destino.
             audio.playSound(SoundEffect.ERROR)
             audio.hapticFeedback(HapticFeedback.ERROR)
-            _state.value = s.copy(selected = null)
+            _state.value = s.copy(selected = null, lastReject = RejectEvent(rejectSeq++, from, to))
             return
         }
 

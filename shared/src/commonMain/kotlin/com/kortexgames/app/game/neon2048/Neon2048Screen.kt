@@ -1,6 +1,7 @@
 package com.kortexgames.app.game.neon2048
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.spring
@@ -28,16 +29,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -74,8 +80,33 @@ import com.kortexgames.app.ui.components.SpaceBackdrop
 import com.kortexgames.app.ui.components.WorldRankingLoading
 import com.kortexgames.app.ui.components.WorldRankingPreviewPanel
 import com.kortexgames.app.ui.components.bounceClick
+import com.kortexgames.app.ui.components.ModalReveal
+import com.kortexgames.app.ui.components.NeonIcon
+import com.kortexgames.app.ui.components.drawNeonBoardPlate
 import com.kortexgames.app.ui.components.drawNeonTile
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.lerp
+import com.kortexgames.app.ui.components.drawSparkBurst
+import com.kortexgames.app.ui.components.modalCard
+import com.kortexgames.app.ui.components.modalScrim
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import kortexgames.shared.generated.resources.Res
+import kortexgames.shared.generated.resources.neon2048_hud_best
+import kortexgames.shared.generated.resources.neon2048_hud_gain
+import kortexgames.shared.generated.resources.neon2048_hud_max
+import kortexgames.shared.generated.resources.neon2048_hud_score
+import kortexgames.shared.generated.resources.neon2048_win_body
+import kortexgames.shared.generated.resources.neon2048_win_continue
+import kortexgames.shared.generated.resources.neon2048_win_restart
+import kortexgames.shared.generated.resources.neon2048_win_title
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -180,6 +211,7 @@ fun Neon2048Screen(graph: AppGraph, onExit: () -> Unit) {
     if (state.status == GameStatus.IDLE) {
         GameIntroScreen(
             help = GameHelpContent.neon2048,
+            tutorial = Neon2048Tutorial.tutorial,
             title = "Neon Grid 2048",
             motif = GameMotif.NUMBER_TILES,
             description = NEON_2048_HELP,
@@ -400,15 +432,17 @@ private fun Neon2048Board(
     modifier: Modifier = Modifier,
 ) {
     val boardSize = state.boardSize
+    val density = LocalDensity.current
+
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .background(LogicColors.SurfaceVariantDark, RoundedCornerShape(24.dp))
+            // La placa compartida del kit de tableros (la misma de Bloques Neón y Sudoku).
+            .drawBehind { drawNeonBoardPlate(accent = CategoryPalette.MentalMath) }
             .padding(BOARD_PADDING)
             .swipeGestures(enabled, onSwipe),
     ) {
-        val density = LocalDensity.current
         // Reparto: `boardSize` celdas + (boardSize-1) huecos dentro del ancho
         // disponible. Un tablero 8×8 reparte el mismo espacio entre el doble de
         // celdas que uno 4×4: cada celda sale proporcionalmente más pequeña, lo
@@ -422,18 +456,27 @@ private fun Neon2048Board(
         // IntOffset (evita el temblor de subpíxel al interpolar).
         val stepPx = with(density) { (cellSize + CELL_GAP).toPx() }.roundToInt()
 
-        // Casillas vacías: rejilla de fondo que da el "hueco" donde encajan las
-        // fichas. Un único Canvas — es decoración estática, no necesita identidad.
+        // Casillas vacías: zócalos hundidos donde encajan las fichas (fondo oscuro + filo
+        // fino, como las celdas del resto de tableros). Un único Canvas — es decoración
+        // estática, no necesita identidad.
         Canvas(modifier = Modifier.fillMaxSize()) {
             val side = with(density) { cellSize.toPx() }
             val radius = CornerRadius(with(density) { cornerRadius.toPx() })
             for (row in 0 until boardSize) {
                 for (col in 0 until boardSize) {
+                    val topLeft = Offset(col * stepPx.toFloat(), row * stepPx.toFloat())
                     drawRoundRect(
                         color = LogicColors.BackgroundDark.copy(alpha = 0.55f),
-                        topLeft = Offset(col * stepPx.toFloat(), row * stepPx.toFloat()),
+                        topLeft = topLeft,
                         size = Size(side, side),
                         cornerRadius = radius,
+                    )
+                    drawRoundRect(
+                        color = LogicColors.SurfaceVariantDark.copy(alpha = 0.70f),
+                        topLeft = topLeft,
+                        size = Size(side, side),
+                        cornerRadius = radius,
+                        style = Stroke(1.dp.toPx()),
                     )
                 }
             }
@@ -443,12 +486,12 @@ private fun Neon2048Board(
         // ocultos justo cuando terminan de deslizarse hasta el punto de fusión.
         for (ghost in state.ghosts) {
             key(ghost.id) {
-                Neon2048GhostView(ghost = ghost, cellSize = cellSize, cornerRadius = cornerRadius, stepPx = stepPx)
+                Neon2048GhostView(ghost = ghost, cellSize = cellSize, stepPx = stepPx)
             }
         }
         for (tile in state.tiles) {
             key(tile.id) {
-                Neon2048TileView(tile = tile, cellSize = cellSize, cornerRadius = cornerRadius, stepPx = stepPx)
+                Neon2048TileView(tile = tile, cellSize = cellSize, stepPx = stepPx)
             }
         }
     }
@@ -503,11 +546,10 @@ private fun Modifier.swipeGestures(enabled: Boolean, onSwipe: (Direction) -> Uni
  * Ficha absorbida en una fusión, animada viajando de [Ghost.from] a [Ghost.to].
  *
  * @param cellSize lado de la casilla.
- * @param cornerRadius radio de esquina ya ajustado al tamaño de celda (ver [tileCornerFor]).
  * @param stepPx distancia en px entre casillas contiguas (celda + hueco).
  */
 @Composable
-private fun Neon2048GhostView(ghost: Ghost, cellSize: Dp, cornerRadius: Dp, stepPx: Int) {
+private fun Neon2048GhostView(ghost: Ghost, cellSize: Dp, stepPx: Int) {
     val fromOffset = IntOffset(x = ghost.from.col * stepPx, y = ghost.from.row * stepPx)
     val toOffset = IntOffset(x = ghost.to.col * stepPx, y = ghost.to.row * stepPx)
 
@@ -523,18 +565,13 @@ private fun Neon2048GhostView(ghost: Ghost, cellSize: Dp, cornerRadius: Dp, step
     // y la que la absorbe— recorran su tramo y se encuentren a la vez.
     val progress = remember(ghost.id) { Animatable(0f) }
 
-    // Por qué el fantasma necesita desvanecerse y no basta con que la
-    // superviviente se dibuje "encima": [drawNeonTile] es un tubo neón HUECO a
-    // propósito (relleno interior de hasta un 30% de opacidad, ver NeonTile.kt),
-    // no una ficha opaca. Si el fantasma solo se quedara quieto en el destino
-    // confiando en el orden de dibujado, su número ("4") se seguiría viendo A
-    // TRAVÉS del relleno translúcido de la superviviente ("8") — justo el bug
-    // reportado, y no un simple problema de temporización de la animación. Por
-    // eso, además de la posición, se anima un `alpha` propio que solo empieza a
-    // caer cuando el fantasma llega a destino: mientras viaja debe verse sólido
-    // (si no, el "encuentro" con la superviviente se leería como una ficha ya
-    // desvaneciéndose en vez de una fusión), y en cuanto llega se apaga rápido
-    // para no depender nunca de que algo lo tape.
+    // Por qué el fantasma se desvanece al llegar en vez de quedarse debajo confiando en que
+    // la superviviente lo tape: su cuerpo es algo menor que la casilla y el "pop" de fusión
+    // escala a la superviviente, así que durante unos frames las dos caras no coinciden y el
+    // borde del fantasma asomaría. (Cuando las fichas eran tubos huecos el problema era peor:
+    // su número se transparentaba a través de la otra.) Mientras viaja debe verse sólido —si
+    // no, el "encuentro" se leería como una ficha ya desvaneciéndose en vez de una fusión— y
+    // en cuanto llega se apaga rápido para no depender nunca de que algo lo tape.
     val alpha = remember(ghost.id) { Animatable(1f) }
     LaunchedEffect(ghost.id) {
         progress.animateTo(
@@ -558,23 +595,7 @@ private fun Neon2048GhostView(ghost: Ghost, cellSize: Dp, cornerRadius: Dp, step
             .graphicsLayer { this.alpha = alpha.value },
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            drawNeonTile(
-                baseColor = tileAccent(ghost.value.countTrailingZeroBits()),
-                activeAmt = 1f,
-                cornerRadius = cornerRadius,
-                sparks = false,
-                baseMargin = 3.dp,
-            )
-        }
-        Text(
-            text = "${ghost.value}",
-            style = MaterialTheme.typography.displayLarge.copy(
-                fontSize = fontSizeFor(ghost.value, cellSize).value.sp,
-            ),
-            color = LogicColors.OnDark,
-            textAlign = TextAlign.Center,
-        )
+        TileFace(value = ghost.value, cellSize = cellSize)
     }
 }
 
@@ -589,14 +610,14 @@ private fun Neon2048GhostView(ghost: Ghost, cellSize: Dp, cornerRadius: Dp, step
  *     con lambda, de modo que al animarse solo se repite la fase de *layout*, sin
  *     recomponer ni redibujar el contenido de la ficha.
  *  2. **Aparición**: la ficha nueva nace a escala 0 y crece con `spring`.
- *  3. **Pop de fusión**: la resultante late a 1.2 y vuelve a 1.
+ *  3. **Pop de fusión**: la resultante late a 1.2 y vuelve a 1; a partir de
+ *     [MERGE_BURST_MIN_VALUE] suelta además una ráfaga de chispas de su color.
  *
  * @param cellSize lado de la casilla.
- * @param cornerRadius radio de esquina ya ajustado al tamaño de celda (ver [tileCornerFor]).
  * @param stepPx distancia en px entre casillas contiguas (celda + hueco).
  */
 @Composable
-private fun Neon2048TileView(tile: Tile, cellSize: Dp, cornerRadius: Dp, stepPx: Int) {
+private fun Neon2048TileView(tile: Tile, cellSize: Dp, stepPx: Int) {
     val targetOffset = IntOffset(x = tile.col * stepPx, y = tile.row * stepPx)
     // Sin rebote: una ficha que se pasa de casilla y vuelve se lee como un error
     // de posición. El "peso" táctil lo dan la aparición y el pop, no el viaje.
@@ -610,6 +631,8 @@ private fun Neon2048TileView(tile: Tile, cellSize: Dp, cornerRadius: Dp, stepPx:
     )
 
     val scale = remember { Animatable(if (tile.isNew) 0f else 1f) }
+    // Avance 0..1 de la ráfaga de fusión; en reposo vale 1 (= nada que dibujar).
+    val burst = remember { Animatable(1f) }
 
     // Aparición: solo en la primera composición de esta ficha (su id es nuevo).
     LaunchedEffect(Unit) {
@@ -630,6 +653,14 @@ private fun Neon2048TileView(tile: Tile, cellSize: Dp, cornerRadius: Dp, stepPx:
     // se duplica en cada fusión, así que siempre cambia.
     LaunchedEffect(tile.isMerged, tile.value) {
         if (tile.isMerged) {
+            // La ráfaga corre en paralelo al pop (dura más que él): si fuera detrás, las
+            // chispas saldrían cuando la ficha ya está quieta y se leerían como otro evento.
+            if (tile.value >= MERGE_BURST_MIN_VALUE) {
+                launch {
+                    burst.snapTo(0f)
+                    burst.animateTo(1f, tween(MERGE_BURST_MS, easing = LinearEasing))
+                }
+            }
             scale.animateTo(
                 targetValue = 1f,
                 animationSpec = keyframes {
@@ -653,28 +684,122 @@ private fun Neon2048TileView(tile: Tile, cellSize: Dp, cornerRadius: Dp, stepPx:
             },
         contentAlignment = Alignment.Center,
     ) {
-        // Borde neón desde la fuente única del proyecto (CLAUDE.md §9.7): el mismo
-        // "tubo hueco" de las teclas de Memoria y las celdas de Crucigrama. La
-        // ficha está siempre encendida (activeAmt = 1f); sin chispas, porque con
-        // hasta 16 fichas a la vez el tablero se ensuciaría.
+        // Chispas de fusión, DETRÁS de la cara: salen despedidas por los bordes de la ficha
+        // sin tapar su número (encima, el destello y los rayos lo emborronaban justo cuando
+        // el jugador quiere leer el valor nuevo). Se salen de los límites a propósito: ni
+        // Canvas ni graphicsLayer recortan por defecto.
         Canvas(modifier = Modifier.fillMaxSize()) {
-            drawNeonTile(
-                baseColor = accent,
-                activeAmt = 1f,
-                cornerRadius = cornerRadius,
-                sparks = false,
-                baseMargin = 3.dp,
+            drawSparkBurst(
+                center = center,
+                color = accent,
+                reach = size.width * MERGE_BURST_REACH,
+                progress = burst.value,
+                seed = tile.id.toInt(),
             )
         }
-        Text(
-            text = "${tile.value}",
-            style = MaterialTheme.typography.displayLarge.copy(
-                fontSize = fontSizeFor(tile.value, cellSize).value.sp,
-            ),
-            color = LogicColors.OnDark,
-            textAlign = TextAlign.Center,
-        )
+        TileFace(value = tile.value, cellSize = cellSize)
     }
+}
+
+/**
+ * La cara de una ficha: **cristal oscuro encendido por un tubo de neón**, con su número.
+ *
+ * El color de la potencia vive en el borde (el tubo compartido, [drawNeonTile], §9.7) y se
+ * **derrama hacia dentro** del cristal, que queda teñido pero oscuro; el número brilla con un
+ * halo de ese mismo color. Dos versiones anteriores quedaron descartadas:
+ *  - solo el tubo hueco: con el tablero medio lleno las fichas se confundían con las casillas
+ *    vacías y el número de un fantasma se transparentaba a través de la superviviente;
+ *  - un relleno macizo y saturado: se leía como dibujo animado, ajeno al lenguaje de la app
+ *    (§9.1: superficie oscura, acento luminoso).
+ *
+ * El **encendido crece con la potencia** ([tileGlow]): las fichas pequeñas, que son mayoría,
+ * quedan tranquilas, y las grandes brillan — el neón vale porque es escaso.
+ *
+ * Lo comparten la ficha viva y el fantasma para que sean indistinguibles mientras viajan.
+ */
+@Composable
+private fun TileFace(value: Int, cellSize: Dp) {
+    val power = value.countTrailingZeroBits()
+    val accent = tileAccent(power)
+    val glow = tileGlow(power)
+    Canvas(modifier = Modifier.fillMaxSize()) { drawTileGlass(value, Offset.Zero, size.width) }
+    Text(
+        text = "$value",
+        style = MaterialTheme.typography.displayLarge.copy(
+            fontSize = fontSizeFor(value, cellSize).value.sp,
+            // Halo del color de la ficha: el número se lee como rótulo de neón encendido.
+            shadow = Shadow(color = accent.copy(alpha = 0.90f), offset = Offset.Zero, blurRadius = 18f),
+        ),
+        color = lerp(LogicColors.OnDark, accent, TILE_TEXT_TINT),
+        textAlign = TextAlign.Center,
+    )
+}
+
+/**
+ * El cuerpo de una ficha sin su número: cristal, resplandor interior y tubo de neón. Es la parte
+ * de [TileFace] que se pinta en `Canvas`, extraída como función de `DrawScope` con origen y lado
+ * explícitos para poder dibujar varias fichas en un mismo lienzo — lo usa el tutorial animado
+ * (`Neon2048Tutorial`), que así comparte ficha con la partida en vez de imitarla.
+ *
+ * @param topLeft esquina superior izquierda de la casilla.
+ * @param side lado de la casilla en píxeles.
+ */
+internal fun DrawScope.drawTileGlass(value: Int, topLeft: Offset, side: Float) {
+    val power = value.countTrailingZeroBits()
+    val accent = tileAccent(power)
+    val glow = tileGlow(power)
+    val margin = side * TILE_MARGIN_FRACTION
+    val bodyTopLeft = Offset(topLeft.x + margin, topLeft.y + margin)
+    val body = Size(side - margin * 2f, side - margin * 2f)
+    val corner = CornerRadius(side * TILE_CORNER_FRACTION)
+
+    // Cristal: opaco (tapa la casilla y cualquier fantasma) y apenas teñido.
+    drawRoundRect(
+        color = lerp(LogicColors.SurfaceDark, accent, TILE_GLASS_TINT),
+        topLeft = bodyTopLeft,
+        size = body,
+        cornerRadius = corner,
+    )
+    // Resplandor interior: la luz del tubo sobre el cristal, intensa junto al borde y
+    // apagándose hacia el centro. Muchas capas finas que se solapan, para que la caída
+    // sea suave y no se vean escalones.
+    val outline = Path().apply {
+        addRoundRect(RoundRect(Rect(bodyTopLeft, body), corner))
+    }
+    clipPath(outline) {
+        val reach = side * TILE_INNER_GLOW_REACH
+        for (i in 1..TILE_INNER_GLOW_LAYERS) {
+            drawRoundRect(
+                color = accent.copy(alpha = TILE_INNER_GLOW_ALPHA * (0.55f + 0.45f * glow)),
+                topLeft = bodyTopLeft,
+                size = body,
+                cornerRadius = corner,
+                // La mitad del ancho cae dentro del cristal (el resto lo recorta el clip).
+                style = Stroke(width = reach * 2f * i / TILE_INNER_GLOW_LAYERS),
+            )
+        }
+    }
+    // Tubo de neón del borde, desde la fuente única del proyecto.
+    drawNeonTile(
+        baseColor = accent,
+        activeAmt = glow,
+        cornerRadius = (side * TILE_CORNER_FRACTION).toDp(),
+        sparks = false,
+        baseMargin = margin.toDp(),
+        strokeScale = 0.75f,
+        rectTopLeft = topLeft,
+        rectSize = Size(side, side),
+    )
+}
+
+/**
+ * Encendido del borde de una ficha según su exponente: de [TILE_GLOW_MIN] (la ficha 2) a
+ * [TILE_GLOW_MAX] al llegar a [TILE_GLOW_FULL_POWER] (128, el mismo umbral que ya dispara la
+ * vibración fuerte y los fuegos).
+ */
+private fun tileGlow(power: Int): Float {
+    val t = ((power - 1).toFloat() / (TILE_GLOW_FULL_POWER - 1)).coerceIn(0f, 1f)
+    return TILE_GLOW_MIN + (TILE_GLOW_MAX - TILE_GLOW_MIN) * t
 }
 
 /**
@@ -690,7 +815,7 @@ private fun Neon2048TileView(tile: Tile, cellSize: Dp, cornerRadius: Dp, stepPx:
  * jugadores expertos) se **cicla** en vez de saturarse en un color final: mantiene
  * la variedad y ninguna ficha se queda sin identidad visual.
  */
-private fun tileAccent(power: Int): Color {
+internal fun tileAccent(power: Int): Color {
     val ramp = TILE_RAMP
     // power vale 1 para la ficha 2; el índice 0 de la rampa le corresponde a ella.
     val index = (power - 1).coerceAtLeast(0)
@@ -749,41 +874,131 @@ private fun tileCornerFor(cellSize: Dp): Dp = (cellSize * 0.22f).coerceAtMost(TI
 // HUD y overlays
 // ---------------------------------------------------------------------------
 
-/** Cabecera: puntuación actual, récord y ficha más alta alcanzada. */
+/**
+ * Cabecera: puntuación actual, récord y ficha más alta alcanzada.
+ *
+ * Deja de ser tres cajas iguales: la **puntuación** es lo que el jugador persigue en cada
+ * jugada, así que va grande, late al sumar y enseña cuánto acaba de ganar ("+16"); el
+ * **récord** es referencia y va en una píldora discreta; y la **ficha más alta** se enseña como
+ * lo que es, una ficha en miniatura con su color.
+ */
 @Composable
 private fun Neon2048Hud(score: Int, bestScore: Int, highest: Int, modifier: Modifier = Modifier) {
+    val accent = CategoryPalette.MentalMath
+    val scorePop = remember { Animatable(1f) }
+    // Avance 0..1 del "+N" que sube y se apaga; en reposo vale 1 (invisible).
+    val gainRise = remember { Animatable(1f) }
+    var gain by remember { mutableIntStateOf(0) }
+    var lastScore by remember { mutableIntStateOf(score) }
+    LaunchedEffect(score) {
+        val delta = score - lastScore
+        lastScore = score
+        // Solo al SUMAR: reiniciar la partida (la puntuación baja a 0) no es un logro.
+        if (delta <= 0) return@LaunchedEffect
+        gain = delta
+        launch {
+            gainRise.snapTo(0f)
+            gainRise.animateTo(1f, tween(GAIN_RISE_MS, easing = LinearEasing))
+        }
+        scorePop.snapTo(SCORE_POP_SCALE)
+        scorePop.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
+    }
+
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        HudStat("PUNTOS", "$score", CategoryPalette.MentalMath, Modifier.weight(1f))
-        HudStat("RÉCORD", "$bestScore", LogicColors.Amber, Modifier.weight(1f))
-        HudStat("MÁXIMA", "$highest", tileAccent(highestPower(highest)), Modifier.weight(1f))
+        Column(modifier = Modifier.weight(1f)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = stringResource(Res.string.neon2048_hud_score).uppercase(),
+                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.6.sp),
+                    color = LogicColors.OnDarkMuted,
+                )
+                Text(
+                    text = stringResource(Res.string.neon2048_hud_gain, gain.toString()),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Black,
+                    color = accent,
+                    modifier = Modifier.graphicsLayer {
+                        val p = gainRise.value
+                        // Aparece de golpe y se apaga subiendo: se lee como algo que "sale" de la jugada.
+                        alpha = if (p >= 1f) 0f else (1f - p * p)
+                        translationY = -GAIN_RISE.toPx() * p
+                    },
+                )
+            }
+            Text(
+                text = "$score",
+                style = MaterialTheme.typography.displayLarge,
+                color = LogicColors.OnDark,
+                maxLines = 1,
+                modifier = Modifier.graphicsLayer {
+                    scaleX = scorePop.value
+                    scaleY = scorePop.value
+                    // Crece desde la izquierda: el número está alineado a ese lado.
+                    transformOrigin = TransformOrigin(0f, 0.5f)
+                },
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .background(LogicColors.SurfaceDark.copy(alpha = 0.85f), CircleShape)
+                .border(1.dp, LogicColors.Amber.copy(alpha = 0.50f), CircleShape)
+                .padding(horizontal = 14.dp, vertical = 9.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            NeonIcon(
+                icon = KortexIcons.Trophy,
+                tint = LogicColors.Amber,
+                size = 18.dp,
+                glow = false,
+                contentDescription = stringResource(Res.string.neon2048_hud_best),
+            )
+            Text(
+                text = "$bestScore",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Black,
+                color = LogicColors.OnDark,
+            )
+        }
+
+        HighestTileBadge(highest = highest)
     }
 }
 
-/** Exponente de la ficha más alta; 1 (color de la ficha 2) si el tablero está vacío. */
-private fun highestPower(highest: Int): Int =
-    if (highest <= 0) 1 else highest.countTrailingZeroBits()
-
+/**
+ * La ficha más alta de la partida, como ficha en miniatura (misma cara que las del tablero,
+ * [TileFace]). Late cada vez que el jugador la supera: es el hito que más ilusión hace.
+ */
 @Composable
-private fun HudStat(label: String, value: String, accent: Color, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .background(LogicColors.SurfaceDark, RoundedCornerShape(16.dp))
-            .padding(vertical = 10.dp, horizontal = 12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+private fun HighestTileBadge(highest: Int) {
+    // Con el tablero vacío no hay ficha que enseñar; se pinta la más pequeña como marcador.
+    val shown = if (highest <= 0) Neon2048Config.SPAWN_VALUE else highest
+    val pop = remember { Animatable(1f) }
+    var last by remember { mutableIntStateOf(shown) }
+    LaunchedEffect(shown) {
+        val grew = shown > last
+        last = shown
+        if (!grew) return@LaunchedEffect
+        pop.snapTo(HIGHEST_POP_SCALE)
+        pop.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow))
+    }
+    val label = stringResource(Res.string.neon2048_hud_max)
+    Box(
+        modifier = Modifier
+            .size(HighestBadgeSize)
+            .graphicsLayer {
+                scaleX = pop.value
+                scaleY = pop.value
+            }
+            .semantics(mergeDescendants = true) { contentDescription = "$label: $shown" },
+        contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            color = LogicColors.OnDarkMuted,
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.titleLarge,
-            color = accent,
-        )
+        TileFace(value = shown, cellSize = HighestBadgeSize)
     }
 }
 
@@ -792,38 +1007,58 @@ private fun HudStat(label: String, value: String, accent: Color, modifier: Modif
  * la partida no ha terminado y ese componente cierra la sesión (guarda, muestra
  * percentil y ofrece salir). Aquí la decisión del jugador es otra: seguir jugando
  * sobre el mismo tablero o empezar de cero.
+ *
+ * Sí comparte su **lenguaje**: velo, tarjeta con halo y entrada escalonada salen de
+ * `GameModal` (los mismos del menú de pausa y el fin de partida), para que este diálogo no
+ * parezca de otra app.
  */
 @Composable
 private fun WinOverlay(onContinue: () -> Unit, onRestart: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(LogicColors.BackgroundDark.copy(alpha = 0.82f)),
+            .modalScrim(WIN_SCRIM_ALPHA),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.padding(32.dp),
+            modifier = Modifier
+                .padding(horizontal = 24.dp)
+                .modalCard(LogicColors.NeonGreen)
+                .padding(horizontal = 24.dp, vertical = 28.dp),
         ) {
-            Text(
-                text = "¡2048!",
-                style = MaterialTheme.typography.displayLarge,
-                color = LogicColors.NeonGreen,
-            )
-            Text(
-                text = "Has llegado a la ficha objetivo. Puedes seguir jugando para " +
-                    "batir tu récord.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = LogicColors.OnDarkMuted,
-                textAlign = TextAlign.Center,
-            )
-            AnimatedGameButton(
-                text = "Seguir jugando",
-                onClick = onContinue,
-                gradient = com.kortexgames.app.core.theme.LogicGradients.play,
-            )
-            AnimatedGameButton(text = "Empezar de nuevo", onClick = onRestart)
+            ModalReveal(index = 0, visible = true) {
+                // La propia ficha 2048 como trofeo: es lo que el jugador acaba de conseguir.
+                Box(modifier = Modifier.size(WinTileSize), contentAlignment = Alignment.Center) {
+                    TileFace(value = Neon2048Config.WINNING_VALUE, cellSize = WinTileSize)
+                }
+            }
+            ModalReveal(index = 1, visible = true) {
+                Text(
+                    text = stringResource(Res.string.neon2048_win_title),
+                    style = MaterialTheme.typography.displayLarge,
+                    color = LogicColors.NeonGreen,
+                )
+            }
+            ModalReveal(index = 2, visible = true) {
+                Text(
+                    text = stringResource(Res.string.neon2048_win_body),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = LogicColors.OnDarkMuted,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            ModalReveal(index = 3, visible = true) {
+                AnimatedGameButton(
+                    text = stringResource(Res.string.neon2048_win_continue),
+                    onClick = onContinue,
+                    gradient = com.kortexgames.app.core.theme.LogicGradients.play,
+                )
+            }
+            ModalReveal(index = 4, visible = true) {
+                AnimatedGameButton(text = stringResource(Res.string.neon2048_win_restart), onClick = onRestart)
+            }
         }
     }
 }
@@ -840,6 +1075,68 @@ private val CELL_GAP = 8.dp
  *  tarjeta: la ficha es un elemento pequeño y con 24dp se vería casi circular).
  *  El radio real que se dibuja sale de [tileCornerFor], proporcional a la celda. */
 private val TILE_CORNER = 14.dp
+
+/** Margen entre el cristal de la ficha y el borde de su casilla (deja sitio al halo del tubo). */
+private const val TILE_MARGIN_FRACTION = 0.035f
+
+/** Radio de esquina del cristal, en fracción del lado de la casilla. */
+private const val TILE_CORNER_FRACTION = 0.18f
+
+/** Cuánto del color de la ficha tiñe el cristal. Bajo: la cara es oscura y el color lo pone la
+ *  luz del borde; por encima de ~0.4 vuelve a parecer un relleno plano. */
+private const val TILE_GLASS_TINT = 0.10f
+
+/** Hasta dónde entra el resplandor del borde en el cristal, en fracción del lado. */
+private const val TILE_INNER_GLOW_REACH = 0.24f
+
+/** Capas del resplandor interior y opacidad de cada una (se suman hacia el borde). */
+private const val TILE_INNER_GLOW_LAYERS = 9
+private const val TILE_INNER_GLOW_ALPHA = 0.05f
+
+/** Cuánto del color de la ficha lleva el número (el resto es blanco): legible pero teñido. */
+internal const val TILE_TEXT_TINT = 0.12f
+
+/** Encendido del borde de la ficha más pequeña. */
+private const val TILE_GLOW_MIN = 0.45f
+
+/** Encendido del borde de una ficha grande. */
+private const val TILE_GLOW_MAX = 0.95f
+
+/** Exponente al que el borde alcanza su encendido máximo (2^7 = 128). */
+private const val TILE_GLOW_FULL_POWER = 7
+
+/**
+ * Valor mínimo de la ficha resultante para que la fusión suelte chispas. Por debajo solo late:
+ * las fusiones de 2 y 4 ocurren en casi cada jugada y con chispas el tablero no descansaría.
+ */
+private const val MERGE_BURST_MIN_VALUE = 16
+
+/** Duración de la ráfaga de chispas de una fusión. */
+private const val MERGE_BURST_MS = 420
+
+/** Alcance de la ráfaga, en lados de ficha. */
+private const val MERGE_BURST_REACH = 1.0f
+
+/** Escala inicial del latido de la puntuación al sumar. */
+private const val SCORE_POP_SCALE = 1.18f
+
+/** Vida del "+N" que sube junto a la puntuación. */
+private const val GAIN_RISE_MS = 750
+
+/** Cuánto sube el "+N" mientras se apaga. */
+private val GAIN_RISE = 10.dp
+
+/** Lado de la ficha en miniatura del HUD. */
+private val HighestBadgeSize = 54.dp
+
+/** Escala inicial del latido de la ficha más alta al superarse. */
+private const val HIGHEST_POP_SCALE = 1.35f
+
+/** Lado de la ficha-trofeo del overlay de 2048. */
+private val WinTileSize = 96.dp
+
+/** Opacidad del velo del overlay de 2048 (deja entrever el tablero ganador). */
+private const val WIN_SCRIM_ALPHA = 0.72f
 
 /** Duración del "pop" de fusión: corto para que no retrase la siguiente jugada. */
 private const val MERGE_POP_MS = 180

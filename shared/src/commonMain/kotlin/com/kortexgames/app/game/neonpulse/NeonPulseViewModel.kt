@@ -263,8 +263,10 @@ class NeonPulseViewModel(
                 continue
             }
             when (node.type) {
-                // Dejar expirar un objetivo normal cuesta una vida y rompe el combo.
-                NodeType.NORMAL -> { livesLost++; resolved++ }
+                // Dejar expirar un objetivo (normal o blindado) cuesta una vida y rompe el combo.
+                NodeType.NORMAL, NodeType.ARMORED -> { livesLost++; resolved++ }
+                // La bomba sin usar se apaga sin castigo: era un regalo, no un deber.
+                NodeType.BOMB -> resolved++
                 // Las trampas expiradas desaparecen sin penalización (es lo deseado:
                 // la trampa se gana ignorándola), pero sí cuentan como resueltas.
                 NodeType.TRAP -> resolved++
@@ -275,7 +277,7 @@ class NeonPulseViewModel(
         }
         if (livesLost > 0) {
             misses += livesLost
-            combo = 0
+            breakCombo()
             // Feedback de "vida perdida": se emite como efecto one-shot (no se
             // acopla la UI ni se reproduce sonido dentro del reducer).
             sendEffect(NeonPulseEffect.PlaySound.Error)
@@ -286,6 +288,9 @@ class NeonPulseViewModel(
 
         // 2) Agendar spawns de la horda según su cadencia.
         spawnAccumulatorMs += deltaMillis
+        // Escoltas de bomba soltadas en este frame: van FUERA del cupo de la horda, así que
+        // el total se amplía para que la barra de progreso siga cuadrando.
+        var escortsAdded = 0
         while (spawnAccumulatorMs >= spec.spawnIntervalMs && pendingSpawns > 0) {
             // Lienzo saturado: no forzamos el hueco, reintentamos en el próximo frame
             // conservando el acumulador (la aparición se retrasa, no se pierde).
@@ -294,6 +299,11 @@ class NeonPulseViewModel(
             survivors += node
             pendingSpawns--
             spawnedInWave++
+            if (node.type == NodeType.BOMB) {
+                val escorts = spawnBombEscorts(node, survivors)
+                survivors += escorts
+                escortsAdded += escorts.size
+            }
             maybeSpawnHeart(newLives, survivors)?.let { survivors += it }
         }
         // Evita ráfagas: si el lienzo estuvo saturado (o la horda ya soltó todo), el
@@ -305,7 +315,10 @@ class NeonPulseViewModel(
             copy(
                 activeNodes = survivors,
                 lives = newLives,
+                waveNodesTotal = waveNodesTotal + escortsAdded,
                 waveNodesResolved = waveNodesResolved + resolved,
+                // El frenesí se consume con el tiempo de juego (no durante los carteles).
+                frenzyMs = (frenzyMs - deltaMillis).coerceAtLeast(0L),
             )
         }
 
@@ -373,13 +386,87 @@ class NeonPulseViewModel(
      * @return el nodo colocado, o `null` si no se encontró hueco.
      */
     private fun spawnNode(existing: List<Node>): Node? {
-        val isTrap = random.nextFloat() < spec.trapChance
+        // Un solo sorteo repartido en tramos: bomba → trampa → blindado → normal. Así las
+        // probabilidades de cada tipo son exactamente las de la rampa y no se pisan entre sí.
+        val roll = random.nextFloat()
+        val type = when {
+            roll < spec.bombChance -> NodeType.BOMB
+            roll < spec.bombChance + spec.trapChance -> NodeType.TRAP
+            roll < spec.bombChance + spec.trapChance + spec.armoredChance -> NodeType.ARMORED
+            else -> NodeType.NORMAL
+        }
         return placeNode(
             existing = existing,
-            type = if (isTrap) NodeType.TRAP else NodeType.NORMAL,
-            lifeMs = spec.nodeLifeMs,
+            type = type,
+            // El blindado dura más: hay que llegar a tocarlo dos veces.
+            lifeMs = if (type == NodeType.ARMORED) {
+                (spec.nodeLifeMs * NeonPulseConfig.ARMORED_LIFE_FACTOR).toLong()
+            } else {
+                spec.nodeLifeMs
+            },
             speed = spec.speed,
-        )
+        )?.let { if (type == NodeType.ARMORED) it.copy(hitsLeft = NeonPulseConfig.ARMORED_HITS) else it }
+    }
+
+    /**
+     * Suelta las **escoltas** de una bomba: [NeonPulseConfig.BOMB_ESCORTS] objetivos normales
+     * pegados a ella, que nacen en el mismo frame.
+     *
+     * Sin escoltas la bomba muchas veces aparecía sola, con el lienzo vacío, y tocarla no
+     * reventaba nada: un premio sin nada que premiar. Ahora llega siempre con su propio
+     * botín, así que el jugador ve un racimo de tres y entiende de un vistazo el trato —
+     * "toca la del centro y caen las tres"— en vez de tener que ir a por las dos de una en una.
+     *
+     * Las escoltas son objetivos de verdad (dejarlas expirar cuesta vida): eso es lo que hace
+     * que la bomba sea la jugada buena y no un adorno. Comparten vida y velocidad con la bomba
+     * para que el racimo aparezca, se mueva y caduque junto.
+     *
+     * Se colocan **al azar** en una corona alrededor de la bomba (ángulo y distancia sorteados
+     * por separado para cada una), reintentando hasta encontrar hueco dentro del lienzo y sin
+     * pisar otros nodos. Si
+     * no cabe alguna (bomba en una esquina con el lienzo lleno) simplemente no sale: preferimos
+     * una escolta menos antes que apilar nodos imposibles de distinguir al tocar.
+     *
+     * @param bomb la bomba recién colocada.
+     * @param existing nodos ya presentes (incluida la bomba) contra los que comprobar distancia.
+     * @return las escoltas que sí encontraron sitio (0..[NeonPulseConfig.BOMB_ESCORTS]).
+     */
+    private fun spawnBombEscorts(bomb: Node, existing: List<Node>): List<Node> {
+        val r = NeonPulseConfig.NODE_RADIUS
+        val minX = r
+        val maxX = 1f - r
+        val minY = maxOf(r, NeonPulseConfig.TOP_SPAWN_MARGIN)
+        val maxY = 1f - r
+        val count = NeonPulseConfig.BOMB_ESCORTS
+        val placed = ArrayList<Node>(count)
+        for (i in 0 until count) {
+            for (attempt in 0 until ESCORT_TRIES) {
+                // Cada escolta sortea por su cuenta ángulo y distancia: el racimo sale distinto
+                // cada vez (juntas a un lado, en diagonal, una cerca y otra lejos…) en vez de
+                // la misma figura simétrica con una a cada lado de la bomba.
+                val angle = random.nextFloat() * 2f * PI.toFloat()
+                val distance = NeonPulseConfig.BOMB_ESCORT_MIN_DISTANCE +
+                    random.nextFloat() *
+                    (NeonPulseConfig.BOMB_ESCORT_MAX_DISTANCE - NeonPulseConfig.BOMB_ESCORT_MIN_DISTANCE)
+                val x = bomb.x + cos(angle) * distance
+                val y = bomb.y + sin(angle) * distance
+                if (x < minX || x > maxX || y < minY || y > maxY) continue
+                if (existing.any { overlaps(it, x, y, r) } || placed.any { overlaps(it, x, y, r) }) continue
+                placed += Node(
+                    id = nextNodeId++,
+                    type = NodeType.NORMAL,
+                    x = x,
+                    y = y,
+                    radius = r,
+                    totalLifeMs = bomb.totalLifeMs,
+                    remainingMs = bomb.remainingMs,
+                    vx = bomb.vx,
+                    vy = bomb.vy,
+                )
+                break
+            }
+        }
+        return placed
     }
 
     /**
@@ -470,12 +557,14 @@ class NeonPulseViewModel(
         val node = currentState.activeNodes.firstOrNull { it.id == id } ?: return
         val remaining = currentState.activeNodes.filterNot { it.id == id }
 
+        // Lo que queda en el lienzo tras este toque; la bomba y el blindado lo recalculan.
+        var left = remaining
         when (node.type) {
             NodeType.NORMAL -> {
-                hits++
-                combo++
-                if (combo > maxCombo) maxCombo = combo
-                val gained = NeonPulseConfig.POINTS_PER_HIT * comboMultiplier()
+                val fast = node.lifeFraction >= NeonPulseConfig.FAST_WINDOW
+                val gained = scoreHit(
+                    NeonPulseConfig.POINTS_PER_HIT + if (fast) NeonPulseConfig.FAST_BONUS_POINTS else 0,
+                )
                 setState {
                     copy(
                         activeNodes = remaining,
@@ -485,11 +574,70 @@ class NeonPulseViewModel(
                 }
                 sendEffect(NeonPulseEffect.PlaySound.Hit)
                 sendEffect(NeonPulseEffect.Vibrate.Tick)
-                sendEffect(NeonPulseEffect.ShowComboAnim(node.x, node.y, NodeType.NORMAL))
+                sendEffect(NeonPulseEffect.ShowComboAnim(node.x, node.y, NodeType.NORMAL, gained, fast))
+            }
+            NodeType.ARMORED -> {
+                if (node.hitsLeft > 1) {
+                    // Primer toque: rompe el blindaje y el nodo se queda. No puntúa ni cuenta
+                    // para el combo todavía (no hay nada ganado), pero tampoco lo rompe.
+                    left = currentState.activeNodes.map {
+                        if (it.id == id) it.copy(hitsLeft = it.hitsLeft - 1) else it
+                    }
+                    setState { copy(activeNodes = left) }
+                    sendEffect(NeonPulseEffect.Vibrate.Tick)
+                    sendEffect(NeonPulseEffect.ArmorCracked(node.x, node.y))
+                } else {
+                    val gained = scoreHit(NeonPulseConfig.ARMORED_POINTS)
+                    setState {
+                        copy(
+                            activeNodes = remaining,
+                            score = score + gained,
+                            waveNodesResolved = waveNodesResolved + 1,
+                        )
+                    }
+                    sendEffect(NeonPulseEffect.PlaySound.Hit)
+                    sendEffect(NeonPulseEffect.Vibrate.Heavy)
+                    sendEffect(NeonPulseEffect.ShowComboAnim(node.x, node.y, NodeType.ARMORED, gained))
+                }
+            }
+            NodeType.BOMB -> {
+                // Revienta todo salvo los corazones (que no son un peligro ni un objetivo: el
+                // jugador que lo necesita lo quiere seguir teniendo ahí).
+                val (spared, blown) = remaining.partition { it.type == NodeType.HEART }
+                left = spared
+                var total = 0
+                for (victim in blown) {
+                    when (victim.type) {
+                        NodeType.NORMAL, NodeType.ARMORED -> {
+                            val gained = scoreHit(
+                                if (victim.type == NodeType.ARMORED) {
+                                    NeonPulseConfig.ARMORED_POINTS
+                                } else {
+                                    NeonPulseConfig.POINTS_PER_HIT
+                                },
+                            )
+                            total += gained
+                            sendEffect(NeonPulseEffect.ShowComboAnim(victim.x, victim.y, victim.type, gained))
+                        }
+                        // Trampas y otras bombas: desaparecen sin puntuar ni castigar.
+                        else -> sendEffect(NeonPulseEffect.ShowComboAnim(victim.x, victim.y, victim.type))
+                    }
+                }
+                setState {
+                    copy(
+                        activeNodes = spared,
+                        score = score + total,
+                        // La bomba y todo lo que se llevó cuentan para el progreso de la horda.
+                        waveNodesResolved = waveNodesResolved + 1 + blown.size,
+                    )
+                }
+                sendEffect(NeonPulseEffect.PlaySound(SoundEffect.LEVEL_UP))
+                sendEffect(NeonPulseEffect.Vibrate.Heavy)
+                sendEffect(NeonPulseEffect.BombBlast(node.x, node.y))
             }
             NodeType.TRAP -> {
                 misses++
-                combo = 0
+                breakCombo()
                 val newLives = (currentState.lives - 1).coerceAtLeast(0)
                 setState {
                     copy(
@@ -518,7 +666,7 @@ class NeonPulseViewModel(
         // guard de `awaitingRevive` evita que esto dispare tras un TRAP que agotó
         // las vidas: [loseAllLives] ya vació el lienzo para ofrecer la revancha, y
         // ese vacío no debe leerse como "horda superada".
-        if (remaining.isEmpty() &&
+        if (left.isEmpty() &&
             pendingSpawns == 0 &&
             currentState.status == GameStatus.RUNNING &&
             !currentState.awaitingRevive
@@ -536,12 +684,47 @@ class NeonPulseViewModel(
     private fun onTapMiss() {
         if (currentState.status != GameStatus.RUNNING) return
         misses++
-        combo = 0
+        breakCombo()
     }
 
-    /** Multiplicador de puntuación por racha: +1 cada [COMBO_STEP] aciertos
+    /**
+     * Anota un acierto y devuelve los puntos que da: [basePoints] por el multiplicador de combo
+     * y, si hay frenesí, además por [NeonPulseConfig.FRENZY_MULTIPLIER].
+     *
+     * El multiplicador se aplica con el combo YA incrementado (igual que antes de existir el
+     * frenesí): el acierto que cruza un escalón ya cobra con el escalón nuevo. Si este acierto
+     * cruza un múltiplo de [NeonPulseConfig.FRENZY_COMBO], dispara o recarga el frenesí.
+     */
+    private fun scoreHit(basePoints: Int): Int {
+        hits++
+        combo++
+        if (combo > maxCombo) maxCombo = combo
+        val startsFrenzy = combo % NeonPulseConfig.FRENZY_COMBO == 0
+        val frenzyActive = startsFrenzy || currentState.frenzyMs > 0L
+        setState {
+            copy(
+                combo = this@NeonPulseViewModel.combo,
+                multiplier = comboMultiplier(),
+                frenzyMs = if (startsFrenzy) NeonPulseConfig.FRENZY_MS else frenzyMs,
+            )
+        }
+        if (startsFrenzy) sendEffect(NeonPulseEffect.FrenzyStarted)
+        return basePoints * comboMultiplier() * if (frenzyActive) NeonPulseConfig.FRENZY_MULTIPLIER else 1
+    }
+
+    /**
+     * Cualquier error corta la racha **y el frenesí** en seco. Que el frenesí también se pierda
+     * es lo que le da tensión: mientras dura, el jugador va más rápido y arriesga más, y un
+     * toque a una trampa o al vacío le cuesta justo lo que más estaba rindiendo.
+     */
+    private fun breakCombo() {
+        combo = 0
+        setState { copy(combo = 0, multiplier = 1, frenzyMs = 0L) }
+    }
+
+    /** Multiplicador de puntuación por racha: +1 cada [NeonPulseConfig.COMBO_STEP] aciertos
      *  seguidos (1×, 2×, 3×…). Recompensa mantener la precisión sin fallar. */
-    private fun comboMultiplier(): Int = 1 + combo / COMBO_STEP
+    private fun comboMultiplier(): Int = 1 + combo / NeonPulseConfig.COMBO_STEP
 
     // ---------------------------------------------------------------------------
     // Segunda oportunidad: revivir viendo un anuncio
@@ -642,7 +825,7 @@ class NeonPulseViewModel(
         /** Separación mínima extra (espacio normalizado) entre nodos al spawnear. */
         const val SPAWN_PADDING = 0.02f
 
-        /** Aciertos consecutivos necesarios para subir un escalón de multiplicador. */
-        const val COMBO_STEP = 5
+        /** Posiciones que se sortean por escolta antes de renunciar a colocarla. */
+        const val ESCORT_TRIES = 12
     }
 }

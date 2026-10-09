@@ -76,9 +76,31 @@ import com.kortexgames.app.ui.components.WorldRankingPreviewPanel
 import com.kortexgames.app.ui.components.bounceClick
 import com.kortexgames.app.ui.components.collectPressGlow
 import com.kortexgames.app.ui.components.drawNeonTile
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.key
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.kortexgames.app.ui.components.NeonProgressBar
+import com.kortexgames.app.ui.components.rememberBoardClock
+import kortexgames.shared.generated.resources.sudoku_hud_errors
+import kortexgames.shared.generated.resources.sudoku_hud_time
+import kortexgames.shared.generated.resources.sudoku_key_erase
+import kortexgames.shared.generated.resources.sudoku_key_hint
+import kortexgames.shared.generated.resources.sudoku_key_hint_desc
+import kortexgames.shared.generated.resources.sudoku_key_notes
+import kortexgames.shared.generated.resources.sudoku_key_notes_off
+import kortexgames.shared.generated.resources.sudoku_key_notes_on
 
 /** Texto de la antesala; se reutiliza como ayuda dentro del menú de pausa. */
 private const val NEON_SUDOKU_HELP =
@@ -287,6 +309,7 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
     if (state.status == GameStatus.IDLE) {
         GameIntroScreen(
             help = GameHelpContent.neonSudoku,
+            tutorial = NeonSudokuTutorial.tutorial,
             title = "Neon Sudoku Matrix",
             motif = GameMotif.SUDOKU_GRID,
             description = NEON_SUDOKU_HELP,
@@ -372,6 +395,10 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
         return
     }
 
+    // Reloj único de las animaciones del tablero. Se congela fuera de RUNNING: en pausa o con
+    // el resultado en pantalla no debe seguir latiendo nada detrás del diálogo.
+    val boardClock = rememberBoardClock(running = state.status == GameStatus.RUNNING)
+
     Box(modifier = Modifier.fillMaxSize().background(LogicColors.BackgroundDark)) {
         SpaceBackdrop(modifier = Modifier.fillMaxSize())
 
@@ -398,6 +425,7 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
                     shakeProgress = shake.value,
                     sweepProgress = sweep.value,
                     completionWaves = completionWaves,
+                    clock = boardClock,
                     onSelectCell = { row, col -> vm.onIntent(NeonSudokuIntent.SelectCell(row, col)) },
                 )
             }
@@ -406,6 +434,7 @@ fun NeonSudokuScreen(graph: AppGraph, onExit: () -> Unit) {
 
             NeonSudokuNumpad(
                 board = state.board,
+                highlightedDigit = state.highlightedNumber,
                 notesMode = state.notesMode,
                 hintAvailable = state.hintAvailable,
                 onInput = { vm.onIntent(NeonSudokuIntent.InputNumber(it)) },
@@ -530,55 +559,118 @@ private val SUDOKU_DIFFICULTY_OPTIONS: List<DifficultyOption> =
 // ---------------------------------------------------------------------------
 
 /**
- * Cabecera: tiempo, errores y progreso de relleno. Son las tres métricas que el
- * jugador consulta de un vistazo sin dejar de mirar el tablero, así que van en
- * una sola fila y con el mismo peso visual.
+ * Cabecera: tiempo, progreso de relleno y errores. Son las tres métricas que el jugador
+ * consulta de un vistazo sin dejar de mirar el tablero, así que van en una sola fila.
  *
- * El contador de errores se pinta en [LogicColors.Error] **solo cuando hay
- * alguno**: en 0 sería una mancha roja permanente que el ojo aprende a ignorar
- * (§9.1, el acento vale porque es escaso).
+ * Cada una usa la forma que mejor responde a su pregunta, en vez de tres pares "ETIQUETA/valor"
+ * iguales: el **tiempo** es una cifra (píldora con icono), "¿cuánto me falta?" es una **barra**
+ * que se llena (la misma de los demás tableros, [NeonProgressBar]) y "¿cuánto margen me queda?"
+ * son **tres testigos** que se encienden en rojo — se cuentan sin leer.
  */
 @Composable
 private fun NeonSudokuHud(elapsedMs: Long, errorCount: Int, filled: Int) {
+    val accent = CategoryPalette.Logic
+    val progress by animateFloatAsState(
+        targetValue = filled.toFloat() / NeonSudokuConfig.CELL_COUNT,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
+        label = "sudokuHudProgress",
+    )
     Row(
         // Reserva la esquina superior derecha: ahí vive el botón de pausa que
         // pinta `GamePauseControls` sobre esta capa. Sin este hueco, la última
         // métrica queda debajo del botón (mismo motivo por el que Neon Pulse
         // agrupa su HUD a la izquierda y al centro, nunca en TopEnd).
         modifier = Modifier.fillMaxWidth().padding(end = PauseButtonReserve),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        HudStat(label = "TIEMPO", value = formatElapsed(elapsedMs), tint = LogicColors.OnDark)
-        // Errores como `X/3`: comunica de un vistazo cuánto margen queda antes de
-        // perder. Se tiñe de rojo solo al haber alguno (§9.1: acento escaso).
-        HudStat(
-            label = "ERRORES",
-            value = "$errorCount/${NeonSudokuConfig.MAX_ERRORS}",
-            tint = if (errorCount > 0) LogicColors.Error else LogicColors.OnDark,
+        Row(
+            modifier = Modifier
+                .background(LogicColors.SurfaceDark.copy(alpha = 0.85f), CircleShape)
+                .border(1.5.dp, accent.copy(alpha = 0.55f), CircleShape)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            NeonIcon(
+                icon = KortexIcons.Timer,
+                tint = accent,
+                size = 18.dp,
+                glow = false,
+                contentDescription = stringResource(Res.string.sudoku_hud_time),
+            )
+            Text(
+                text = formatElapsed(elapsedMs),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black,
+                color = LogicColors.OnDark,
+                // Ancho mínimo: sin él la píldora "respira" al cambiar de un dígito estrecho
+                // (1) a uno ancho (0) cada segundo y empuja la barra de al lado.
+                modifier = Modifier.widthIn(min = 42.dp),
+            )
+        }
+
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = "$filled/${NeonSudokuConfig.CELL_COUNT}",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = LogicColors.OnDark,
+            )
+            NeonProgressBar(progress = progress, color = accent, modifier = Modifier.fillMaxWidth())
+        }
+
+        val errorsLabel = stringResource(
+            Res.string.sudoku_hud_errors,
+            errorCount.toString(),
+            NeonSudokuConfig.MAX_ERRORS.toString(),
         )
-        HudStat(
-            label = "CELDAS",
-            value = "$filled/${NeonSudokuConfig.CELL_COUNT}",
-            tint = CategoryPalette.Logic,
-        )
+        Row(
+            // Los tres testigos se anuncian como UNA métrica ("Errores: 1 de 3"), no como tres
+            // iconos sueltos sin significado para un lector de pantalla.
+            modifier = Modifier.semantics(mergeDescendants = true) { contentDescription = errorsLabel },
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            repeat(NeonSudokuConfig.MAX_ERRORS) { index -> ErrorPip(used = index < errorCount) }
+        }
     }
 }
 
-/** Una métrica del HUD: etiqueta pequeña arriba y valor destacado debajo. */
+/**
+ * Un testigo de error: apagado mientras queda margen, rojo con halo cuando se ha gastado.
+ *
+ * El rojo solo aparece al fallar: en 0 errores no hay ninguna mancha roja permanente que el ojo
+ * aprenda a ignorar (§9.1, el acento vale porque es escaso). Se enciende con un resorte con
+ * rebote para que el fallo "golpee" el HUD además de sacudir la celda.
+ */
 @Composable
-private fun HudStat(label: String, value: String, tint: Color) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            color = LogicColors.OnDarkMuted,
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Black,
-            color = tint,
+private fun ErrorPip(used: Boolean) {
+    val amount by animateFloatAsState(
+        targetValue = if (used) 1f else 0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
+        label = "errorPip",
+    )
+    val lit = amount.coerceIn(0f, 1f)
+    Box(
+        modifier = Modifier
+            .size(26.dp)
+            .graphicsLayer {
+                // `amount` se pasa de 1 en el rebote: esa sobreoscilación es el "golpe".
+                val scale = 1f + 0.22f * amount * (1f - lit) + 0.35f * (amount - lit)
+                scaleX = scale
+                scaleY = scale
+            }
+            .background(lerp(LogicColors.SurfaceDark, LogicColors.Error, 0.22f * lit).copy(alpha = 0.85f), CircleShape)
+            .border(1.5.dp, lerp(LogicColors.SurfaceVariantDark, LogicColors.Error, lit), CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        NeonIcon(
+            icon = KortexIcons.Close,
+            tint = lerp(LogicColors.OnDarkMuted.copy(alpha = 0.35f), LogicColors.Error, lit),
+            size = 14.dp,
+            glow = used,
+            // La descripción la da la fila completa (ver NeonSudokuHud).
+            contentDescription = null,
         )
     }
 }
@@ -596,13 +688,24 @@ private fun formatElapsed(elapsedMs: Long): String {
 // ---------------------------------------------------------------------------
 
 /**
- * Teclado inferior: los nueve dígitos y las dos acciones (lápiz y borrar).
+ * Teclado inferior: dos acciones (lápiz y pista) y una rejilla 5x2 con los nueve dígitos y la
+ * tecla de borrar.
  *
- * Detalle de UX: un dígito ya colocado nueve veces se **atenúa**. Sigue siendo
- * pulsable (el jugador puede haberlo colocado mal y querer corregir), pero deja
- * de reclamar atención — le ahorra recorrer el tablero contando apariciones.
+ * Borrar ocupa la décima casilla de la rejilla a propósito: nueve dígitos en dos filas dejaban
+ * una fila de cinco y otra de cuatro descentrada, y borrar es —después de los dígitos— lo que
+ * más se pulsa, así que gana estar bajo el pulgar. Las teclas se reparten el ancho (`weight`)
+ * en vez de medir un lado fijo: salen más anchas y la rejilla cuadra con el tablero.
+ *
+ * Detalles de UX:
+ *  - cada dígito lleva una **barrita de progreso** con cuántas de sus nueve apariciones están ya
+ *    en el tablero, y se **atenúa** al agotarse. Sigue siendo pulsable (el jugador puede haberlo
+ *    colocado mal y querer corregir), pero deja de reclamar atención;
+ *  - la tecla del dígito de la celda seleccionada se **enciende**, igual que sus gemelos en el
+ *    tablero: teclado y panel señalan el mismo número.
  *
  * @param board tablero actual; de él se derivan las nueve cuentas de dígitos.
+ * @param highlightedDigit dígito de la celda seleccionada (ver
+ *   [NeonSudokuUiState.highlightedNumber]), o `null`.
  * @param notesMode si el lápiz está activo (enciende su tecla).
  * @param hintAvailable si hay algo que revelar en la celda seleccionada (ver
  *   [NeonSudokuUiState.hintAvailable]); deshabilita la tecla de pista en vez de
@@ -611,6 +714,7 @@ private fun formatElapsed(elapsedMs: Long): String {
 @Composable
 private fun NeonSudokuNumpad(
     board: Board,
+    highlightedDigit: Int?,
     notesMode: Boolean,
     hintAvailable: Boolean,
     onInput: (Int) -> Unit,
@@ -625,91 +729,169 @@ private fun NeonSudokuNumpad(
 
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(KeyGap),
     ) {
         // Acciones primero: quedan más lejos del pulgar que los dígitos, que son
         // lo que se pulsa constantemente.
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(KeyGap)) {
             ActionKey(
                 icon = KortexIcons.Pencil,
-                label = "Notas",
+                label = stringResource(Res.string.sudoku_key_notes),
                 active = notesMode,
-                contentDescription = if (notesMode) "Modo notas activo" else "Activar modo notas",
+                contentDescription = stringResource(
+                    if (notesMode) Res.string.sudoku_key_notes_on else Res.string.sudoku_key_notes_off,
+                ),
                 onClick = onToggleNotes,
             )
             ActionKey(
-                icon = KortexIcons.Backspace,
-                label = "Borrar",
-                active = false,
-                contentDescription = "Borrar la celda seleccionada",
-                onClick = onErase,
-            )
-            ActionKey(
                 icon = KortexIcons.Hint,
-                label = "Pista",
+                label = stringResource(Res.string.sudoku_key_hint),
                 active = false,
                 enabled = hintAvailable,
-                contentDescription = "Ver un anuncio y revelar el número correcto de la celda seleccionada",
+                contentDescription = stringResource(Res.string.sudoku_key_hint_desc),
                 onClick = onRequestHint,
             )
         }
 
-        // Los nueve dígitos en dos filas (5 + 4): una sola fila de nueve teclas
-        // las dejaría demasiado estrechas para el pulgar en móviles pequeños.
         val digits = (NeonSudokuConfig.MIN_DIGIT..NeonSudokuConfig.MAX_DIGIT).toList()
-        digits.chunked(5).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        digits.chunked(KEYS_PER_ROW).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(KeyGap)) {
                 row.forEach { digit ->
                     DigitKey(
                         digit = digit,
-                        exhausted = (counts[digit] ?: 0) >= NeonSudokuConfig.BOARD_SIZE,
+                        placed = counts[digit] ?: 0,
+                        highlighted = digit == highlightedDigit,
                         onClick = { onInput(digit) },
                     )
                 }
+                // La fila corta (6–9) se completa con borrar.
+                if (row.size < KEYS_PER_ROW) EraseKey(onClick = onErase)
             }
         }
     }
 }
 
 /**
- * Tecla de dígito con la estética de tubo neón compartida (`drawNeonTile`, la
- * fuente única de bordes neón de la app — §9.7) y rebote al pulsar
- * (`bounceClick`, la interacción táctil por defecto — §9.4).
+ * Cuerpo de una tecla del teclado: un **capuchón macizo** (repisa inferior + cara con degradado
+ * + brillo superior) rematado por el tubo de neón compartido (`drawNeonTile`, la fuente única de
+ * bordes neón de la app — §9.7).
  *
- * @param exhausted el dígito ya está colocado nueve veces: se atenúa el tubo y
- *   el número, sin deshabilitar la tecla.
+ * Antes las teclas eran solo el tubo, huecas: sobre el fondo estrellado se leían como contornos
+ * y no como botones. Con cuerpo y repisa tienen peso, y el neón queda como acento del borde.
+ *
+ * @param activeAmt encendido del tubo (0 apagado … 1 pleno).
+ * @param pressGlow 0..1 mientras se pulsa: hunde la cara sobre la repisa y aviva el tubo.
+ * @param dim 0..1: cuánto se apaga la cara (dígito agotado o acción deshabilitada).
+ */
+private fun Modifier.keycap(activeAmt: Float, pressGlow: Float, dim: Float = 0f): Modifier = drawBehind {
+    val accent = CategoryPalette.Logic
+    val margin = KeyMargin.toPx()
+    val ledge = KeyLedge.toPx()
+    val corner = CornerRadius(KeyCorner.toPx())
+    val faceSize = Size(size.width - margin * 2f, size.height - margin * 2f - ledge)
+    val sink = ledge * 0.7f * pressGlow
+
+    // Repisa: la "altura" de la tecla. No se mueve; la cara baja sobre ella al pulsar.
+    drawRoundRect(
+        color = lerp(LogicColors.BackgroundDark, accent, 0.16f * (1f - dim)),
+        topLeft = Offset(margin, margin + ledge),
+        size = faceSize,
+        cornerRadius = corner,
+    )
+    val faceTop = Offset(margin, margin + sink)
+    drawRoundRect(
+        brush = Brush.verticalGradient(
+            colors = listOf(
+                lerp(LogicColors.SurfaceVariantDark, accent, (0.10f + 0.22f * activeAmt) * (1f - dim)),
+                lerp(LogicColors.SurfaceDark, accent, 0.04f * (1f - dim)),
+            ),
+            startY = faceTop.y,
+            endY = faceTop.y + faceSize.height,
+        ),
+        topLeft = faceTop,
+        size = faceSize,
+        cornerRadius = corner,
+    )
+    // Brillo superior: una línea de luz que da volumen a la cara.
+    drawLine(
+        color = LogicColors.OnDark.copy(alpha = 0.16f * (1f - 0.6f * dim)),
+        start = Offset(margin + corner.x, faceTop.y + 1.5.dp.toPx()),
+        end = Offset(size.width - margin - corner.x, faceTop.y + 1.5.dp.toPx()),
+        strokeWidth = 1.dp.toPx(),
+    )
+    drawNeonTile(
+        baseColor = accent,
+        activeAmt = activeAmt,
+        pressAmt = pressGlow,
+        cornerRadius = KeyCorner,
+        sparks = false,
+        baseMargin = 0.dp,
+        strokeScale = 0.55f,
+        rectTopLeft = faceTop,
+        rectSize = faceSize,
+    )
+}
+
+/**
+ * Tecla de dígito: capuchón ([keycap]) con el número y su barrita de apariciones, y rebote al
+ * pulsar (`bounceClick`, la interacción táctil por defecto — §9.4).
+ *
+ * @param placed cuántas veces está ya el dígito en el tablero (0..9). A nueve la tecla se atenúa
+ *   sin deshabilitarse.
+ * @param highlighted es el dígito de la celda seleccionada: enciende el tubo al máximo.
  */
 @Composable
-private fun DigitKey(digit: Int, exhausted: Boolean, onClick: () -> Unit) {
+private fun RowScope.DigitKey(digit: Int, placed: Int, highlighted: Boolean, onClick: () -> Unit) {
+    val exhausted = placed >= NeonSudokuConfig.BOARD_SIZE
     // animateFloatAsState en vez de un valor seco: al colocar el noveno dígito la
     // tecla se apaga con una transición corta, no de golpe.
     val activeAmt by animateFloatAsState(
-        targetValue = if (exhausted) KEY_EXHAUSTED_AMT else KEY_ACTIVE_AMT,
+        targetValue = when {
+            exhausted -> KEY_EXHAUSTED_AMT
+            highlighted -> KEY_ON_AMT
+            else -> KEY_ACTIVE_AMT
+        },
         animationSpec = tween(KEY_FADE_MS),
         label = "digitKeyActive",
     )
-    // Interaction source hoisteado: lo lee el propio tile (pressGlow, brillo del
-    // tubo) y bounceClick (rebote de escala), para que ambos feedbacks respondan
-    // al mismo toque.
+    val dim by animateFloatAsState(
+        targetValue = if (exhausted) 1f else 0f,
+        animationSpec = tween(KEY_FADE_MS),
+        label = "digitKeyDim",
+    )
+    val fill by animateFloatAsState(
+        targetValue = placed.coerceAtMost(NeonSudokuConfig.BOARD_SIZE).toFloat() / NeonSudokuConfig.BOARD_SIZE,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
+        label = "digitKeyFill",
+    )
+    // Interaction source hoisteado: lo lee el propio capuchón (pressGlow) y bounceClick
+    // (rebote de escala), para que ambos feedbacks respondan al mismo toque.
     val interaction = remember { MutableInteractionSource() }
     val pressGlow by interaction.collectPressGlow()
-    val shape = RoundedCornerShape(16.dp)
     Box(
         modifier = Modifier
-            .size(KeySize)
+            .weight(1f)
+            .height(KeyHeight)
+            .keycap(activeAmt = activeAmt, pressGlow = pressGlow, dim = dim)
             .drawBehind {
-                drawNeonTile(
-                    baseColor = CategoryPalette.Logic,
-                    activeAmt = activeAmt,
-                    pressAmt = pressGlow,
-                    cornerRadius = 16.dp,
-                    sparks = false,
-                    baseMargin = 4.dp,
-                    strokeScale = 0.7f,
-                )
+                // Barrita de apariciones, pegada al pie de la cara de la tecla.
+                val barWidth = size.width * 0.42f
+                val barHeight = 3.dp.toPx()
+                val left = (size.width - barWidth) / 2f
+                val top = size.height - KeyMargin.toPx() - KeyLedge.toPx() - 9.dp.toPx() +
+                    KeyLedge.toPx() * 0.7f * pressGlow
+                val corner = CornerRadius(barHeight / 2f)
+                drawRoundRect(LogicColors.BackgroundDark.copy(alpha = 0.55f), Offset(left, top), Size(barWidth, barHeight), corner)
+                if (fill > 0f) {
+                    drawRoundRect(
+                        color = lerp(CategoryPalette.Logic, LogicColors.OnDarkMuted, dim).copy(alpha = 0.9f),
+                        topLeft = Offset(left, top),
+                        size = Size(barWidth * fill.coerceIn(0f, 1f), barHeight),
+                        cornerRadius = corner,
+                    )
+                }
             }
-            .clip(shape)
+            .clip(RoundedCornerShape(KeyCorner))
             .bounceClick(interactionSource = interaction, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -717,24 +899,54 @@ private fun DigitKey(digit: Int, exhausted: Boolean, onClick: () -> Unit) {
             text = digit.toString(),
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Black,
-            color = if (exhausted) LogicColors.OnDarkMuted else LogicColors.OnDark,
+            color = lerp(LogicColors.OnDark, LogicColors.OnDarkMuted.copy(alpha = 0.6f), dim),
+            // Sube el dígito para dejar sitio a la barrita y compensar la repisa.
+            modifier = Modifier.padding(bottom = 10.dp),
         )
     }
 }
 
 /**
- * Tecla de acción (lápiz / borrar / pista): mismo tubo neón que [DigitKey] pero
- * con icono vectorial y etiqueta. El estado "encendido" del lápiz se comunica
- * por partida doble —tubo pleno + halo del icono ([NeonIcon] con `glow`)— para
- * que se lea de un vistazo si el siguiente número irá como nota o como valor.
- *
- * @param enabled si es `false` (p. ej. la pista sin celda válida seleccionada,
- *   ver [NeonSudokuUiState.hintAvailable]) el tubo se atenúa por debajo del
- *   reposo normal y deja de reaccionar al toque, en vez de quedar pulsable sin
- *   ningún efecto — la app no debe ofrecer una acción que luego ignora.
+ * Tecla de borrar: mismo capuchón que un dígito, con icono vectorial (§9.5). Ocupa la décima
+ * casilla de la rejilla (ver [NeonSudokuNumpad]). Tubo en reposo: es una acción de apoyo y no
+ * debe brillar tanto como los dígitos disponibles.
  */
 @Composable
-private fun ActionKey(
+private fun RowScope.EraseKey(onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressGlow by interaction.collectPressGlow()
+    Box(
+        modifier = Modifier
+            .weight(1f)
+            .height(KeyHeight)
+            .keycap(activeAmt = KEY_IDLE_AMT, pressGlow = pressGlow)
+            .clip(RoundedCornerShape(KeyCorner))
+            .bounceClick(interactionSource = interaction, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        NeonIcon(
+            icon = KortexIcons.Backspace,
+            tint = LogicColors.OnDark,
+            size = 24.dp,
+            glow = false,
+            contentDescription = stringResource(Res.string.sudoku_key_erase),
+            modifier = Modifier.padding(bottom = KeyLedge),
+        )
+    }
+}
+
+/**
+ * Tecla de acción (lápiz / pista): mismo capuchón que [DigitKey] pero con icono vectorial y
+ * etiqueta. El estado "encendido" del lápiz se comunica por partida doble —tubo pleno + halo
+ * del icono ([NeonIcon] con `glow`)— para que se lea de un vistazo si el siguiente número irá
+ * como nota o como valor.
+ *
+ * @param enabled si es `false` (p. ej. la pista sin celda válida seleccionada,
+ *   ver [NeonSudokuUiState.hintAvailable]) la tecla se apaga y deja de reaccionar al toque, en
+ *   vez de quedar pulsable sin ningún efecto — la app no debe ofrecer una acción que luego ignora.
+ */
+@Composable
+private fun RowScope.ActionKey(
     icon: ImageVector,
     label: String,
     active: Boolean,
@@ -751,31 +963,27 @@ private fun ActionKey(
         animationSpec = tween(KEY_FADE_MS),
         label = "actionKeyActive",
     )
+    val dim by animateFloatAsState(
+        targetValue = if (enabled) 0f else 1f,
+        animationSpec = tween(KEY_FADE_MS),
+        label = "actionKeyDim",
+    )
     val interaction = remember { MutableInteractionSource() }
     val pressGlow by interaction.collectPressGlow()
     val tint = when {
         !enabled -> LogicColors.OnDarkMuted.copy(alpha = 0.4f)
         active -> CategoryPalette.Logic
-        else -> LogicColors.OnDarkMuted
+        else -> LogicColors.OnDark
     }
-    val shape = RoundedCornerShape(16.dp)
     Row(
         modifier = Modifier
-            .drawBehind {
-                drawNeonTile(
-                    baseColor = CategoryPalette.Logic,
-                    activeAmt = activeAmt,
-                    pressAmt = pressGlow,
-                    cornerRadius = 16.dp,
-                    sparks = false,
-                    baseMargin = 4.dp,
-                    strokeScale = 0.7f,
-                )
-            }
-            .clip(shape)
+            .weight(1f)
+            .height(ActionKeyHeight)
+            .keycap(activeAmt = activeAmt, pressGlow = pressGlow, dim = dim)
+            .clip(RoundedCornerShape(KeyCorner))
             .bounceClick(enabled = enabled, interactionSource = interaction, onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(bottom = KeyLedge),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         NeonIcon(
@@ -795,8 +1003,26 @@ private fun ActionKey(
 
 // --- Constantes de render ---------------------------------------------------
 
-/** Lado de una tecla de dígito. */
-private val KeySize = 54.dp
+/** Alto de una tecla de la rejilla (dígitos y borrar); el ancho se reparte con `weight`. */
+private val KeyHeight = 56.dp
+
+/** Alto de una tecla de acción (lápiz / pista): algo más baja, se pulsa menos. */
+private val ActionKeyHeight = 46.dp
+
+/** Separación entre teclas, en ambos ejes. */
+private val KeyGap = 8.dp
+
+/** Teclas por fila de la rejilla: 9 dígitos + borrar = dos filas completas de cinco. */
+private const val KEYS_PER_ROW = 5
+
+/** Radio de esquina del capuchón de una tecla. */
+private val KeyCorner = 14.dp
+
+/** Aire entre el capuchón y el borde de su hueco (deja sitio al halo del tubo). */
+private val KeyMargin = 2.dp
+
+/** Altura de la repisa inferior del capuchón: lo que la cara se hunde al pulsar. */
+private val KeyLedge = 4.dp
 
 /** Hueco que el HUD deja libre a su derecha para el botón de pausa (44 dp de
  *  botón + 16 dp de margen, según `GamePauseControls`). */
@@ -837,13 +1063,14 @@ private const val DIGIT_FIREWORKS_MS = 1900L
 /** Duración del fundido entre estados de una tecla (ms). */
 private const val KEY_FADE_MS = 220
 
-/** Encendido del tubo de una tecla de dígito disponible. */
-private const val KEY_ACTIVE_AMT = 0.85f
+/** Encendido del tubo de una tecla de dígito disponible. A media luz: ahora la tecla tiene
+ *  cuerpo propio, y el tubo pleno se reserva para el dígito de la celda seleccionada. */
+private const val KEY_ACTIVE_AMT = 0.5f
 
 /** Encendido del tubo de un dígito ya colocado nueve veces (apagado). */
 private const val KEY_EXHAUSTED_AMT = 0.2f
 
-/** Encendido del tubo de una tecla de acción activa (lápiz on). */
+/** Encendido del tubo de una tecla activa: lápiz on, o el dígito de la celda seleccionada. */
 private const val KEY_ON_AMT = 0.9f
 
 /** Encendido del tubo de una tecla de acción en reposo. */

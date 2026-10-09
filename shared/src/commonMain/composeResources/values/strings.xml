@@ -154,6 +154,8 @@
     <string name="firstrun_welcome_title_done">Sesión completa</string>
     <string name="firstrun_welcome_subtitle_done">Has probado los tres juegos. Crea una cuenta para guardar tu progreso, o entra como invitado.</string>
     <string name="firstrun_welcome_games_label">Tu primera sesión</string>
+    <!-- Contador junto al rótulo de la sesión. %1$s = juegos jugados, %2$s = total. -->
+    <string name="firstrun_welcome_progress_count">%1$s/%2$s</string>
     <string name="firstrun_welcome_cta">Empezar a jugar</string>
     <string name="firstrun_welcome_cta_continue">Seguir jugando</string>
     <string name="firstrun_welcome_cta_done">Continuar</string>
@@ -184,6 +186,13 @@
     <string name="polarity_title">Atracción Geométrica</string>
     <string name="polarity_intro_description">Rota el círculo para capturar las piezas de tu color. Partida infinita: solo te frenan tus vidas.</string>
     <string name="polarity_hint">Rota el círculo desde cualquier zona para capturar por color</string>
+    <!-- Atracción Geométrica: pasos del tutorial animado (un texto por tramo de la animación). -->
+    <string name="polarity_tutorial_step_1">El disco tiene un sector de cada color, y las piezas caen hacia él.</string>
+    <string name="polarity_tutorial_step_2">Llega una pieza verde, pero va directa al sector azul.</string>
+    <string name="polarity_tutorial_step_3">Desliza el dedo por la pantalla para girar el disco.</string>
+    <string name="polarity_tutorial_step_4">¡Mismo color! La pieza se captura y sumas puntos.</string>
+    <string name="polarity_tutorial_step_5">Si una pieza choca contra otro color, pierdes una vida.</string>
+    <string name="polarity_tutorial_step_6">Cada 30 segundos cae una lluvia de meteoros: ahí solo sumas, y te regala una vida y un color más.</string>
     <string name="polarity_hud_score">Puntos</string>
     <string name="polarity_hud_caught">Aciertos</string>
     <string name="polarity_hud_wave">Oleada</string>
@@ -263,6 +272,14 @@
     <!-- ===================== Hexa Orbit (Visión Espacial) ===================== -->
     <!-- Antesala: qué se hace en el juego, antes de la primera partida. -->
     <string name="hexa_orbit_intro_description">Un puntero de luz recorre sin parar los caminos del tablero hexagonal. Gira las piezas para encaminarlo, recoge los orbes de energía y evita que se escape por el borde: cada segundo va más rápido.</string>
+    <!-- Hexa Orbit: pasos del tutorial animado (un texto por tramo de la animación). -->
+    <string name="hexa_orbit_tutorial_step_1">Un puntero de luz recorre sin parar los caminos del tablero.</string>
+    <string name="hexa_orbit_tutorial_step_2">El haz iluminado te enseña por dónde va a pasar.</string>
+    <string name="hexa_orbit_tutorial_step_3">Toca un hexágono para girarlo: sus caminos giran y el haz cambia de ruta.</string>
+    <string name="hexa_orbit_tutorial_step_4">Lleva el haz por encima de los orbes para recogerlos.</string>
+    <string name="hexa_orbit_tutorial_step_5">Si el haz se pone rojo, el puntero está a punto de salirse del tablero.</string>
+    <string name="hexa_orbit_tutorial_step_6">Gira una pieza de su camino antes de que llegue.</string>
+    <string name="hexa_orbit_tutorial_step_7">Si el puntero se escapa, se acaba la partida. Y cada segundo va más rápido.</string>
     <!-- Recordatorio del gesto, bajo el título, mientras se juega. -->
     <string name="hexa_orbit_subtitle">Toca un hexágono para girarlo 60°</string>
     <!-- Sustituye al recordatorio cuando el haz proyectado apunta fuera del tablero. -->
@@ -279,6 +296,12 @@
     <!-- ===================== Neon Grid Switch (Reconocimiento de Patrones) ===================== -->
     <!-- Antesala: qué se hace en el juego, antes de la primera partida. -->
     <string name="grid_switch_intro_description">Apaga todas las luces del tablero. Cada toque cambia esa celda y sus vecinas (las apaga o las enciende): encuentra el patrón antes de que la cuadrícula crezca.</string>
+    <!-- Grid Switch: pasos del tutorial animado (un texto por tramo de la animación). -->
+    <string name="grid_switch_tutorial_step_1">Hay que apagar todas las luces del tablero.</string>
+    <string name="grid_switch_tutorial_step_2">Cada toque cambia esa celda y sus vecinas: arriba, abajo y a los lados.</string>
+    <string name="grid_switch_tutorial_step_3">Cambiar es darle la vuelta: la encendida se apaga, pero las apagadas se encienden.</string>
+    <string name="grid_switch_tutorial_step_4">Busca el toque que lo apague todo de una vez.</string>
+    <string name="grid_switch_tutorial_step_5">¡Tablero apagado! Cada etapa trae una cuadrícula más grande.</string>
     <!-- Recordatorio del gesto, bajo el título, mientras se juega. -->
     <string name="grid_switch_subtitle">Apaga todas las luces: cada toque cambia la celda y sus vecinas</string>
     <!-- Etiquetas del marcador. -->
@@ -294,6 +317,8 @@
          la regla de strings.xml, ver CLAUDE.md §10 "Alcance"); solo el láser y la
          segunda oportunidad son texto nuevo. -->
     <!-- Botón del HUD que dispara el láser viendo un anuncio. -->
+    <string name="quantum_merge_hud_score">Puntos</string>
+    <string name="quantum_merge_hud_next">Siguiente</string>
     <string name="quantum_merge_laser_label">Láser</string>
     <!-- Oferta de revivir viendo un anuncio tras el primer desbordamiento del reactor. -->
     <string name="quantum_merge_revive_title">¿Reactor desbordado?</string>
@@ -403,6 +428,23 @@
     <string name="gamehelp_example_correct">BIEN</string>
     <string name="gamehelp_example_incorrect">MAL</string>
     <string name="gamehelp_tips_section">CONSEJOS</string>
+
+    <!-- ============================================================
+         GameTutorialDialog — tutorial animado "mira cómo se juega"
+         (ver KDoc de GameTutorial.kt). Aquí va el marco fijo del diálogo;
+         los textos de cada paso van con su juego (<juego>_tutorial_step_N).
+         ============================================================ -->
+    <string name="tutorial_header">CÓMO SE JUEGA</string>
+    <string name="tutorial_skip">Saltar tutorial</string>
+    <string name="tutorial_cta_understood">¡Entendido!</string>
+    <string name="tutorial_replay">Ver de nuevo</string>
+    <!-- Flechas para moverse entre pasos (descripción para lector de pantalla). -->
+    <string name="tutorial_previous">Paso anterior</string>
+    <string name="tutorial_next">Paso siguiente</string>
+    <!-- Posición dentro del tutorial, visible entre las flechas. %1$s = paso actual, %2$s = total. -->
+    <string name="tutorial_step_position">Paso %1$s de %2$s</string>
+    <!-- Botón de la antesala que vuelve a abrir el tutorial. -->
+    <string name="gameintro_watch_tutorial">Ver tutorial</string>
 
     <!-- ============================================================
          Insignia "NUEVO" (GameInfo.isNew): la tarjeta de un juego
@@ -596,5 +638,217 @@
     <string name="profile_awards_champion">Campeón</string>
     <string name="profile_awards_champion_count">%1$s veces campeón</string>
     <string name="profile_awards_champion_count_one">1 vez campeón</string>
+
+    <!-- ============================================================
+         Ordena las Pociones — HUD de partida. El nombre del juego NO va
+         aquí (vive en GameCatalog, ver CLAUDE.md §10).
+         ============================================================ -->
+    <!-- %1$s = número de nivel. Se pinta en mayúsculas dentro de la píldora. -->
+    <string name="watersort_hud_level">Nivel %1$s</string>
+    <string name="watersort_hud_moves">movimientos</string>
+    <string name="watersort_hud_moves_one">movimiento</string>
+    <!-- Lectura de accesibilidad de la fila de orbes de progreso.
+         %1$s = pociones completadas, %2$s = total de colores del nivel. -->
+    <string name="watersort_hud_progress_description">%1$s de %2$s pociones completadas</string>
+
+    <!-- ============================================================
+         Neon Shikaku Matrix — antesala, HUD y badge de arrastre. El
+         nombre del juego NO va aquí (vive en GameCatalog, ver
+         CLAUDE.md §10).
+         ============================================================ -->
+    <string name="shikaku_hud_level">Nivel</string>
+    <string name="shikaku_hud_covered">Cubierto</string>
+    <string name="shikaku_hud_restart_description">Reiniciar nivel</string>
+    <string name="shikaku_board_generating">Generando matriz…</string>
+    <!-- Cálculo en vivo junto al dedo. %1$s = ancho, %2$s = alto, %3$s = área. -->
+    <string name="shikaku_badge_area">%1$s × %2$s = %3$s</string>
+    <!-- %1$s = número que contiene la selección y que el área debería igualar. -->
+    <string name="shikaku_badge_target">Objetivo: %1$s</string>
+    <string name="shikaku_badge_multiple">Varios números</string>
+    <string name="shikaku_badge_out_of_mask">Fuera del tablero</string>
+    <string name="shikaku_gameover_headline">¡Matriz completada!</string>
+    <string name="shikaku_intro_description">La matriz está sin dividir. Arrastra para trazar rectángulos de luz: cada uno debe encerrar un único número y medir exactamente tantas celdas como ese número. Cubre todo el tablero sin solapar.</string>
+    <!-- Shikaku: pasos del tutorial animado (un texto por tramo de la animación). -->
+    <string name="shikaku_tutorial_step_1">Hay que dividir todo el tablero en rectángulos.</string>
+    <string name="shikaku_tutorial_step_2">Cada rectángulo encierra un solo número y mide tantas celdas como ese número.</string>
+    <string name="shikaku_tutorial_step_3">Arrastra para trazarlo. Junto al dedo ves la cuenta: ancho × alto.</string>
+    <string name="shikaku_tutorial_step_4">Si no mide lo que pide su número, se queda parpadeando en rojo.</string>
+    <string name="shikaku_tutorial_step_5">Para corregirlo, traza el bueno encima.</string>
+    <string name="shikaku_tutorial_step_6">Sigue hasta cubrir todas las celdas, sin dejar huecos.</string>
+    <string name="shikaku_tutorial_step_7">¡Listo! Todo el tablero está repartido y cada número cuadra.</string>
+
+    <!-- ============================================================
+         HUD común de los juegos de tablero por niveles (NeonBoardHud):
+         Línea Neón hoy; Conectores y Flujo de Energía después.
+         ============================================================ -->
+    <!-- %1$s = número de nivel. Se pinta en mayúsculas dentro de la píldora. -->
+    <string name="gameboard_hud_level">Nivel %1$s</string>
+    <string name="gameboard_hud_restart">Reiniciar nivel</string>
+
+    <!-- Flujo de Energía — cifra del HUD. %1$s = giros hechos en el nivel. -->
+    <string name="energyflow_hud_rotations">%1$s giros</string>
+    <string name="energyflow_hud_rotations_one">1 giro</string>
+
+    <!-- Bloques Neón — HUD de partida. -->
+    <string name="blockgrid_hud_score">Puntos</string>
+    <string name="blockgrid_hud_lines">Líneas</string>
+    <string name="blockgrid_hud_restart">Reiniciar partida</string>
+
+    <!-- Neon Sudoku Matrix: HUD y teclado -->
+    <string name="sudoku_hud_time">Tiempo de partida</string>
+    <string name="sudoku_hud_errors">Errores: %1$s de %2$s</string>
+    <string name="sudoku_key_notes">Notas</string>
+    <string name="sudoku_key_hint">Pista</string>
+    <string name="sudoku_key_notes_on">Modo notas activo</string>
+    <string name="sudoku_key_notes_off">Activar modo notas</string>
+    <string name="sudoku_key_erase">Borrar la celda seleccionada</string>
+    <string name="sudoku_key_hint_desc">Ver un anuncio y revelar el número correcto de la celda seleccionada</string>
+
+    <!-- Neon Grid 2048: HUD y overlay del hito -->
+    <!-- 2048: pasos del tutorial animado (un texto por tramo de la animación). -->
+    <string name="neon2048_tutorial_step_1">Desliza el dedo: todas las fichas se van hasta el borde en esa dirección.</string>
+    <string name="neon2048_tutorial_step_2">Después de cada movimiento aparece una ficha nueva.</string>
+    <string name="neon2048_tutorial_step_3">Dos fichas iguales que chocan se suman en una sola.</string>
+    <string name="neon2048_tutorial_step_4">Y lo sumado se vuelve a sumar: 4 y 4 hacen 8.</string>
+    <string name="neon2048_tutorial_step_5">Llega hasta 2048. Si el tablero se llena y no puedes mover, se acaba la partida.</string>
+    <string name="neon2048_hud_score">Puntos</string>
+    <string name="neon2048_hud_best">Récord</string>
+    <string name="neon2048_hud_max">Ficha más alta</string>
+    <string name="neon2048_hud_gain">+%1$s</string>
+    <string name="neon2048_win_title">¡2048!</string>
+    <string name="neon2048_win_body">Has llegado a la ficha objetivo. Puedes seguir jugando para batir tu récord.</string>
+    <string name="neon2048_win_continue">Seguir jugando</string>
+    <string name="neon2048_win_restart">Empezar de nuevo</string>
+
+    <!-- ============================================================
+         Neon Trees & Tents — antesala, HUD y tablero. El nombre del
+         juego NO va aquí (vive en GameCatalog, ver CLAUDE.md §10).
+         ============================================================ -->
+    <string name="tents_intro_description">El bosque está a oscuras. Planta una tienda de luz junto a cada árbol: ninguna puede tocar a otra, ni siquiera en diagonal, y cada fila y columna debe sumar exactamente su número.</string>
+    <!-- Cifra junto a la barra de progreso. %1$s = tiendas plantadas, %2$s = tiendas del nivel. -->
+    <string name="tents_hud_progress">%1$s/%2$s tiendas</string>
+    <string name="tents_board_generating">Sembrando el bosque…</string>
+    <string name="tents_gameover_headline">¡Campamento montado!</string>
+    <!-- Lecturas de accesibilidad de los contadores de borde.
+         %1$s = número de fila/columna (desde 1), %2$s = tiendas plantadas, %3$s = tiendas requeridas. -->
+    <string name="tents_counter_row_description">Fila %1$s: %2$s de %3$s tiendas</string>
+    <string name="tents_counter_column_description">Columna %1$s: %2$s de %3$s tiendas</string>
+    <!-- Trees & Tents: pasos del tutorial animado (un texto por tramo de la animación). -->
+    <string name="tents_tutorial_step_1">Este es el bosque. Se deben plantar una tienda por cada árbol.</string>
+    <string name="tents_tutorial_step_2">Los números dicen cuántas tiendas lleva cada fila y cada columna.</string>
+    <string name="tents_tutorial_step_3">Un 0 es que no lleva ninguna. Un toque marca pasto: aquí no va tienda.</string>
+    <string name="tents_tutorial_step_4">Dos toques plantan la tienda. <b>Va pegada a su árbol</b>: arriba, abajo o a un lado.</string>
+    <string name="tents_tutorial_step_5">Ojo: dos tiendas no pueden tocarse, ni siquiera en diagonal. Si se tocan, parpadean en rojo.</string>
+    <string name="tents_tutorial_step_6">Un toque más y la tienda se quita.</string>
+    <string name="tents_tutorial_step_7">Plántalas donde no toquen a ninguna otra y los números cuadren.</string>
+    <string name="tents_tutorial_step_8">¡Listo! Cada árbol tiene su tienda y todos los números están en verde.</string>
+    <string name="sudoku_tutorial_step_1">El Sudoku es muy fácil: rellena todas las casillas vacías con los números del 1 al 4. Aquí lo vemos en pequeño.</string>
+    <string name="sudoku_tutorial_step_2">Solo hay una regla. En cada fila, ningún número se puede repetir.</string>
+    <string name="sudoku_tutorial_step_3">Lo mismo en cada columna: nada de números repetidos.</string>
+    <string name="sudoku_tutorial_step_4">Y en cada recuadro de 2×2, el de las líneas gruesas, tampoco.</string>
+    <string name="sudoku_tutorial_step_5">¿Qué número falta? En esta fila ya están el 1, el 2 y el 3, así que aquí va el 4. Toca la casilla y luego el número.</string>
+    <string name="sudoku_tutorial_step_6">Si repites un número, se pone en rojo: ese no va. Prueba con otro hasta que deje de estar en rojo.</string>
+    <string name="sudoku_tutorial_step_7">Sigue igual con las demás: mira qué números ya están en su fila, columna y recuadro, y elige el que falta.</string>
+    <string name="sudoku_tutorial_step_8">¡Listo! No hay ningún número repetido y todo está en verde.</string>
+
+    <!-- Neon Defuser (buscaminas): HUD -->
+    <string name="defuser_hud_time">Tiempo de partida</string>
+    <!-- Buscaminas: pasos del tutorial animado (un texto por tramo de la animación). -->
+    <string name="defuser_tutorial_step_1">Bajo algunas casillas hay minas. Destapa todas las demás sin tocar ninguna.</string>
+    <string name="defuser_tutorial_step_2">Toca una casilla para destaparla. El primer toque siempre es seguro.</string>
+    <string name="defuser_tutorial_step_3">Cada número dice cuántas minas hay entre las casillas que lo rodean, también en diagonal.</string>
+    <string name="defuser_tutorial_step_4">A este 1 solo le queda una casilla tapada alrededor: ahí está su mina.</string>
+    <string name="defuser_tutorial_step_5">Mantén pulsada la casilla para marcarla con un escudo.</string>
+    <string name="defuser_tutorial_step_6">Este otro 1 ya tiene su mina marcada, así que su otra casilla tapada es segura: destápala.</string>
+    <string name="defuser_tutorial_step_7">Sigue igual: destapa lo que sepas que es seguro.</string>
+    <string name="defuser_tutorial_step_8">¡Panel desactivado! Ganas al destapar todas las casillas sin mina.</string>
+    <string name="defuser_hud_mines">Minas por marcar: %1$s</string>
+
+    <!-- Burbujas de Cálculo: HUD y objetivo -->
+    <string name="bubble_hud_round">Ronda %1$s</string>
+    <string name="bubble_hud_combo">x%1$s</string>
+    <string name="bubble_target_label">Objetivo</string>
+
+    <!-- Neon Hyper-Cube: HUD y ayuda de gestos -->
+    <string name="hypercube_hud_free_mode">Modo libre</string>
+    <string name="hypercube_hud_moves">Movimientos</string>
+    <string name="hypercube_hud_time">Tiempo</string>
+    <string name="hypercube_gesture_hint">Arrastra sobre una fila para girarla · fuera del cubo para orbitar</string>
+
+    <!-- Crucigrama Neón: HUD -->
+    <string name="crucigrama_hud_words">%1$s/%2$s palabras</string>
+    <string name="crucigrama_hud_combo">x%1$s</string>
+
+    <!-- Sopa de Letras Neón: HUD -->
+    <string name="wordsearch_hud_words">%1$s/%2$s palabras</string>
+
+    <!-- Hypergate: HUD y pista -->
+    <string name="hypergate_hint">Toca para cambiar el color del portal e igualarlo al del cometa que llega. Mantén pulsado para activar el escudo contra los meteoritos rojos</string>
+    <!-- Hypergate: descripción de la antesala. -->
+    <string name="hypergate_intro_description">Toca la pantalla para cambiar el color del portal e igualarlo al de cada cometa antes del impacto. Cuando llegue un meteorito rojo, mantén pulsado para activar el escudo.</string>
+    <string name="hypergate_hud_absorbed">Absorbidos</string>
+    <string name="hypergate_hud_crashed">Choques</string>
+    <string name="hypergate_hud_time">Segundos restantes</string>
+    <!-- Hypergate: pasos del tutorial animado (un texto por tramo de la animación). -->
+    <string name="hypergate_tutorial_step_1">Este es el portal. Empieza en azul.</string>
+    <string name="hypergate_tutorial_step_2">Se acerca un cometa verde: su color no coincide con el del portal.</string>
+    <string name="hypergate_tutorial_step_3">Toca la pantalla para cambiar el color del portal.</string>
+    <string name="hypergate_tutorial_step_4">¡Mismo color! El portal absorbe el cometa y sumas puntos.</string>
+    <string name="hypergate_tutorial_step_5">Ahora llega un cometa azul.</string>
+    <string name="hypergate_tutorial_step_6">Vuelve a tocar la pantalla para ponerlo en azul.</string>
+    <string name="hypergate_tutorial_step_7">¡Absorbido! Iguala siempre el color antes del impacto.</string>
+    <string name="hypergate_tutorial_step_8">Cuidado: los meteoritos rojos no se absorben con ningún color.</string>
+    <string name="hypergate_tutorial_step_9">Mantén pulsada la pantalla para activar el escudo: el meteorito se deshace.</string>
+    <string name="hypergate_tutorial_step_10">Con el escudo nada te afecta, pero tampoco sumas puntos. Aguanta 3 segundos seguidos; si lo agotas, tarda 5 en recargarse.</string>
+
+    <!-- Neon Pulse: reglas, HUD y carteles -->
+    <string name="neonpulse_intro_description">Toca cada nodo antes de que su anillo se cierre; cuanto antes, más puntos. Encadena aciertos para subir el multiplicador y desatar el frenesí, revienta el lienzo con las bombas y no toques los rojos.</string>
+    <!-- Neon Pulse: pasos del tutorial animado (un texto por tramo de la animación). -->
+    <string name="neonpulse_tutorial_step_1">Aparecen nodos con un anillo que se va cerrando.</string>
+    <string name="neonpulse_tutorial_step_2">Tócalo antes de que el anillo se cierre. Cuanto antes, más puntos.</string>
+    <string name="neonpulse_tutorial_step_3">Si el anillo se cierra sin que lo toques, pierdes una vida.</string>
+    <string name="neonpulse_tutorial_step_4">Los rojos son trampas: tocarlos cuesta una vida. Déjalos, se apagan solos.</string>
+    <string name="neonpulse_tutorial_step_5">Los violetas están blindados: necesitan dos toques.</string>
+    <string name="neonpulse_tutorial_step_6">La bomba ámbar revienta todo lo que hay en pantalla.</string>
+    <string name="neonpulse_tutorial_step_7">Encadena aciertos para multiplicar los puntos. Juegas mientras te queden vidas.</string>
+    <string name="neonpulse_hud_wave">HORDA %1$s</string>
+    <string name="neonpulse_hud_multiplier">x%1$s</string>
+    <string name="neonpulse_frenzy_label">FRENESÍ ×%1$s</string>
+    <string name="neonpulse_frenzy_call">¡FRENESÍ!</string>
+    <string name="neonpulse_fast">¡RÁPIDO!</string>
+    <string name="neonpulse_banner_bomb">¡Bombas! Tócalas y revientan las esferas que traen</string>
+    <string name="neonpulse_banner_trap">¡Cuidado con los nodos rojos!</string>
+    <string name="neonpulse_banner_armored">¡Blindados! Necesitan dos toques</string>
+    <string name="neonpulse_banner_move">¡Los pulsos empiezan a moverse!</string>
+    <string name="neonpulse_gameover_headline">Horda %1$s alcanzada</string>
+    <string name="neonpulse_life">Vida</string>
+    <string name="neonpulse_life_lost">Vida perdida</string>
+
+    <!-- Neon Hexa Flux: antesala, HUD, bandeja y carteles -->
+    <string name="hexaflux_intro_description">Coloca piezas en el panal y junta tres fichas iguales para fusionarlas en una más potente. Encadena fusiones, rompe el hielo, desactiva las bombas y cumple el objetivo de cada nivel antes de quedarte sin jugadas.</string>
+    <!-- %1$s = puntos actuales, %2$s = puntos objetivo. -->
+    <string name="hexaflux_hud_score">%1$s/%2$s pts</string>
+    <!-- %1$s = celdas ya limpiadas, %2$s = total a limpiar. -->
+    <string name="hexaflux_hud_clear">%1$s/%2$s limpias</string>
+    <!-- %1$s = turnos resistidos, %2$s = turnos a resistir. -->
+    <string name="hexaflux_hud_survive">Turno %1$s/%2$s</string>
+    <string name="hexaflux_objective_score">Alcanza %1$s puntos</string>
+    <string name="hexaflux_objective_clear">Elimina el hielo y las fichas corruptas</string>
+    <string name="hexaflux_objective_survive">Resiste %1$s turnos</string>
+    <!-- %1$s = jugadas restantes. -->
+    <string name="hexaflux_moves_left">%1$s jugadas</string>
+    <!-- %1$s = fusiones encadenadas en la última jugada. -->
+    <string name="hexaflux_combo">COMBO ×%1$s</string>
+    <string name="hexaflux_tray_hint">Toca una pieza para elegirla y otra vez para girarla. Luego toca el tablero o arrástrala.</string>
+    <!-- %1$s = posición de la pieza en la bandeja, %2$s = número de fichas. -->
+    <string name="hexaflux_tray_piece_description">Pieza %1$s, %2$s fichas</string>
+    <!-- %1$s = celdas libres del tablero. -->
+    <string name="hexaflux_board_description">Tablero hexagonal, %1$s celdas libres</string>
+    <string name="hexaflux_gameover_headline">¡Flujo estabilizado!</string>
+    <string name="hexaflux_lost_title">Flujo colapsado</string>
+    <string name="hexaflux_lost_no_moves">Te quedaste sin jugadas antes de cumplir el objetivo.</string>
+    <string name="hexaflux_lost_blocked">No queda hueco para ninguna de tus piezas.</string>
+    <string name="hexaflux_lost_retry">Reintentar</string>
+    <string name="hexaflux_lost_choose_level">Elegir nivel</string>
 
 </resources>

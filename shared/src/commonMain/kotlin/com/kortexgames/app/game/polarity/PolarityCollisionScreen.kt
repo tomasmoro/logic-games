@@ -87,6 +87,18 @@ import kortexgames.shared.generated.resources.polarity_life
 import kortexgames.shared.generated.resources.polarity_life_lost
 import kortexgames.shared.generated.resources.polarity_title
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import com.kortexgames.app.ui.components.drawEdgeFlash
+import com.kortexgames.app.ui.components.rememberBoardClock
 import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -104,7 +116,7 @@ import kotlin.math.sin
  * no poder separar dos colores. Los parecidos entran después, cuando ya domina el
  * gesto y distinguirlos ES parte de la dificultad.
  */
-private val SectorPalette = listOf(
+internal val SectorPalette = listOf(
     LogicColors.NeonCyan,
     LogicColors.NeonGreen,
     LogicColors.Amber,
@@ -136,6 +148,7 @@ fun PolarityCollisionScreen(graph: AppGraph, onExit: () -> Unit) {
     if (state.status == GameStatus.IDLE) {
         GameIntroScreen(
             help = GameHelpContent.polarity,
+            tutorial = PolarityTutorial.tutorial,
             title = title,
             motif = GameMotif.POLARITY_SECTORS,
             description = stringResource(Res.string.polarity_intro_description),
@@ -154,15 +167,26 @@ fun PolarityCollisionScreen(graph: AppGraph, onExit: () -> Unit) {
 
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
     var lastDragAngle by remember { mutableStateOf<Float?>(null) }
-    val glowPulse by rememberInfiniteTransition(label = "polarityGlow").animateFloat(
-        initialValue = 0.72f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1400, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "polarityGlowAlpha",
-    )
+    // Reloj único de las animaciones de la escena (campo de gravedad, corona del disco, arcos
+    // de las magnéticas). Solo se congela en PAUSA. Al terminar la partida sigue corriendo a
+    // propósito: la última vida se pierde en el mismo instante en que acaba, y con el reloj
+    // parado el disco se quedaba teñido de rojo, congelado, detrás del diálogo de resultado.
+    val clock = rememberBoardClock(running = state.status != GameStatus.PAUSED)
+
+    // Instantes de la última vida perdida y ganada: de su "edad" salen la sacudida, el tinte
+    // rojo del disco y los destellos de borde. El motor solo publica cuántas vidas hay.
+    var lifeLostAt by remember { mutableFloatStateOf(-10f) }
+    var lifeGainedAt by remember { mutableFloatStateOf(-10f) }
+    var lastLives by remember { mutableIntStateOf(game.lives) }
+    LaunchedEffect(game.lives) {
+        val before = lastLives
+        lastLives = game.lives
+        when {
+            game.lives < before -> lifeLostAt = clock.peek()
+            // Partida nueva (las vidas vuelven al máximo con el marcador a cero) no es un premio.
+            game.lives > before && game.score > 0 -> lifeGainedAt = clock.peek()
+        }
+    }
 
     // Bucle de juego robusto: sincroniza física al reloj de render del frame.
     LaunchedEffect(Unit) {
@@ -217,26 +241,68 @@ fun PolarityCollisionScreen(graph: AppGraph, onExit: () -> Unit) {
         // cada frame de dibujo.
         val sectorPalette = remember(game.colorCount) { SectorPalette.take(game.colorCount) }
 
-        Canvas(modifier = Modifier.fillMaxSize()) {
+        val inShower = game.phase == PolarityPhase.SHOWER
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    // Sacudida al perder una vida: el golpe se siente en toda la escena.
+                    val age = clock.seconds - lifeLostAt
+                    if (age in 0f..SHAKE_SEC) {
+                        translationX = sin(age * 70f) * SHAKE_AMPLITUDE.toPx() * (1f - age / SHAKE_SEC)
+                    }
+                },
+        ) {
+            val now = clock.seconds
             val center = Offset(size.width * 0.5f, size.height * 0.5f)
             val hexRadius = min(size.width, size.height) * 0.18f
 
-            drawRingSectors(center = center, radius = hexRadius, rotationRad = game.rotationRad, colors = sectorPalette)
-            drawRingFrame(center = center, radius = hexRadius, glowPulse = glowPulse)
+            // Fondo: todo cae hacia el disco. En la lluvia de meteoros acelera y vira a magenta.
+            drawGravityField(
+                center = center,
+                discRadius = hexRadius,
+                time = now,
+                speed = if (inShower) 2.4f else 1f,
+                tint = if (inShower) LogicColors.Magenta else CategoryPalette.SpatialVision,
+            )
+
+            // Marca de entrada de la partícula más cercana: la que hay que resolver ahora.
+            val nearest = game.particles.minByOrNull { hypot(it.x - center.x, it.y - center.y) }
+            if (nearest != null) {
+                val distance = hypot(nearest.x - center.x, nearest.y - center.y)
+                drawApproachMarker(
+                    center = center,
+                    discRadius = hexRadius,
+                    angleRad = atan2(nearest.y - center.y, nearest.x - center.x),
+                    color = sectorPalette[nearest.colorIndex % sectorPalette.size],
+                    urgency = 1f - (distance - hexRadius) / (hexRadius * MARKER_RANGE),
+                )
+            }
+
+            // Destello del sector que acaba de capturar: sale de los impactos del motor.
+            val sectorFlash = FloatArray(sectorPalette.size)
+            for (impact in game.impacts) {
+                if (!impact.success) continue
+                val index = impact.colorIndex % sectorPalette.size
+                val amount = 1f - impact.ageMs.toFloat() / IMPACT_LIFETIME_MS.toFloat()
+                if (amount > sectorFlash[index]) sectorFlash[index] = amount
+            }
+            val lostAge = now - lifeLostAt
+            drawPolarityDisc(
+                center = center,
+                radius = hexRadius,
+                rotationRad = game.rotationRad,
+                colors = sectorPalette,
+                time = now,
+                sectorFlash = sectorFlash,
+                hurt = if (lostAge in 0f..HURT_SEC) 1f - lostAge / HURT_SEC else 0f,
+            )
 
             for (particle in game.particles) {
-                val color = sectorPalette[particle.colorIndex % sectorPalette.size]
-                // Los meteoros de la lluvia llevan estela: se distinguen de un vistazo
-                // de los asteroides "de verdad", que sí cuestan vida.
-                if (particle.meteor) {
-                    drawMeteorTrail(particle = particle, color = color)
-                }
-                drawNeonAsteroid(
-                    center = Offset(particle.x, particle.y),
-                    radius = particle.radius,
-                    color = color,
-                    glowPulse = glowPulse,
-                    glowBoost = if (particle.magnetic) 1.18f else 1f,
+                drawNeonOrb(
+                    particle = particle,
+                    color = sectorPalette[particle.colorIndex % sectorPalette.size],
+                    time = now,
                 )
             }
 
@@ -248,70 +314,32 @@ fun PolarityCollisionScreen(graph: AppGraph, onExit: () -> Unit) {
                     sectorColor = sectorPalette[impact.colorIndex % sectorPalette.size],
                 )
             }
+
+            // Destellos de borde: rojo al perder una vida, verde al ganarla.
+            if (lostAge in 0f..EDGE_FLASH_SEC) drawEdgeFlash(LogicColors.Error, 1f - lostAge / EDGE_FLASH_SEC)
+            val gainAge = now - lifeGainedAt
+            if (gainAge in 0f..EDGE_FLASH_SEC) drawEdgeFlash(LogicColors.Success, 1f - gainAge / EDGE_FLASH_SEC)
         }
 
-        Column(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 18.dp, start = 12.dp, end = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+        PolarityHud(game = game, modifier = Modifier.align(Alignment.TopCenter))
+
+        // Cómo se juega, solo hasta la primera captura: enseña sin estorbar y se va sola.
+        AnimatedVisibility(
+            visible = game.caught == 0 && state.status == GameStatus.RUNNING && !game.isInterlude,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 64.dp, start = 24.dp, end = 24.dp),
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.headlineSmall,
-                color = LogicColors.OnDark,
-                fontWeight = FontWeight.ExtraBold,
-            )
             Text(
                 text = stringResource(Res.string.polarity_hint),
                 style = MaterialTheme.typography.bodyMedium,
                 color = LogicColors.OnDarkMuted,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .background(LogicColors.SurfaceDark.copy(alpha = 0.80f), RoundedCornerShape(16.dp))
+                    .border(1.dp, CategoryPalette.SpatialVision.copy(alpha = 0.30f), RoundedCornerShape(16.dp))
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
             )
-
-            // Vidas: el dato crítico de una partida infinita (antes lo era el reloj), así
-            // que van justo bajo el título y por encima del resto de métricas.
-            Row(
-                modifier = Modifier.padding(top = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                repeat(PolarityConfig.MAX_LIVES) { i ->
-                    PolarityHeart(alive = i < game.lives)
-                }
-            }
-
-            // Cuatro métricas en una fila: píldoras compactas (padding corto y 6 dp de
-            // separación) para que quepan sin recortarse en pantallas de 360 dp.
-            Row(
-                modifier = Modifier.padding(top = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                HudPill(label = stringResource(Res.string.polarity_hud_score), value = game.score.toString())
-                HudPill(
-                    label = stringResource(Res.string.polarity_hud_caught),
-                    value = game.caught.toString(),
-                )
-                HudPill(
-                    label = stringResource(Res.string.polarity_hud_wave),
-                    value = game.wave.toString(),
-                )
-                // Cuenta atrás del EVENTO, no de la partida: cuánto falta para la lluvia
-                // (o cuánto queda de ella). En los carteles no se muestra: ahí la propia
-                // pantalla ya está diciendo qué pasa.
-                if (!game.isInterlude) {
-                    val seconds = (game.phaseRemainingMs / 1000).coerceAtLeast(0)
-                    HudPill(
-                        label = stringResource(
-                            if (game.phase == PolarityPhase.SHOWER) {
-                                Res.string.polarity_hud_shower_now
-                            } else {
-                                Res.string.polarity_hud_shower_in
-                            },
-                        ),
-                        value = stringResource(Res.string.polarity_hud_seconds, seconds.toString()),
-                        accent = if (game.phase == PolarityPhase.SHOWER) LogicColors.Magenta else null,
-                    )
-                }
-            }
         }
 
         // Carteles de cambio de fase, bajo el disco: es la única zona ancha y vacía de
@@ -366,9 +394,17 @@ private fun PhaseBanner(game: PolarityCollisionState, modifier: Modifier = Modif
         modifier = modifier,
     ) {
         val isShower = game.phase == PolarityPhase.SHOWER_INTRO
+        // Panel de cristal tras el texto: el cartel cae sobre el campo de gravedad y las
+        // partículas, y sin fondo propio se leía mal. El borde canta el tipo de aviso
+        // (magenta = empieza la lluvia, verde = recompensa).
+        val tone = if (isShower) LogicColors.Magenta else LogicColors.NeonGreen
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(horizontal = 24.dp),
+            modifier = Modifier
+                .padding(horizontal = 24.dp)
+                .background(LogicColors.SurfaceDark.copy(alpha = 0.88f), RoundedCornerShape(20.dp))
+                .border(1.5.dp, tone.copy(alpha = 0.75f), RoundedCornerShape(20.dp))
+                .padding(horizontal = 20.dp, vertical = 14.dp),
         ) {
             Text(
                 text = if (isShower) {
@@ -415,30 +451,100 @@ private fun PhaseBanner(game: PolarityCollisionState, modifier: Modifier = Modif
 }
 
 /**
- * Píldora de una métrica del HUD.
+ * HUD superior.
  *
- * @param accent color opcional del valor; se usa para teñir la cuenta atrás mientras
- *   la lluvia está activa (estado excepcional que conviene que salte a la vista).
+ * - **Puntuación** grande a la izquierda, que late al sumar.
+ * - **Vidas** debajo: en una partida infinita son el dato crítico (antes lo era el reloj).
+ * - **Oleada** y **aciertos** como fichas con icono.
+ * - La **cuenta atrás del evento** (cuánto falta para la lluvia, o cuánto queda de ella) en una
+ *   píldora que durante la lluvia pasa a magenta. No es la de la partida, que no tiene fin; en
+ *   los carteles se oculta porque ahí la propia pantalla ya dice qué pasa.
+ *
+ * El título y la instrucción que ocupaban la cabecera se quitaron: el título está en la antesala
+ * y la instrucción es una pista que desaparece sola. Deja libre la esquina superior derecha (el
+ * botón de pausa vive ahí).
  */
 @Composable
-private fun HudPill(
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier,
-    accent: Color? = null,
-) {
+private fun PolarityHud(game: PolarityCollisionState, modifier: Modifier = Modifier) {
+    val accent = CategoryPalette.SpatialVision
+    val scorePop = remember { Animatable(1f) }
+    var lastScore by remember { mutableIntStateOf(game.score) }
+    LaunchedEffect(game.score) {
+        val grew = game.score > lastScore
+        lastScore = game.score
+        if (!grew) return@LaunchedEffect
+        scorePop.snapTo(1.2f)
+        scorePop.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
+    }
+
     Column(
-        modifier = modifier
-            .background(LogicColors.SurfaceDark.copy(alpha = 0.8f), shape = MaterialTheme.shapes.medium)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier.fillMaxWidth().padding(start = 20.dp, end = 76.dp, top = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(text = label, style = MaterialTheme.typography.labelSmall, color = LogicColors.OnDarkMuted)
-        Text(
-            text = value,
-            style = MaterialTheme.typography.labelLarge,
-            color = accent ?: LogicColors.OnDark,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = game.score.toString(),
+                style = MaterialTheme.typography.headlineLarge,
+                color = LogicColors.OnDark,
+                fontWeight = FontWeight.Black,
+                modifier = Modifier.weight(1f).graphicsLayer {
+                    scaleX = scorePop.value
+                    scaleY = scorePop.value
+                    // Crece desde la izquierda: el número está alineado a ese lado.
+                    transformOrigin = TransformOrigin(0f, 0.5f)
+                },
+            )
+            HudChip(KortexIcons.TrendingUp, accent, game.wave.toString(), stringResource(Res.string.polarity_hud_wave))
+            HudChip(KortexIcons.Star, LogicColors.Amber, game.caught.toString(), stringResource(Res.string.polarity_hud_caught))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                repeat(PolarityConfig.MAX_LIVES) { i -> PolarityHeart(alive = i < game.lives) }
+            }
+            if (!game.isInterlude) {
+                val shower = game.phase == PolarityPhase.SHOWER
+                val tone = if (shower) LogicColors.Magenta else LogicColors.OnDarkMuted
+                val seconds = (game.phaseRemainingMs / 1000).coerceAtLeast(0)
+                Row(
+                    modifier = Modifier
+                        .background(LogicColors.SurfaceDark.copy(alpha = 0.85f), CircleShape)
+                        .border(1.dp, tone.copy(alpha = if (shower) 0.85f else 0.35f), CircleShape)
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(
+                            if (shower) Res.string.polarity_hud_shower_now else Res.string.polarity_hud_shower_in,
+                        ),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = tone,
+                    )
+                    Text(
+                        text = stringResource(Res.string.polarity_hud_seconds, seconds.toString()),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (shower) LogicColors.Magenta else LogicColors.OnDark,
+                        fontWeight = FontWeight.Black,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Ficha de contador del HUD: icono + cifra. El icono dice qué es sin gastar una etiqueta. */
+@Composable
+private fun HudChip(icon: ImageVector, tint: Color, value: String, description: String) {
+    Row(
+        modifier = Modifier
+            .background(LogicColors.SurfaceDark.copy(alpha = 0.85f), CircleShape)
+            .border(1.dp, LogicColors.SurfaceVariantDark, CircleShape)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        NeonIcon(icon = icon, tint = tint, size = 14.dp, glow = false, contentDescription = description)
+        Text(text = value, style = MaterialTheme.typography.labelLarge, color = LogicColors.OnDark, fontWeight = FontWeight.Black)
     }
 }
 
@@ -494,189 +600,6 @@ private fun PolarityHeart(alive: Boolean) {
 }
 
 /**
- * Disco de sectores con lenguaje de "tubo de neón" (misma familia visual que
- * [com.kortexgames.app.ui.components.drawNeonTile]): relleno de cristal con
- * degradado radial (brillante al centro, se apaga hacia el borde) en vez de color
- * plano —lo que antes leía como una pelota de playa— y un aro de neón por sector
- * (halo ancho → halo medio → trazo nítido) que remata el borde exterior. Las
- * costuras entre sectores son una fibra de luz blanca fina, no un corte gris.
- *
- * El número de sectores lo marca [colors] (3..5, crece con cada lluvia de meteoros),
- * así que todo se calcula a partir de `colors.size`: el reparto angular tiene que
- * coincidir EXACTAMENTE con el hit-test del motor
- * ([PolarityCollisionEngine], `isColorMatch`), que también divide 2π entre el número
- * de sectores empezando en `rotationRad`.
- */
-private fun DrawScope.drawRingSectors(
-    center: Offset,
-    radius: Float,
-    rotationRad: Float,
-    colors: List<Color>,
-) {
-    val count = colors.size
-    val sectorAngle = 360f / count
-    val startAngleDeg = rotationRad * 180f / PI.toFloat()
-    val diameter = radius * 2f
-    val topLeft = Offset(center.x - radius, center.y - radius)
-    val arcSize = Size(diameter, diameter)
-
-    // Relleno "cristal": degradado radial por sector, no color plano. Da volumen y
-    // rompe la lectura de "pelota de playa" de un pie chart de colores sólidos.
-    repeat(count) { index ->
-        val base = colors[index]
-        drawArc(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    lerp(base, Color.White, 0.16f),
-                    base,
-                    lerp(base, LogicColors.BackgroundDark, 0.5f),
-                ),
-                center = center,
-                radius = radius * 1.08f,
-            ),
-            startAngle = startAngleDeg + sectorAngle * index,
-            sweepAngle = sectorAngle,
-            useCenter = true,
-            topLeft = topLeft,
-            size = arcSize,
-        )
-    }
-
-    // Reflejo especular arriba-izquierda: sugiere superficie de cristal/vidrio en vez
-    // de plástico mate, sin tapar el color de los sectores.
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(Color.White.copy(alpha = 0.22f), Color.Transparent),
-            center = center - Offset(radius * 0.32f, radius * 0.34f),
-            radius = radius * 0.75f,
-        ),
-        radius = radius,
-        center = center,
-    )
-
-    // Aro de neón por sector: mismo apilado halo-ancho → halo-medio → nítido que
-    // [com.kortexgames.app.ui.components.drawNeonTile], pero siguiendo el arco.
-    val rimInsetDeg = 3f
-    repeat(count) { index ->
-        val base = colors[index]
-        val start = startAngleDeg + sectorAngle * index + rimInsetDeg
-        val sweep = sectorAngle - rimInsetDeg * 2f
-        drawArc(
-            color = base.copy(alpha = 0.30f),
-            startAngle = start, sweepAngle = sweep, useCenter = false,
-            topLeft = topLeft, size = arcSize,
-            style = Stroke(width = radius * 0.14f, cap = StrokeCap.Round),
-        )
-        drawArc(
-            color = base.copy(alpha = 0.62f),
-            startAngle = start, sweepAngle = sweep, useCenter = false,
-            topLeft = topLeft, size = arcSize,
-            style = Stroke(width = radius * 0.065f, cap = StrokeCap.Round),
-        )
-        drawArc(
-            color = lerp(base, Color.White, 0.35f),
-            startAngle = start, sweepAngle = sweep, useCenter = false,
-            topLeft = topLeft, size = arcSize,
-            style = Stroke(width = radius * 0.024f, cap = StrokeCap.Round),
-        )
-    }
-
-    // Costuras entre sectores: fibra de luz blanca (halo + núcleo), no un corte gris.
-    val sectorAngleRad = (2.0 * PI / count).toFloat()
-    repeat(count) { index ->
-        val angle = rotationRad + sectorAngleRad * index
-        val outer = Offset(center.x + cos(angle) * radius, center.y + sin(angle) * radius)
-        drawLine(
-            color = Color.White.copy(alpha = 0.20f),
-            start = center, end = outer,
-            strokeWidth = radius * 0.05f, cap = StrokeCap.Round,
-        )
-        drawLine(
-            color = LogicColors.BackgroundDark.copy(alpha = 0.55f),
-            start = center, end = outer,
-            strokeWidth = radius * 0.022f, cap = StrokeCap.Round,
-        )
-        drawLine(
-            color = Color.White.copy(alpha = 0.55f),
-            start = center, end = outer,
-            strokeWidth = radius * 0.008f, cap = StrokeCap.Round,
-        )
-    }
-}
-
-private fun DrawScope.drawRingFrame(center: Offset, radius: Float, glowPulse: Float) {
-    // Halo radial tipo NeonIcon: mismo lenguaje visual que HomeScreen y las tarjetas.
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(
-                LogicColors.NeonCyan.copy(alpha = 0.18f * glowPulse),
-                Color.Transparent,
-            ),
-            center = center,
-            radius = radius * 1.85f,
-        ),
-        radius = radius * 1.42f,
-        center = center,
-    )
-    drawCircle(
-        color = LogicColors.NeonCyan.copy(alpha = 0.34f * glowPulse),
-        radius = radius,
-        center = center,
-        style = Stroke(width = radius * 0.026f),
-    )
-    // Núcleo del eje: mismo apilado halo → nítido que los tiles, para que el centro
-    // se sienta "encendido" en vez de un simple recorte oscuro.
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(
-                LogicColors.NeonCyan.copy(alpha = 0.30f * glowPulse),
-                Color.Transparent,
-            ),
-            center = center,
-            radius = radius * 0.42f,
-        ),
-        radius = radius * 0.30f,
-        center = center,
-    )
-    drawCircle(
-        color = LogicColors.BackgroundDark.copy(alpha = 0.92f),
-        radius = radius * 0.20f,
-        center = center,
-    )
-    drawCircle(
-        color = LogicColors.NeonCyan.copy(alpha = 0.55f * glowPulse),
-        radius = radius * 0.20f,
-        center = center,
-        style = Stroke(width = radius * 0.012f),
-    )
-}
-
-/**
- * Estela de un meteoro de la lluvia: un trazo que se apaga hacia atrás en la
- * dirección contraria a su velocidad. Es el distintivo visual de la fase de regalo —
- * con la pantalla llena, la estela dice "esto no te quita vida" sin necesidad de leer
- * el HUD— y además comunica la dirección de entrada de un vistazo.
- */
-private fun DrawScope.drawMeteorTrail(particle: PolarityParticle, color: Color) {
-    val speed = hypot(particle.vx, particle.vy)
-    if (speed <= 1f) return
-    val dir = Offset(particle.vx / speed, particle.vy / speed)
-    val length = particle.radius * METEOR_TRAIL_RADII
-    val tail = Offset(particle.x, particle.y) - dir * length
-    drawLine(
-        brush = Brush.linearGradient(
-            colors = listOf(Color.Transparent, color.copy(alpha = 0.55f)),
-            start = tail,
-            end = Offset(particle.x, particle.y),
-        ),
-        start = tail,
-        end = Offset(particle.x, particle.y),
-        strokeWidth = particle.radius * 0.85f,
-        cap = StrokeCap.Round,
-    )
-}
-
-/**
  * Estallido de chispas de un impacto: núcleo blanco que destella, onda expansiva
  * semántica (verde [LogicColors.Success] en acierto, roja [LogicColors.Error] en
  * fallo, igual que el resto de la app) y rayos radiales en el color del sector para
@@ -688,7 +611,7 @@ private fun DrawScope.drawMeteorTrail(particle: PolarityParticle, color: Color) 
  * pintan apagados y en gris, nunca en rojo — no ha pasado nada malo, y teñir de error
  * lo que no castiga enseñaría a temer la fase de regalo.
  */
-private fun DrawScope.drawImpactBurst(impact: PolarityImpact, sectorColor: Color) {
+internal fun DrawScope.drawImpactBurst(impact: PolarityImpact, sectorColor: Color) {
     val progress = (impact.ageMs.toFloat() / IMPACT_LIFETIME_MS.toFloat()).coerceIn(0f, 1f)
     val fade = 1f - progress
     if (fade <= 0f) return
@@ -737,37 +660,6 @@ private fun DrawScope.drawImpactBurst(impact: PolarityImpact, sectorColor: Color
     }
 }
 
-/**
- * Asteroide con glow canónico: halo radial como [com.kortexgames.app.ui.components.NeonIcon]
- * y núcleo sólido para mantener legibilidad sobre el fondo espacial.
- */
-private fun DrawScope.drawNeonAsteroid(
-    center: Offset,
-    radius: Float,
-    color: Color,
-    glowPulse: Float,
-    glowBoost: Float,
-) {
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(
-                color.copy(alpha = 0.38f * glowPulse * glowBoost),
-                Color.Transparent,
-            ),
-            center = center,
-            radius = radius * 2.15f,
-        ),
-        radius = radius * 1.55f,
-        center = center,
-    )
-    drawCircle(color = color, radius = radius, center = center)
-    drawCircle(
-        color = Color.White.copy(alpha = 0.24f),
-        radius = radius * 0.26f,
-        center = center - Offset(radius * 0.16f, radius * 0.16f),
-    )
-}
-
 private fun normalizeAngle(angleRad: Float): Float {
     val twoPi = (2.0 * PI).toFloat()
     var angle = angleRad
@@ -778,8 +670,18 @@ private fun normalizeAngle(angleRad: Float): Float {
 
 private const val ROTATION_SPEED_MULTIPLIER = 3.0f
 
-/** Longitud de la estela del meteoro, en radios de la propia partícula. */
-private const val METEOR_TRAIL_RADII = 4.5f
+/** Sacudida de la escena al perder una vida: duración y amplitud inicial. */
+private const val SHAKE_SEC = 0.32f
+private val SHAKE_AMPLITUDE = 8.dp
+
+/** Cuánto dura el tinte rojo del disco tras un fallo (s). */
+private const val HURT_SEC = 0.45f
+
+/** Duración de los destellos de borde (s). */
+private const val EDGE_FLASH_SEC = 0.45f
+
+/** Distancia (en radios del disco) desde la que la marca de entrada empieza a avivarse. */
+private const val MARKER_RANGE = 4.5f
 
 /**
  * Desplazamiento vertical del cartel de fase respecto al centro, en fracción de la

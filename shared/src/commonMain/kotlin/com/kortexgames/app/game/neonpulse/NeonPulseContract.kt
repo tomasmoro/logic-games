@@ -40,6 +40,10 @@ import com.kortexgames.app.game.GameStatus
  * @property waveBannerMs milisegundos que le quedan al cartel "HORDA N" que precede
  *   a cada oleada. Mientras sea `> 0` el motor no genera nodos: es el respiro entre
  *   hordas. `0` = no hay cartel visible.
+ * @property combo aciertos seguidos sin error; alimenta el multiplicador y el frenesí.
+ * @property multiplier multiplicador de puntos vigente por combo (sin contar el frenesí).
+ * @property frenzyMs milisegundos de frenesí restantes; 0 = inactivo. Mientras dura, los puntos
+ *   se multiplican además por [NeonPulseConfig.FRENZY_MULTIPLIER].
  * @property status fase de la partida (IDLE mientras se muestra la antesala/intro,
  *   RUNNING en juego, PAUSED, FINISHED). Reutiliza el [GameStatus] común a todos
  *   los juegos para que la navegación y los overlays se comporten igual.
@@ -69,6 +73,9 @@ data class NeonPulseUiState(
     val waveNodesTotal: Int = 0,
     val waveNodesResolved: Int = 0,
     val waveBannerMs: Long = 0L,
+    val combo: Int = 0,
+    val multiplier: Int = 1,
+    val frenzyMs: Long = 0L,
     val status: GameStatus = GameStatus.IDLE,
     val awaitingRevive: Boolean = false,
     val gameOver: GameOverInfo? = null,
@@ -184,12 +191,29 @@ sealed interface NeonPulseEffect : UiEffect {
      * @property type tipo del nodo impactado; la UI tiñe la explosión con su color
      *   (coral en un objetivo, verde en un corazón) para que el premio se lea de
      *   inmediato sin texto.
+     *
+     * @property points puntos que dio (0 = sin texto flotante, p. ej. el corazón).
+     * @property fast si fue un acierto rápido (la UI lo destaca).
      */
     data class ShowComboAnim(
         val x: Float,
         val y: Float,
         val type: NodeType = NodeType.NORMAL,
+        val points: Int = 0,
+        val fast: Boolean = false,
     ) : NeonPulseEffect
+
+    /**
+     * Un nodo blindado ha recibido su primer toque: el blindaje se rompe pero el nodo sigue ahí.
+     * La UI lo acompaña con un chispazo corto (sin puntos: todavía no se ha ganado nada).
+     */
+    data class ArmorCracked(val x: Float, val y: Float) : NeonPulseEffect
+
+    /** Una bomba ha detonado en ([x], [y]) (normalizado): onda expansiva a pantalla completa. */
+    data class BombBlast(val x: Float, val y: Float) : NeonPulseEffect
+
+    /** Acaba de empezar (o recargarse) el frenesí: la UI lo canta. */
+    data object FrenzyStarted : NeonPulseEffect
 
     /**
      * Se ha superado una horda y arranca la siguiente. La UI lo usa para el sonido

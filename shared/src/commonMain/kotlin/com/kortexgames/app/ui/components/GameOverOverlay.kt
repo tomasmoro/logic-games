@@ -1,5 +1,6 @@
 package com.kortexgames.app.ui.components
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -7,10 +8,9 @@ import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,7 +23,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,9 +40,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -59,14 +71,6 @@ import kortexgames.shared.generated.resources.Res
 import kortexgames.shared.generated.resources.event_attempts_last
 import kortexgames.shared.generated.resources.event_attempts_left
 import kortexgames.shared.generated.resources.event_attempts_none
-import kortexgames.shared.generated.resources.gameover_event_failed_auth
-import kortexgames.shared.generated.resources.gameover_event_failed_closed
-import kortexgames.shared.generated.resources.gameover_event_failed_generic
-import kortexgames.shared.generated.resources.gameover_event_failed_no_attempts
-import kortexgames.shared.generated.resources.gameover_event_improved
-import kortexgames.shared.generated.resources.gameover_event_label
-import kortexgames.shared.generated.resources.gameover_event_not_improved
-import kortexgames.shared.generated.resources.gameover_event_rank
 import kortexgames.shared.generated.resources.gameover_badge_new_record
 import kortexgames.shared.generated.resources.gameover_badge_unlocked
 import kortexgames.shared.generated.resources.gameover_cta_back
@@ -78,12 +82,20 @@ import kortexgames.shared.generated.resources.gameover_cta_play_again
 import kortexgames.shared.generated.resources.gameover_cta_play_unlocked
 import kortexgames.shared.generated.resources.gameover_cta_retry_level
 import kortexgames.shared.generated.resources.gameover_default_headline
+import kortexgames.shared.generated.resources.gameover_event_failed_auth
+import kortexgames.shared.generated.resources.gameover_event_failed_closed
+import kortexgames.shared.generated.resources.gameover_event_failed_generic
+import kortexgames.shared.generated.resources.gameover_event_failed_no_attempts
+import kortexgames.shared.generated.resources.gameover_event_improved
+import kortexgames.shared.generated.resources.gameover_event_label
+import kortexgames.shared.generated.resources.gameover_event_not_improved
+import kortexgames.shared.generated.resources.gameover_event_rank
 import kortexgames.shared.generated.resources.gameover_percentile_better_than
 import kortexgames.shared.generated.resources.gameover_stat_points
 import kortexgames.shared.generated.resources.gameover_stat_time
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
-import kotlin.math.roundToInt
 
 /**
  * Retardo tras terminar la partida antes de revelar el diálogo. Da un "beat" de
@@ -237,11 +249,10 @@ fun GameOverOverlay(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = scrimAlpha))
+            .modalScrim(scrimAlpha)
             .padding(28.dp),
         contentAlignment = Alignment.Center,
     ) {
-        val cardShape = RoundedCornerShape(28.dp)
         // Envoltorio propio (además de la tarjeta) para anclar los acentos de esquina
         // a las mismas coordenadas animadas que la tarjeta (escala + fundido), igual
         // criterio que el menú de pausa (ver [PauseMenu]).
@@ -259,17 +270,7 @@ fun GameOverOverlay(
                 // identidad "Juego" enmarca la superficie oscura "Lógica" sin
                 // inundarla, y ahora habla del color de la categoría (CLAUDE.md §9.2)
                 // en vez de un cian→verde fijo igual para los 30 juegos.
-                .clip(cardShape)
-                .background(LogicColors.SurfaceDark)
-                .border(
-                    BorderStroke(
-                        1.5.dp,
-                        Brush.linearGradient(
-                            listOf(accent.copy(alpha = 0.55f), accent.copy(alpha = 0.12f)),
-                        ),
-                    ),
-                    cardShape,
-                )
+                .modalCard(accent)
                 // Con la comparativa mundial la tarjeta ganó ~5 filas de ranking y en
                 // pantallas cortas el CTA se quedaría fuera del recorte. El scroll va
                 // DENTRO del borde (después de clip/background) para que el marco neón
@@ -303,14 +304,20 @@ fun GameOverOverlay(
             // menos que el resto de bloques) a cada lado. Teñido con [accent] (el
             // color propio del juego) en vez de un ámbar fijo para los 30 juegos.
             Spacer(Modifier.height(TrophyGap))
-            NeonIcon(icon = KortexIcons.Trophy, tint = accent, size = 46.dp)
+            TrophyMedallion(accent = accent, visible = visible)
             Spacer(Modifier.height(TrophyGap))
 
-            Text(
-                headline ?: stringResource(Res.string.gameover_default_headline),
-                style = MaterialTheme.typography.titleLarge,
-                color = LogicColors.OnDarkMuted,
-            )
+            // El titular es EL mensaje del cartel ("¡Nivel 3 completado!"): va en
+            // blanco y con peso de titular, no atenuado como un subtítulo.
+            ModalReveal(index = 1, visible = visible) {
+                Text(
+                    headline ?: stringResource(Res.string.gameover_default_headline),
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = LogicColors.OnDark,
+                    fontWeight = FontWeight.ExtraBold,
+                    textAlign = TextAlign.Center,
+                )
+            }
 
             Spacer(Modifier.height(CardItemGap))
 
@@ -320,6 +327,7 @@ fun GameOverOverlay(
             // `fillMaxHeight()` en cada chip: como el valor de puntos usa una
             // tipografía más grande que la de tiempo, sin esto el chip de puntos
             // saldría más alto y las dos tarjetas quedarían descuadradas.
+            ModalReveal(index = 2, visible = visible) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -329,7 +337,8 @@ fun GameOverOverlay(
                 StatChip(
                     label = stringResource(Res.string.gameover_stat_points),
                     value = "$animatedScore",
-                    accent = LogicColors.Electric,
+                    icon = KortexIcons.Star,
+                    accent = LogicColors.Amber,
                     valueStyle = MaterialTheme.typography.headlineMedium,
                     modifier = Modifier
                         .weight(1f)
@@ -338,11 +347,13 @@ fun GameOverOverlay(
                 StatChip(
                     label = stringResource(Res.string.gameover_stat_time),
                     value = "${info.result.completionTimeMs / 1000}s",
+                    icon = KortexIcons.Timer,
                     accent = LogicColors.NeonCyan,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight(),
                 )
+            }
             }
 
             Spacer(Modifier.height(CardItemGap))
@@ -399,6 +410,10 @@ fun GameOverOverlay(
                         .fillMaxWidth()
                         .pulse(),
                     gradient = accentCtaGradient(accent),
+                    shimmer = true,
+                    // Texto oscuro: el degradado de acento es claro (mismo criterio
+                    // que "REANUDAR" en la pausa); en blanco apenas se leía.
+                    textColor = LogicColors.BackgroundDark,
                 )
             } else if (unlockedDifficultyLabel != null && onPlayUnlockedDifficulty != null) {
                 // Escalón recién abierto: es el hito más "accionable" del cartel —hay un
@@ -414,6 +429,10 @@ fun GameOverOverlay(
                         .fillMaxWidth()
                         .pulse(),
                     gradient = accentCtaGradient(accent),
+                    shimmer = true,
+                    // Texto oscuro: el degradado de acento es claro (mismo criterio
+                    // que "REANUDAR" en la pausa); en blanco apenas se leía.
+                    textColor = LogicColors.BackgroundDark,
                 )
                 Spacer(Modifier.height(CardItemGap))
                 // Contorno (no relleno): segunda acción, por debajo del CTA principal
@@ -454,6 +473,10 @@ fun GameOverOverlay(
                         .fillMaxWidth()
                         .pulse(),
                     gradient = accentCtaGradient(accent),
+                    shimmer = true,
+                    // Texto oscuro: el degradado de acento es claro (mismo criterio
+                    // que "REANUDAR" en la pausa); en blanco apenas se leía.
+                    textColor = LogicColors.BackgroundDark,
                 )
                 Spacer(Modifier.height(CardItemGap))
                 // "Repetir nivel" + "Salir" a medias, en contorno: la pareja de
@@ -500,6 +523,10 @@ fun GameOverOverlay(
                         .fillMaxWidth()
                         .pulse(),
                     gradient = accentCtaGradient(accent),
+                    shimmer = true,
+                    // Texto oscuro: el degradado de acento es claro (mismo criterio
+                    // que "REANUDAR" en la pausa); en blanco apenas se leía.
+                    textColor = LogicColors.BackgroundDark,
                 )
                 Spacer(Modifier.height(CardItemGap))
                 Row(modifier = Modifier.fillMaxWidth()) {
@@ -649,15 +676,24 @@ private fun DifficultyUnlockedBadge(label: String, visible: Boolean) {
 private fun StatChip(
     label: String,
     value: String,
+    icon: ImageVector,
     accent: Color,
     modifier: Modifier = Modifier,
     valueStyle: TextStyle = MaterialTheme.typography.titleLarge,
 ) {
+    val shape = RoundedCornerShape(18.dp)
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(LogicColors.SurfaceVariantDark)
-            .padding(vertical = 14.dp),
+            .clip(shape)
+            // Baño del color de la métrica desde arriba + borde tenue: cada chip se
+            // identifica por su color antes de leer la etiqueta.
+            .background(
+                Brush.verticalGradient(
+                    listOf(lerp(LogicColors.SurfaceVariantDark, accent, 0.20f), LogicColors.SurfaceVariantDark),
+                ),
+            )
+            .border(BorderStroke(1.dp, accent.copy(alpha = 0.35f)), shape)
+            .padding(vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         // Centrado vertical (no solo `Top`): con `fillMaxHeight()` en el chip de
         // fuera, este chip puede recibir más alto del que necesita su propio
@@ -666,16 +702,138 @@ private fun StatChip(
         // quedar pegado arriba con hueco muerto abajo.
         verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
     ) {
-        Text(
-            value,
-            style = valueStyle,
-            color = accent,
-            fontWeight = FontWeight.Bold,
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            NeonIcon(icon = icon, tint = accent, size = 18.dp, glow = false)
+            Text(
+                value,
+                style = valueStyle,
+                color = accent,
+                fontWeight = FontWeight.Bold,
+            )
+        }
         Text(
             label,
             style = MaterialTheme.typography.bodyMedium,
             color = LogicColors.OnDarkMuted,
+        )
+    }
+}
+
+/**
+ * Medallón del trofeo que corona el cartel de fin de partida. Sustituye al icono
+ * suelto: un disco con el color del juego sobre un **estallido de rayos**, que entra
+ * con rebote (los rayos se abren, el disco hace "pop" y un brillo lo cruza una vez).
+ *
+ * Todo es de UNA sola pasada: nada queda en bucle, porque el único bucle del cartel
+ * es el del CTA (§9.4). El remate en bucle de un récord lo ponen los fuegos
+ * artificiales, que también son finitos.
+ *
+ * @param visible dispara la entrada cuando el cartel se revela.
+ */
+@Composable
+private fun TrophyMedallion(accent: Color, visible: Boolean) {
+    // Rayos: se abren primero y con poco rebote (son el "telón").
+    val rays by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessLow),
+        label = "trophyRays",
+    )
+    // Disco: "pop" con sobreimpulso marcado, es el golpe de recompensa.
+    val pop by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.42f, stiffness = 190f),
+        label = "trophyPop",
+    )
+    val shine = remember { Animatable(0f) }
+    LaunchedEffect(visible) {
+        if (visible) {
+            delay(320)
+            shine.animateTo(1f, tween(durationMillis = 720, easing = FastOutSlowInEasing))
+        } else {
+            shine.snapTo(0f)
+        }
+    }
+
+    Box(modifier = Modifier.size(112.dp), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val discRadius = size.minDimension * 0.30f * pop
+            // Estallido de rayos alternando largo/corto; se desvanecen hacia la punta.
+            val rayCount = 16
+            val reach = size.minDimension * 0.52f * rays
+            for (i in 0 until rayCount) {
+                val long = i % 2 == 0
+                rotate(degrees = i * 360f / rayCount) {
+                    val length = reach * if (long) 1f else 0.72f
+                    val half = size.minDimension * if (long) 0.050f else 0.034f
+                    val ray = Path().apply {
+                        moveTo(center.x, center.y - length)
+                        lineTo(center.x + half, center.y)
+                        lineTo(center.x - half, center.y)
+                        close()
+                    }
+                    drawPath(
+                        ray,
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, accent.copy(alpha = if (long) 0.85f else 0.55f)),
+                            startY = center.y - length,
+                            endY = center.y,
+                        ),
+                    )
+                }
+            }
+            if (discRadius <= 0f) return@Canvas
+            // Halo + disco con volumen + aro de neón (capas de §9.7).
+            drawCircle(
+                brush = Brush.radialGradient(
+                    listOf(accent.copy(alpha = 0.45f), Color.Transparent),
+                    radius = discRadius * 1.7f,
+                ),
+                radius = discRadius * 1.7f,
+            )
+            drawCircle(
+                brush = Brush.verticalGradient(
+                    listOf(lerp(LogicColors.SurfaceVariantDark, accent, 0.45f), LogicColors.SurfaceDark),
+                    startY = center.y - discRadius,
+                    endY = center.y + discRadius,
+                ),
+                radius = discRadius,
+            )
+            drawCircle(accent.copy(alpha = 0.30f), discRadius, style = Stroke(6.dp.toPx()))
+            drawCircle(accent, discRadius, style = Stroke(2.2.dp.toPx()))
+            drawCircle(Color.White.copy(alpha = 0.55f), discRadius, style = Stroke(0.9.dp.toPx()))
+
+            // Brillo de una pasada cruzando el disco.
+            val s = shine.value
+            if (s > 0f && s < 1f) {
+                val disc = Path().apply { addOval(Rect(center, discRadius)) }
+                clipPath(disc) {
+                    val band = discRadius * 0.7f
+                    val x = center.x - discRadius * 1.6f + discRadius * 3.2f * s
+                    rotate(degrees = 24f, pivot = Offset(x, center.y)) {
+                        drawRect(
+                            brush = Brush.horizontalGradient(
+                                listOf(Color.Transparent, Color.White.copy(alpha = 0.55f), Color.Transparent),
+                                startX = x - band / 2f,
+                                endX = x + band / 2f,
+                            ),
+                            topLeft = Offset(x - band / 2f, center.y - discRadius * 2f),
+                            size = Size(band, discRadius * 4f),
+                        )
+                    }
+                }
+            }
+        }
+        NeonIcon(
+            icon = KortexIcons.Trophy,
+            tint = accent,
+            size = 40.dp,
+            modifier = Modifier.graphicsLayer {
+                scaleX = pop
+                scaleY = pop
+            },
         )
     }
 }

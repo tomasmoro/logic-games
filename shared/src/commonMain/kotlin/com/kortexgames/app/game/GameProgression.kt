@@ -187,6 +187,25 @@ object GameProgressions {
             ProgressionKind.LEVELED, MetricDirection.HIGHER_IS_BETTER, "Etapa máx", MetricUnit.LEVEL,
             tracksLevelTime = true,
         ),
+        // Neon Shikaku Matrix: el nivel N es el mismo tablero para todos (semilla derivada del
+        // nivel) y solo termina al resolverlo, así que el tiempo por nivel es comparable.
+        GameIds.NEON_SHIKAKU to GameProgression(
+            ProgressionKind.LEVELED, MetricDirection.HIGHER_IS_BETTER, "Nivel máx", MetricUnit.LEVEL,
+            tracksLevelTime = true,
+        ),
+        // Neon Trees & Tents: mismo caso que Shikaku — tablero fijo por nivel (semilla derivada
+        // del nivel) que solo termina al resolverlo, así que el tiempo por nivel es comparable.
+        GameIds.NEON_TENTS to GameProgression(
+            ProgressionKind.LEVELED, MetricDirection.HIGHER_IS_BETTER, "Nivel máx", MetricUnit.LEVEL,
+            tracksLevelTime = true,
+        ),
+        // Neon Hexa Flux: el nivel N es el mismo tablero y la misma secuencia de piezas para
+        // todos (semillas derivadas del nivel) y solo se guarda al superarlo —una derrota no
+        // deja resultado—, así que el tiempo por nivel es comparable.
+        GameIds.NEON_HEXA_FLUX to GameProgression(
+            ProgressionKind.LEVELED, MetricDirection.HIGHER_IS_BETTER, "Nivel máx", MetricUnit.LEVEL,
+            tracksLevelTime = true,
+        ),
     )
 
     /** Progresión de un juego, o null si el id es null o no está registrado. */

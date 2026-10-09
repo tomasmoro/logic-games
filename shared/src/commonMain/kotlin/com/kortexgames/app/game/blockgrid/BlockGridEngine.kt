@@ -188,7 +188,7 @@ class BlockGridEngine(
             it.copy(
                 board = board,
                 hand = newHand,
-                score = it.score + piece.shape.blockCount + scoreForLines(lineCount),
+                score = it.score + scoreForPlacement(piece.shape.blockCount, lineCount),
                 linesCleared = it.linesCleared + lineCount,
             )
         }
@@ -359,7 +359,19 @@ data class FullLines(val rows: Set<Int>, val cols: Set<Int>) {
 }
 
 /**
- * Puntos por romper [lines] líneas simultáneas: 10·n² (10, 40, 90...).
+ * Multiplicador global de puntos de Bloques Neón. Escala bloques y líneas por
+ * igual para dar cifras tipo arcade sin alterar la proporción entre jugadas
+ * (el cuadrático de [scoreForLines] sigue premiando los combos).
+ */
+internal const val SCORE_MULTIPLIER = 10
+
+/** Puntos por colocar una pieza de [blockCount] bloques que rompe [lines] líneas. */
+internal fun scoreForPlacement(blockCount: Int, lines: Int): Int =
+    (blockCount + scoreForLines(lines)) * SCORE_MULTIPLIER
+
+/**
+ * Puntos base por romper [lines] líneas simultáneas: 10·n² (10, 40, 90...),
+ * antes de aplicar [SCORE_MULTIPLIER].
  * Cuadrático a propósito: premia desproporcionadamente la jugada planificada
  * de varias líneas de golpe frente a limpiarlas una a una — el "momento wow"
  * que engancha en este género.

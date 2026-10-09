@@ -42,6 +42,7 @@ import com.kortexgames.app.data.repository.SavedGameStateRepositoryImpl
 import com.kortexgames.app.data.repository.EventsRepositoryImpl
 import com.kortexgames.app.data.repository.SudokuPuzzleRepositoryImpl
 import com.kortexgames.app.data.settings.LegalConsentStore
+import com.kortexgames.app.data.settings.TutorialStore
 import com.kortexgames.app.data.settings.OnboardingGate
 import com.kortexgames.app.data.settings.SettingsRepository
 import com.kortexgames.app.data.settings.createSettingsDataStore
@@ -173,6 +174,9 @@ class AppGraph(context: PlatformContext) {
 
     /** Registro de qué versión de condiciones/privacidad aceptó el usuario. */
     val legalConsentStore = LegalConsentStore(preferences, appScope)
+
+    /** Qué tutoriales animados de juego ya vio el jugador (para abrirlos solo la primera vez). */
+    val tutorialStore = TutorialStore(preferences, appScope)
 
     // --- Repositorios local-first -------------------------------------------
     /** Progresión por juego (récord + reanudación), sincronizada con Supabase. */

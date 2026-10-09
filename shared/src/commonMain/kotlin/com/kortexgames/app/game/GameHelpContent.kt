@@ -147,25 +147,34 @@ object GameHelpContent {
     /** Hypergate (Reflejos). */
     val hypergate = GameHelp(
         title = "Hypergate",
-        summary = "Iguala la polaridad del escudo a cada proyectil antes del impacto.",
+        summary = "Iguala el color del portal al de cada cometa antes del impacto, y protégete de los meteoritos rojos.",
         accent = CategoryPalette.Reflexes,
         art = motifHelpArt(GameMotif.HYPERGATE),
         steps = listOf(
             HelpStep(
                 icon = KortexIcons.Play,
                 title = "Cambia de polaridad",
-                text = "Toca en cualquier parte para alternar el color del escudo.",
+                text = "Toca en cualquier parte para alternar el color del portal.",
             ),
             HelpStep(
                 icon = KortexIcons.Shield,
                 title = "Iguala para absorber",
-                text = "Haz que el escudo coincida con el proyectil justo antes de que llegue.",
+                text = "Haz que el portal coincida con el cometa justo antes de que llegue.",
             ),
             HelpStep(
                 icon = KortexIcons.Warning,
                 title = "No falles",
                 text = "Si los colores no coinciden en el impacto, chocarás.",
             ),
+            HelpStep(
+                icon = KortexIcons.Shield,
+                title = "Escudo contra meteoritos",
+                text = "Ningún color absorbe un meteorito rojo: mantén pulsado para activar el escudo y se deshará.",
+            ),
+        ),
+        tips = listOf(
+            "Con el escudo activo nada te afecta, pero tampoco sumas puntos: suéltalo en cuanto pase el meteorito.",
+            "El escudo aguanta 3 segundos seguidos. Si lo agotas, tarda 5 en recargarse.",
         ),
     )
 
@@ -474,6 +483,25 @@ object GameHelpContent {
                 text = "¡No toques los nodos rojos! Déjalos apagarse solos.",
             ),
             HelpStep(
+                icon = KortexIcons.Streak,
+                title = "Rápido y sin fallar",
+                text = "Tocar un nodo nada más aparecer da puntos extra. Cada 5 aciertos seguidos " +
+                    "sube el multiplicador y cada 10 desata el frenesí: puntos dobles unos segundos. " +
+                    "Un fallo o un toque al vacío lo corta todo.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Sparkle,
+                title = "Bombas",
+                text = "El nodo ámbar con púas llega con dos objetivos pegados: tócalo y revientan " +
+                    "los tres, junto con todo lo demás del lienzo (los rojos desaparecen sin castigo).",
+            ),
+            HelpStep(
+                icon = KortexIcons.Shield,
+                title = "Blindados",
+                text = "Los nodos violeta con placas necesitan dos toques, valen más y, como " +
+                    "cualquier objetivo, cuestan una vida si se te escapan.",
+            ),
+            HelpStep(
                 icon = KortexIcons.Trophy,
                 title = "Hordas sin final",
                 text = "Cada horda trae más nodos, más rápidos y con menos tiempo; " +
@@ -673,6 +701,111 @@ object GameHelpContent {
             "Tocar la misma celda dos veces la deja como estaba: no suma a tu favor.",
             "El orden de los toques no cambia el resultado final, solo importa QUÉ celdas tocaste.",
             "La primera etapa se resuelve con un solo toque: es el tutorial.",
+        ),
+    )
+
+    /** Neon Shikaku Matrix / partición en rectángulos (Visión Espacial). */
+    val shikaku = GameHelp(
+        title = "Neon Shikaku Matrix",
+        summary = "Divide el tablero en rectángulos: cada uno con un solo número, igual a su área.",
+        accent = CategoryPalette.SpatialVision,
+        art = motifHelpArt(GameMotif.SHIKAKU_RECTS),
+        steps = listOf(
+            HelpStep(
+                icon = Icons.Rounded.TouchApp,
+                title = "Arrastra para trazar",
+                text = "Toca una celda y arrastra en diagonal. Junto al dedo verás el cálculo: ancho × alto = área.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Check,
+                title = "Un número por rectángulo",
+                text = "Cada rectángulo debe contener exactamente un número y medir tantas celdas como ese número.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Pencil,
+                title = "Traza encima para corregir",
+                text = "Un rectángulo nuevo reemplaza a los que pisa. Tocar uno ya colocado lo borra.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Warning,
+                title = "Cuidado con la figura",
+                text = "Ningún rectángulo puede pisar un hueco ni salirse del tablero. Los que parpadean en rojo no cumplen la regla.",
+            ),
+        ),
+        tips = listOf(
+            "Empieza por los números primos: un 5 o un 7 solo pueden ser una tira.",
+            "Las celdas pegadas a un hueco suelen tener un único rectángulo que las alcance.",
+            "Corregir y reiniciar restan puntos: piensa antes de trazar.",
+        ),
+    )
+
+    /** Neon Trees & Tents / una tienda por árbol sin que se toquen (Pensamiento Lógico). */
+    val tents = GameHelp(
+        title = "Neon Trees & Tents",
+        summary = "Planta una tienda junto a cada árbol sin que dos tiendas se toquen.",
+        accent = CategoryPalette.Logic,
+        art = motifHelpArt(GameMotif.TENTS_FOREST),
+        steps = listOf(
+            HelpStep(
+                icon = Icons.Rounded.TouchApp,
+                title = "Toca para marcar",
+                text = "Un toque marca pasto (aquí no va tienda), otro planta la tienda y un tercero limpia la casilla. Arrastra para sembrar pasto de corrido.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Check,
+                title = "Una tienda por árbol",
+                text = "Cada árbol necesita su propia tienda pegada arriba, abajo, a la izquierda o a la derecha. Dos árboles no pueden compartir tienda: una cuerda de luz une cada tienda con su árbol, y el árbol se enciende.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Warning,
+                title = "Las tiendas no se tocan",
+                text = "Ni de lado ni en diagonal. Las que se tocan parpadean en rojo.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Pencil,
+                title = "Cuadra los números",
+                text = "El número de cada fila y columna dice cuántas tiendas lleva. Se enciende en verde al clavarlo y en rojo si te pasas.",
+            ),
+        ),
+        tips = listOf(
+            "Empieza por las filas y columnas con 0: todas sus casillas son pasto.",
+            "Una casilla sin ningún árbol al lado nunca lleva tienda.",
+            "Quitar una tienda ya plantada resta puntos; el pasto es gratis, úsalo para pensar.",
+        ),
+    )
+
+    /** Neon Hexa Flux / colocar y fusionar fichas en un tablero hexagonal (Reconocimiento de Patrones). */
+    val hexaFlux = GameHelp(
+        title = "Neon Hexa Flux",
+        summary = "Coloca piezas en el panal y junta tres fichas iguales para fusionarlas.",
+        accent = CategoryPalette.PatternRecognition,
+        art = motifHelpArt(GameMotif.HEXA_FLUX),
+        steps = listOf(
+            HelpStep(
+                icon = Icons.Rounded.TouchApp,
+                title = "Elige, gira y coloca",
+                text = "Toca una pieza para elegirla y tócala otra vez para girarla. Después toca una celda del tablero, o arrastra la pieza hasta su sitio.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Check,
+                title = "Tres iguales se fusionan",
+                text = "Tres o más fichas del mismo color en contacto se funden en una del nivel siguiente. Si esa nueva ficha toca a otras dos iguales, vuelve a fusionar: cada eslabón de la cadena vale más.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Warning,
+                title = "Rompe los obstáculos",
+                text = "Una fusión al lado rompe el hielo, desactiva las bombas y elimina las fichas corruptas. El metal no se rompe. Si una bomba llega a cero, convierte en metal las celdas vacías que la rodean.",
+            ),
+            HelpStep(
+                icon = KortexIcons.Pencil,
+                title = "Cumple el objetivo",
+                text = "Cada nivel pide una cosa: alcanzar una puntuación, limpiar todo el hielo y las corruptas, o resistir un número de turnos. Pierdes si te quedas sin jugadas o si ninguna pieza cabe.",
+            ),
+        ),
+        tips = listOf(
+            "Una ficha colocada en un portal sale por el otro extremo un nivel por encima.",
+            "Prepara dos parejas antes de cerrar la primera fusión: la cadena multiplica los puntos.",
+            "Te sobran jugadas si planificas: terminar con margen y sin reiniciar da más puntos.",
         ),
     )
 }

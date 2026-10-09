@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.inset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
@@ -63,6 +64,19 @@ import com.kortexgames.app.ui.components.ResumeState
 import com.kortexgames.app.ui.components.UPCOMING_LEVEL_TEASERS
 import kortexgames.shared.generated.resources.Res
 import kortexgames.shared.generated.resources.gameintro_levels_cleared_notice
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.unit.sp
+import com.kortexgames.app.ui.components.NeonProgressBar
+import com.kortexgames.app.ui.components.drawNeonBoardPlate
+import com.kortexgames.app.ui.components.rememberBoardClock
+import kortexgames.shared.generated.resources.gameboard_hud_level
+import kortexgames.shared.generated.resources.wordsearch_hud_words
+import kotlinx.coroutines.delay
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.sin
@@ -71,6 +85,36 @@ import org.jetbrains.compose.resources.stringResource
 
 /** Lado máximo de una celda; en rejillas anchas manda el ancho disponible. */
 private val MaxCell = 44.dp
+
+/** Marco de la placa alrededor de la rejilla de letras. */
+private val PlatePadding = 8.dp
+
+/**
+ * Colores de las palabras encontradas, por orden en la lista. Cada palabra se queda con el suyo
+ * (tubo en la rejilla + ficha en la lista), así dos palabras que se cruzan se distinguen y el
+ * jugador localiza de un vistazo en la rejilla la que acaba de tachar. Subconjunto de la paleta
+ * neón (§9.2) con tonos bien separados; el acento del juego (magenta) queda para el láser activo.
+ */
+private val WordColors = listOf(
+    LogicColors.NeonCyan,
+    LogicColors.NeonGreen,
+    LogicColors.Amber,
+    LogicColors.Violet,
+    LogicColors.Coral,
+    LogicColors.Blue,
+)
+
+/** Lo que tarda el tubo de una palabra encontrada en recorrerla de punta a punta (s). */
+private const val TUBE_SWEEP_SEC = 0.32f
+
+/** Lo que tarda el tubo en bajar de pleno brillo a reposo tras encenderse (s). */
+private const val TUBE_SETTLE_SEC = 0.9f
+
+/** Retraso del rebote entre una letra de la palabra y la siguiente (ms): la ola sigue al tubo. */
+private const val LETTER_WAVE_STEP_MS = 45L
+
+/** Retraso de la entrada en cascada entre una diagonal de la rejilla y la siguiente (ms). */
+private const val ENTRY_STEP_MS = 18L
 
 /**
  * Pantalla de "Neon Lexicon" (Sopa de Letras Neón).
@@ -246,34 +290,44 @@ fun NeonLexiconScreen(graph: AppGraph, onExit: () -> Unit) {
     }
 }
 
-/** HUD superior: nivel y progreso de palabras encontradas. */
+/**
+ * HUD superior: nivel y progreso de palabras encontradas.
+ *
+ * Mismo esqueleto que el de Crucigrama y los tableros por niveles (píldora + barra que se llena).
+ * El título del juego se quitó de aquí: ya está en la antesala y en el menú de pausa. Deja libre
+ * la esquina superior derecha, donde vive el botón de pausa (antes el contador quedaba debajo).
+ */
 @Composable
 private fun LexiconHud(level: Int, found: Int, total: Int, accent: Color) {
+    val progress by animateFloatAsState(
+        targetValue = if (total <= 0) 0f else found.toFloat() / total,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
+        label = "lexiconProgress",
+    )
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier.fillMaxWidth().padding(start = 2.dp, end = 62.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column {
+        Text(
+            text = stringResource(Res.string.gameboard_hud_level, level.toString()).uppercase(),
+            style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 1.4.sp),
+            color = accent,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .background(LogicColors.SurfaceDark.copy(alpha = 0.85f), CircleShape)
+                .border(1.5.dp, accent.copy(alpha = 0.55f), CircleShape)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
-                "Nivel $level",
+                text = stringResource(Res.string.wordsearch_hud_words, found.toString(), total.toString()),
                 style = MaterialTheme.typography.labelLarge,
-                color = accent,
+                color = LogicColors.OnDark,
                 fontWeight = FontWeight.Bold,
             )
-            Text(
-                "Sopa de Letras",
-                style = MaterialTheme.typography.titleMedium,
-                color = LogicColors.OnDark,
-                fontWeight = FontWeight.Black,
-            )
+            NeonProgressBar(progress = progress, color = accent, modifier = Modifier.fillMaxWidth())
         }
-        Text(
-            "$found/$total",
-            style = MaterialTheme.typography.headlineMedium,
-            color = LogicColors.OnDark,
-            fontWeight = FontWeight.Black,
-        )
     }
 }
 
@@ -307,14 +361,46 @@ private fun WordGridBoard(
         val density = LocalDensity.current
         // Lado de celda: cabe a lo ancho y (si la altura es finita) a lo alto,
         // sin pasar de [MaxCell] para que las rejillas pequeñas no se agiganten.
-        val byWidth = maxWidth / grid.cols
-        val byHeight = if (maxHeight.value.isFinite()) maxHeight / grid.rows else MaxCell
+        // La placa asoma [PlatePadding] alrededor de la rejilla; se descuenta antes de repartir.
+        val byWidth = (maxWidth - PlatePadding * 2) / grid.cols
+        val byHeight = if (maxHeight.value.isFinite()) (maxHeight - PlatePadding * 2) / grid.rows else MaxCell
         val cell = minOf(MaxCell, byWidth, byHeight)
         val cellPx = with(density) { cell.toPx() }
 
-        val foundWords = remember(words) { words.filter { it.found }.map { it.word } }
         val selectedCells = remember(selection) { selection?.cells?.toSet().orEmpty() }
-        val solvedCells = remember(foundWords) { foundWords.flatMap { it.cells }.toSet() }
+        // Celda → (color de su palabra, puesto de la letra dentro de ella). En un cruce gana la
+        // palabra posterior de la lista. El puesto ordena la ola de rebotes a lo largo del trazo.
+        val solvedCells = remember(words) {
+            val map = HashMap<Coordinate, Pair<Color, Int>>()
+            words.forEachIndexed { index, entry ->
+                if (!entry.found) return@forEachIndexed
+                val color = WordColors[index % WordColors.size]
+                entry.word.cells.forEachIndexed { order, coord -> map[coord] = color to order }
+            }
+            map
+        }
+
+        // Reloj del trazo de las palabras encontradas. Solo corre mientras alguna se está
+        // encendiendo: el resto de la partida la rejilla es estática y no debe redibujarse.
+        val foundAt = remember(grid) { mutableStateMapOf<String, Float>() }
+        var animating by remember { mutableStateOf(false) }
+        val clock = rememberBoardClock(running = animating)
+        val seeded = remember(grid) { booleanArrayOf(false) }
+        LaunchedEffect(words) {
+            var fresh = false
+            words.forEach { entry ->
+                if (!entry.found || entry.text in foundAt) return@forEach
+                // Las que ya venían encontradas (partida retomada) nacen asentadas, sin trazo.
+                foundAt[entry.text] = if (seeded[0]) clock.peek() else Float.NEGATIVE_INFINITY
+                fresh = fresh || seeded[0]
+            }
+            seeded[0] = true
+            if (fresh) {
+                animating = true
+                delay(((TUBE_SWEEP_SEC + TUBE_SETTLE_SEC) * 1000).toLong() + 100L)
+                animating = false
+            }
+        }
 
         // Última celda emitida, para deduplicar UpdateDrag (ver KDoc).
         var lastCell by remember { mutableStateOf<Coordinate?>(null) }
@@ -322,6 +408,13 @@ private fun WordGridBoard(
         Box(
             modifier = Modifier
                 .size(cell * grid.cols, cell * grid.rows)
+                // Placa compartida del kit de tableros, asomando por fuera de la rejilla. Sustituye
+                // al recuadro gris por celda: una sola superficie limpia donde lo único que
+                // brilla son los tubos de las palabras.
+                .drawBehind {
+                    val pad = PlatePadding.toPx()
+                    inset(-pad, -pad, -pad, -pad) { drawNeonBoardPlate(accent = accent, corner = 18.dp) }
+                }
                 .pointerInput(grid) {
                     detectDragGestures(
                         onDragStart = { offset ->
@@ -354,14 +447,21 @@ private fun WordGridBoard(
             // translucidez del fondo de cada celda) sin tapar nunca el glifo: la
             // letra manda siempre en legibilidad, el neón es el "ambiente" detrás.
             Canvas(modifier = Modifier.matchParentSize()) {
-                // Cápsulas de palabras ya encontradas: tenues y permanentes.
-                foundWords.forEach { word ->
-                    drawCapsule(
-                        from = cellCenter(word.start, cellPx),
-                        to = cellCenter(word.end, cellPx),
-                        thickness = cellPx * 0.72f,
-                        accent = accent,
-                        intensity = 0.42f,
+                // Tubos de las palabras ya encontradas: cada una en su color. El tubo recorre la
+                // palabra de la primera letra a la última al encontrarla y luego baja a reposo.
+                val now = if (animating) clock.seconds else Float.MAX_VALUE
+                words.forEachIndexed { index, entry ->
+                    val stamp = foundAt[entry.text] ?: return@forEachIndexed
+                    val age = now - stamp
+                    val sweep = (age / TUBE_SWEEP_SEC).coerceIn(0f, 1f)
+                    val from = cellCenter(entry.word.start, cellPx)
+                    val end = cellCenter(entry.word.end, cellPx)
+                    drawWordTube(
+                        from = from,
+                        to = Offset(from.x + (end.x - from.x) * sweep, from.y + (end.y - from.y) * sweep),
+                        thickness = cellPx * 0.74f,
+                        color = WordColors[index % WordColors.size],
+                        glow = 1f - ((age - TUBE_SWEEP_SEC) / TUBE_SETTLE_SEC).coerceIn(0f, 1f),
                     )
                 }
                 // Láser activo: la cápsula brillante bajo el dedo.
@@ -385,9 +485,9 @@ private fun WordGridBoard(
                             LetterCellView(
                                 letter = grid.letters[r][c],
                                 size = cell,
-                                solved = coord in solvedCells,
+                                solved = solvedCells[coord],
                                 selected = coord in selectedCells,
-                                accent = accent,
+                                entryDelayMs = (r + c) * ENTRY_STEP_MS,
                             )
                         }
                     }
@@ -399,7 +499,12 @@ private fun WordGridBoard(
             // palabra recién encontrada a lo largo de su trazo.
             words.forEach { entry ->
                 key(entry.text) {
-                    WordSparkBurst(word = entry.word, found = entry.found, cellPx = cellPx, accent = accent)
+                    WordSparkBurst(
+                        word = entry.word,
+                        found = entry.found,
+                        cellPx = cellPx,
+                        accent = WordColors[words.indexOf(entry).coerceAtLeast(0) % WordColors.size],
+                    )
                 }
             }
         }
@@ -407,78 +512,129 @@ private fun WordGridBoard(
 }
 
 /**
- * Celda-letra. Al resolverse su palabra "salta" con un `spring` (escala 1.3→1) y
- * se enciende en el acento — el rebote táctil pedido para el acierto (§9.4).
+ * Celda-letra: solo el glifo, sin recuadro propio (el fondo es la placa del tablero).
+ *
+ * Tres animaciones, todas con resorte (§9.4):
+ *  - **entrada**: aparece en cascada diagonal al montarse el nivel;
+ *  - **selección**: crece un poco mientras el láser pasa por ella, así el trazo se siente bajo
+ *    el dedo;
+ *  - **acierto**: salta al resolverse su palabra, con un retraso según su puesto en ella — la ola
+ *    recorre la palabra detrás del tubo — y queda encendida con un halo del color de la palabra.
+ *
+ * @param solved color de la palabra que la resolvió y puesto de la letra dentro de ella, o `null`.
+ * @param entryDelayMs retraso de su entrada en la cascada inicial.
  */
 @Composable
 private fun LetterCellView(
     letter: Char,
     size: androidx.compose.ui.unit.Dp,
-    solved: Boolean,
+    solved: Pair<Color, Int>?,
     selected: Boolean,
-    accent: Color,
+    entryDelayMs: Long,
 ) {
-    // Rebote one-shot cuando la celda pasa a resuelta.
-    val pop = remember { Animatable(1f) }
-    LaunchedEffect(solved) {
-        if (solved) {
-            pop.snapTo(1.3f)
-            pop.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
-        }
+    val entry = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        delay(entryDelayMs)
+        entry.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow))
     }
 
-    val background = when {
-        solved -> accent.copy(alpha = 0.14f)
-        selected -> accent.copy(alpha = 0.22f)
-        else -> LogicColors.SurfaceVariantDark.copy(alpha = 0.35f)
+    // Rebote one-shot cuando la celda pasa a resuelta (o cambia de palabra en un cruce).
+    val pop = remember { Animatable(1f) }
+    // Sin animar en la primera composición: una partida retomada no debe saltar entera.
+    val first = remember { booleanArrayOf(true) }
+    LaunchedEffect(solved?.first) {
+        val isFirst = first[0]
+        first[0] = false
+        if (solved == null || isFirst) return@LaunchedEffect
+        delay(solved.second * LETTER_WAVE_STEP_MS)
+        pop.snapTo(1.45f)
+        pop.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
     }
-    Box(
-        modifier = Modifier.size(size).padding(2.dp).clip(RoundedCornerShape(10.dp)).background(background),
-        contentAlignment = Alignment.Center,
-    ) {
+    val lift by animateFloatAsState(
+        targetValue = if (selected) 1.22f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        label = "letterLift",
+    )
+
+    Box(modifier = Modifier.size(size), contentAlignment = Alignment.Center) {
         Text(
             text = letter.toString(),
-            style = MaterialTheme.typography.titleMedium,
-            // Letras no seleccionadas atenuadas (OnDarkMuted, §9.2). Seleccionadas
-            // Y ya resueltas en blanco puro (no OnDark ni el acento): sobre el tubo
-            // de neón brillante que asoma debajo, el blanco puro es el único tono
-            // con contraste fiable; el acento sigue vivo en el fondo de la celda.
-            color = when {
-                solved || selected -> Color.White
-                else -> LogicColors.OnDarkMuted
-            },
-            fontWeight = if (solved || selected) FontWeight.Black else FontWeight.SemiBold,
+            style = MaterialTheme.typography.titleMedium.copy(
+                // Halo del color de la palabra: la letra resuelta se lee como rótulo encendido.
+                shadow = solved?.let { Shadow(color = it.first.copy(alpha = 0.9f), offset = Offset.Zero, blurRadius = 12f) },
+            ),
+            // Seleccionadas y resueltas en blanco puro: dentro del tubo es el único tono con
+            // contraste fiable. El resto, en el texto normal del tema — con la placa lisa de
+            // fondo ya no hace falta atenuarlas para que el tablero respire.
+            color = if (solved != null || selected) Color.White else LogicColors.OnDark.copy(alpha = 0.78f),
+            fontWeight = if (solved != null || selected) FontWeight.Black else FontWeight.SemiBold,
             textAlign = TextAlign.Center,
             modifier = Modifier.graphicsLayer {
-                scaleX = pop.value
-                scaleY = pop.value
+                val scale = entry.value * pop.value * lift
+                scaleX = scale
+                scaleY = scale
+                alpha = entry.value.coerceIn(0f, 1f)
             },
         )
     }
 }
 
-/** Lista de palabras a encontrar; las halladas se tachan y encienden en el acento. */
+/**
+ * Lista de palabras a encontrar, como fichas. La hallada toma **el color de su tubo** en la
+ * rejilla (borde, texto y un baño de fondo), se tacha y entra con un rebote: lista y tablero
+ * hablan el mismo idioma y el jugador ve cuál acaba de caer.
+ */
 @Composable
 private fun WordList(words: List<WordEntry>, accent: Color) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         // Se reparte en filas de 3 para no depender de FlowRow (experimental).
-        words.chunked(3).forEach { row ->
+        words.chunked(3).forEachIndexed { rowIndex, row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
             ) {
-                row.forEach { entry ->
-                    Text(
-                        text = entry.text,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = if (entry.found) accent else LogicColors.OnDarkMuted,
-                        fontWeight = if (entry.found) FontWeight.Black else FontWeight.SemiBold,
-                        textDecoration = if (entry.found) TextDecoration.LineThrough else null,
-                    )
+                row.forEachIndexed { i, entry ->
+                    key(entry.text) {
+                        WordChip(entry = entry, color = WordColors[(rowIndex * 3 + i) % WordColors.size])
+                    }
                 }
             }
         }
     }
+}
+
+/** Ficha de una palabra de la lista; ver [WordList]. */
+@Composable
+private fun WordChip(entry: WordEntry, color: Color) {
+    val lit by animateFloatAsState(
+        targetValue = if (entry.found) 1f else 0f,
+        animationSpec = tween(220),
+        label = "wordChipLit",
+    )
+    val pop = remember { Animatable(1f) }
+    val first = remember { booleanArrayOf(true) }
+    LaunchedEffect(entry.found) {
+        val isFirst = first[0]
+        first[0] = false
+        if (!entry.found || isFirst) return@LaunchedEffect
+        pop.snapTo(1.28f)
+        pop.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+    }
+    Text(
+        text = entry.text,
+        style = MaterialTheme.typography.labelLarge,
+        color = lerp(LogicColors.OnDark.copy(alpha = 0.85f), color, lit),
+        fontWeight = if (entry.found) FontWeight.Black else FontWeight.SemiBold,
+        textDecoration = if (entry.found) TextDecoration.LineThrough else null,
+        modifier = Modifier
+            .graphicsLayer {
+                scaleX = pop.value
+                scaleY = pop.value
+            }
+            .background(lerp(LogicColors.SurfaceDark, color, 0.16f * lit).copy(alpha = 0.85f), CircleShape)
+            .border(1.dp, lerp(LogicColors.SurfaceVariantDark, color, 0.75f * lit), CircleShape)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    )
 }
 
 /** Centro en píxeles de la celda [coord] (para anclar los extremos del láser). */
@@ -621,6 +777,44 @@ private fun DrawScope.drawCapsule(
         from,
         to,
         strokeWidth = thickness * 0.22f,
+        cap = cap,
+    )
+}
+
+/**
+ * **Tubo de neón hueco** de una palabra encontrada: el contorno de la cápsula encendido en su
+ * color y el interior de cristal oscuro apenas teñido, para que las letras se lean dentro.
+ *
+ * Antes la palabra hallada quedaba como una cápsula rellena a media opacidad, igual que el láser
+ * pero más apagada: con varias cruzándose el tablero se volvía una mancha del mismo magenta. Un
+ * tubo por palabra, hueco y de su color, mantiene limpia la rejilla y deja al láser activo
+ * ([drawCapsule], macizo) como único elemento "lleno".
+ *
+ * El contorno sale de dos trazos con cabos redondos: uno del color a todo el grosor y encima
+ * otro algo más fino con el cristal, que deja visible solo el borde. Mismas capas que el resto
+ * del neón de la app (halo ancho → intermedio → trazo nítido → núcleo blanco, §9.7).
+ *
+ * @param glow 0..1: brillo extra de recién encendido; en 0 queda en su reposo.
+ */
+private fun DrawScope.drawWordTube(from: Offset, to: Offset, thickness: Float, color: Color, glow: Float) {
+    val cap = StrokeCap.Round
+    val stroke = 2.2.dp.toPx()
+    val boost = glow.coerceIn(0f, 1f)
+    drawLine(color.copy(alpha = 0.10f + 0.14f * boost), from, to, strokeWidth = thickness + stroke * 5f, cap = cap)
+    drawLine(color.copy(alpha = 0.26f + 0.22f * boost), from, to, strokeWidth = thickness + stroke * 2f, cap = cap)
+    drawLine(color, from, to, strokeWidth = thickness, cap = cap)
+    drawLine(
+        lerp(color, Color.White, 0.55f + 0.35f * boost).copy(alpha = 0.55f + 0.4f * boost),
+        from,
+        to,
+        strokeWidth = thickness - stroke * 0.6f,
+        cap = cap,
+    )
+    drawLine(
+        lerp(LogicColors.BackgroundDark, color, 0.20f + 0.25f * boost),
+        from,
+        to,
+        strokeWidth = (thickness - stroke * 2f).coerceAtLeast(0f),
         cap = cap,
     )
 }

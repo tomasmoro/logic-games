@@ -1,5 +1,13 @@
 package com.kortexgames.app.game.legion
 
+import androidx.compose.ui.draw.clipToBounds
+import com.kortexgames.app.ui.components.modalCard
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -205,12 +213,45 @@ fun LegionScreen(graph: AppGraph, onExit: () -> Unit) {
     }
 
     // Bucle de juego: la simulación se sincroniza al reloj de render (withFrameNanos → Tick).
+    // De paso alimenta el reloj de animación de la pantalla (rótulos flotantes) y el avance de la
+    // pista. Los dos se leen solo dentro del `Canvas`: avanzarlos redibuja sin recomponer.
+    var timeSec by remember { mutableFloatStateOf(0f) }
+    var trackScroll by remember { mutableFloatStateOf(0f) }
+    // Estado más reciente para el bucle de frames (que se lanza una sola vez y, sin esto, se
+    // quedaría con el de la primera composición).
+    val latestState by rememberUpdatedState(state)
     LaunchedEffect(Unit) {
+        var lastNanos = 0L
         while (true) {
             androidx.compose.runtime.withFrameNanos { frameNanos ->
+                // Tope por frame: al volver de segundo plano no "salta" la pista ni los rótulos.
+                val dt = if (lastNanos == 0L) 0f else ((frameNanos - lastNanos) / 1_000_000_000f).coerceAtMost(0.05f)
+                lastNanos = frameNanos
+                val current = latestState
+                if (current.status == GameStatus.RUNNING) {
+                    timeSec += dt
+                    // La pista corre a la velocidad REAL de la ronda y solo durante la carrera:
+                    // así baja a la par que las puertas y se detiene cuando la legión se detiene.
+                    if (current.game.phase == LegionPhase.RACING) {
+                        trackScroll += dt * LegionBalance.speedForRound(current.game.round)
+                    }
+                }
                 vm.onIntent(LegionIntent.Tick(frameNanos))
             }
         }
+    }
+
+    // Rótulos flotantes de tropas ("+14" / "−9"): se anota cada cambio de tropas ocurrido EN
+    // CARRERA (puertas y láseres). Los del combate, el examen y el duelo ya tienen su propio
+    // efecto (explosiones nave a nave) y un rótulo encima los duplicaría.
+    val troopDeltas = remember { mutableStateListOf<TroopDelta>() }
+    var previousTroops by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(game.troops, game.round) {
+        val before = previousTroops
+        previousTroops = game.troops
+        if (before == null || before == game.troops || game.phase != LegionPhase.RACING) return@LaunchedEffect
+        troopDeltas.removeAll { timeSec - it.born > TROOP_DELTA_LIFE_SEC }
+        troopDeltas += TroopDelta(amount = game.troops - before, laneX = game.playerX, born = timeSec)
     }
 
     // Latido ambiental de baja amplitud: el ÚNICO bucle continuo de la pantalla (§9.4, regla 5).
@@ -264,11 +305,12 @@ fun LegionScreen(graph: AppGraph, onExit: () -> Unit) {
     // desfase entre vista y lógica que precisamente se quería evitar.
 
     val measurer = rememberTextMeasurer()
-    val gateTextStyle = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold)
-    val countTextStyle = MaterialTheme.typography.labelLarge.copy(
-        fontWeight = FontWeight.Bold,
+    val gateTextStyle = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black)
+    val countTextStyle = MaterialTheme.typography.titleMedium.copy(
+        fontWeight = FontWeight.ExtraBold,
         color = LogicColors.OnDark,
     )
+    val deltaTextStyle = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black)
 
     Box(
         modifier = Modifier
@@ -283,6 +325,7 @@ fun LegionScreen(graph: AppGraph, onExit: () -> Unit) {
                 isBoss = game.isBossRound,
                 rowsCleared = game.rowsCleared,
                 rowsTotal = game.rowsTotal,
+                playerTroops = game.troops,
                 enemyTroops = game.enemyTroops,
             )
 
@@ -325,8 +368,10 @@ fun LegionScreen(graph: AppGraph, onExit: () -> Unit) {
                         }
                     },
             ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    drawLaneDividers(lanes = game.lanes, glowPulse = glowPulse)
+                // Recortado a la pista: las puertas nacen por encima del borde superior y, sin
+                // recorte, se pintaban sobre el HUD y la barra de estado mientras entraban.
+                Canvas(modifier = Modifier.fillMaxSize().clipToBounds()) {
+                    drawTrack(lanes = game.lanes, scroll = trackScroll, glowPulse = glowPulse)
 
                     // Las puertas "desaparecen" durante el examen: el barrido las oculta en el
                     // RENDER; el dominio las conserva congeladas (ver cabecera de LegionEngine).
@@ -479,6 +524,7 @@ fun LegionScreen(graph: AppGraph, onExit: () -> Unit) {
                     for (flash in game.flashes) {
                         drawGateFlash(flash, game.lanes)
                     }
+                    drawTroopDeltas(troopDeltas, timeSec, game.lanes, measurer, deltaTextStyle)
                 }
 
                 // Naves: el mismo sprite de Starport (`starport_vip_ship`), reutilizado en vez
@@ -649,8 +695,8 @@ private fun LegionMathTutorialDialog(onDismiss: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(28.dp))
-                .background(LogicColors.SurfaceDark)
+                // Misma superficie que el menú de pausa y el cartel de fin de partida.
+                .modalCard(CategoryPalette.MentalSpeed)
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -703,11 +749,14 @@ private fun MathTutorialTip(text: String) {
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * HUD superior: ronda (con distintivo de Jefe), progreso de puertas y tamaño del enemigo.
+ * HUD superior, en dos franjas:
+ *  1. **Ronda** (con distintivo de Jefe) y el **progreso de puertas** como barra por tramos — un
+ *     tramo por fila de puertas de la ronda, que se va encendiendo al cruzarlas;
+ *  2. la **barra de fuerzas** ([LegionVersusBar]): la legión contra el enemigo de la ronda.
  *
  * El enemigo se muestra DURANTE la carrera a propósito: saber cuánto hay que superar es lo que
  * convierte "cruza puertas" en "elige bien las puertas". Deja libre la esquina superior derecha
- * (el botón de pausa vive ahí) mediante el padding final.
+ * (el botón de pausa vive ahí) mediante el padding final de la primera franja.
  */
 @Composable
 private fun LegionHud(
@@ -715,59 +764,79 @@ private fun LegionHud(
     isBoss: Boolean,
     rowsCleared: Int,
     rowsTotal: Int,
+    playerTroops: Int,
     enemyTroops: Int,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(start = 16.dp, top = 12.dp, end = 72.dp, bottom = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        HudPill(
-            text = stringResource(Res.string.legion_hud_round, round.toString()),
-            accent = CategoryPalette.MentalSpeed,
-        )
-        if (isBoss) {
+    Column(modifier = modifier.fillMaxWidth().padding(top = 12.dp, bottom = 6.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 72.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             HudPill(
-                text = stringResource(Res.string.legion_hud_boss),
-                accent = LogicColors.Error,
+                text = stringResource(Res.string.legion_hud_round, round.toString()),
+                accent = CategoryPalette.MentalSpeed,
             )
+            if (isBoss) {
+                HudPill(
+                    text = stringResource(Res.string.legion_hud_boss),
+                    accent = LogicColors.Error,
+                )
+            }
+            // Progreso de puertas: tramos en vez de "3/5 puertas". Se lee de reojo cuánto
+            // falta para el choque, que es lo único que ese dato tiene que decir.
+            val gatesLabel = stringResource(Res.string.legion_hud_gates, rowsCleared.toString(), rowsTotal.toString())
+            Canvas(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(8.dp)
+                    .semantics { contentDescription = gatesLabel },
+            ) {
+                val segments = rowsTotal.coerceAtLeast(1)
+                val gap = 3.dp.toPx()
+                val segmentWidth = (size.width - gap * (segments - 1)) / segments
+                val corner = CornerRadius(size.height / 2f)
+                for (i in 0 until segments) {
+                    val done = i < rowsCleared
+                    drawRoundRect(
+                        color = if (done) CategoryPalette.MentalSpeed else LogicColors.SurfaceVariantDark,
+                        topLeft = Offset(i * (segmentWidth + gap), 0f),
+                        size = Size(segmentWidth, size.height),
+                        cornerRadius = corner,
+                    )
+                }
+            }
         }
-        HudPill(
-            text = stringResource(
-                Res.string.legion_hud_gates,
-                rowsCleared.toString(),
-                rowsTotal.toString(),
-            ),
-            accent = LogicColors.OnDarkMuted,
-        )
-        Spacer(modifier = Modifier.weight(1f))
         // En las rondas de Jefe no hay tropas enemigas que superar (el duelo se gana por vida),
-        // así que el contador se calla en vez de enseñar un número que no significa nada.
+        // así que la barra de fuerzas se calla en vez de comparar con un número que no significa nada.
         if (!isBoss) {
-            HudPill(
-                text = stringResource(Res.string.legion_hud_enemy, enemyTroops.toString()),
-                accent = LogicColors.Magenta,
+            LegionVersusBar(
+                player = playerTroops,
+                enemy = enemyTroops,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp),
             )
         }
     }
 }
 
-/** Píldora de dato del HUD: fondo de superficie + texto teñido con su acento. */
+/** Píldora de dato del HUD: fondo de superficie con borde y texto teñidos con su acento. */
 @Composable
 private fun HudPill(text: String, accent: Color, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(50))
             .background(LogicColors.SurfaceDark.copy(alpha = 0.85f))
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .border(1.dp, accent.copy(alpha = 0.50f), RoundedCornerShape(50))
+            .padding(horizontal = 14.dp, vertical = 7.dp),
     ) {
         Text(
-            text = text,
-            style = MaterialTheme.typography.labelLarge,
+            text = text.uppercase(),
+            style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 1.2.sp),
             color = accent,
+            fontWeight = FontWeight.Bold,
         )
     }
 }
@@ -791,9 +860,8 @@ private fun LegionQuizPanel(
 ) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(24.dp))
-            .background(LogicColors.SurfaceDark.copy(alpha = 0.94f))
-            .border(1.5.dp, LogicColors.Magenta.copy(alpha = 0.55f), RoundedCornerShape(24.dp))
+            // Misma superficie que el resto de tarjetas modales de juego, en el magenta de peligro.
+            .modalCard(LogicColors.Magenta)
             .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -818,20 +886,22 @@ private fun LegionQuizPanel(
         // Barra de tiempo: fracción restante sobre el límite; roja en cuanto drena.
         val fraction = (sweep.timeRemainingSec / LegionBalance.QUIZ_TIME_LIMIT_SEC).coerceIn(0f, 1f)
         val barColor = if (sweep.inGrace) LogicColors.NeonCyan else LogicColors.Error
-        Box(
+        Canvas(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(8.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(LogicColors.SurfaceVariantDark),
+                .height(10.dp),
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(fraction)
-                    .height(8.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(barColor),
+            val corner = CornerRadius(size.height / 2f)
+            drawRoundRect(LogicColors.SurfaceVariantDark, cornerRadius = corner)
+            val filled = Size(size.width * fraction, size.height)
+            // Halo bajo el tramo que queda: el tiempo "brilla" mientras lo hay.
+            drawRoundRect(
+                color = barColor.copy(alpha = 0.32f),
+                topLeft = Offset(0f, -3.dp.toPx()),
+                size = Size(filled.width, size.height + 6.dp.toPx()),
+                cornerRadius = CornerRadius(size.height),
             )
+            drawRoundRect(barColor, size = filled, cornerRadius = corner)
         }
 
         // Opciones en filas de máximo 3: con 5 opciones, una única fila dejaría botones por
@@ -858,17 +928,24 @@ private fun LegionQuizPanel(
 private fun QuizOptionButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .height(56.dp)
+            .height(58.dp)
             .clip(RoundedCornerShape(20.dp))
-            .background(LogicColors.SurfaceVariantDark)
-            .border(1.5.dp, LogicColors.NeonCyan.copy(alpha = 0.6f), RoundedCornerShape(20.dp))
+            // Tecla con relieve (más clara arriba) y borde de neón: se lee como botón que se
+            // pulsa, que es lo que hace falta con la cuenta atrás encima.
+            .background(
+                Brush.verticalGradient(
+                    listOf(lerp(LogicColors.SurfaceVariantDark, LogicColors.NeonCyan, 0.22f), LogicColors.SurfaceVariantDark),
+                ),
+            )
+            .border(1.5.dp, LogicColors.NeonCyan.copy(alpha = 0.85f), RoundedCornerShape(20.dp))
             .bounceClick { onClick() },
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.headlineMedium,
             color = LogicColors.OnDark,
+            fontWeight = FontWeight.ExtraBold,
         )
     }
 }
@@ -887,8 +964,8 @@ private const val SWARM_LOG_CAP = 5_000f
 private const val GOLDEN_ANGLE = 2.39996f
 
 /** Largo (proa→popa) y ancho de la nave de una tropa, en Dp. */
-private const val SHIP_UNIT_LENGTH_DP = 9
-private const val SHIP_UNIT_WIDTH_DP = 5.5f
+private const val SHIP_UNIT_LENGTH_DP = 13
+private const val SHIP_UNIT_WIDTH_DP = 9f
 
 /** Amplitud de la respiración radial del enjambre, como fracción de su radio. */
 private const val SWARM_BREATH = 0.05f
@@ -935,7 +1012,7 @@ private const val BOSS_DRIFT_AMPLITUDE = 0.24f
 private const val CLASH_SHOT_LEAD = 0.16f
 
 /** Radio máximo del anillo de una explosión, en Dp. */
-private const val CLASH_POP_RADIUS_DP = 12
+private const val CLASH_POP_RADIUS_DP = 16
 
 /** Largo del trazo de un disparo neón, en Dp. */
 private const val CLASH_BOLT_LEN_DP = 14
@@ -1022,26 +1099,6 @@ private const val VERTICAL_SHIP_SCALE = 1.4f
 /** Y su rayo, un 50 % más grueso, por el mismo motivo: debe leerse como el peligro dominante. */
 private const val VERTICAL_LASER_SCALE = 1.5f
 
-/** Divisores de carril: líneas verticales tenues que insinúan la pista sin competir con ella. */
-private fun DrawScope.drawLaneDividers(lanes: Int, glowPulse: Float) {
-    val laneWidth = size.width / lanes
-    for (i in 1 until lanes) {
-        val x = i * laneWidth
-        drawLine(
-            brush = Brush.verticalGradient(
-                colors = listOf(
-                    Color.Transparent,
-                    LogicColors.NeonCyan.copy(alpha = 0.16f * glowPulse),
-                    Color.Transparent,
-                ),
-            ),
-            start = Offset(x, 0f),
-            end = Offset(x, size.height),
-            strokeWidth = 1.5.dp.toPx(),
-        )
-    }
-}
-
 /**
  * Color de TODAS las puertas: uno solo, el acento de la categoría.
  *
@@ -1058,9 +1115,15 @@ private fun DrawScope.drawLaneDividers(lanes: Int, glowPulse: Float) {
 private val GATE_COLOR: Color = CategoryPalette.MentalSpeed
 
 /**
- * Una fila de puertas: panel translúcido + tubo neón por carril ([drawNeonTile], §9.7 — las
- * puertas SÍ son tiles, así que se reutiliza el componente compartido en vez de dibujar bordes
- * ad-hoc) con el rótulo de la operación centrado.
+ * Una fila de puertas: por carril, un **portal** de neón con la operación en grande.
+ *
+ * Cada portal es un tubo de neón ([drawNeonTile], §9.7 — las puertas SÍ son tiles, así que se
+ * reutiliza el componente compartido en vez de dibujar bordes ad-hoc) relleno de un velo de
+ * energía, con la luz que proyecta sobre la pista por delante. Antes eran píldoras pequeñas con
+ * el rótulo del mismo color que el borde: en un juego de leer cuentas a contrarreloj, la cifra
+ * tiene que ser lo más legible de la pantalla — por eso ahora va en blanco, grande y con peso.
+ *
+ * Todas del mismo color: ver [GATE_COLOR].
  */
 private fun DrawScope.drawGateRow(
     row: GateRow,
@@ -1070,30 +1133,56 @@ private fun DrawScope.drawGateRow(
     textStyle: TextStyle,
 ) {
     val yPx = row.y * size.height
-    val gateHeight = 58.dp.toPx()
+    val gateHeight = 74.dp.toPx()
     // No dibujar filas completamente fuera de pantalla (nacen en y < 0).
-    if (yPx + gateHeight < 0f || yPx - gateHeight > size.height) return
+    if (yPx + gateHeight * 1.5f < 0f || yPx - gateHeight > size.height) return
 
     val laneWidth = size.width / lanes
     for (gate in row.gates) {
         // Mismo color para todas: la puerta no debe delatar si suma o resta (ver [GATE_COLOR]).
         val color = GATE_COLOR
-        val tileWidth = laneWidth * 0.88f
+        val tileWidth = laneWidth * 0.92f
         val topLeft = Offset(
             x = gate.lane.index * laneWidth + (laneWidth - tileWidth) / 2f,
             y = yPx - gateHeight / 2f,
         )
+        val inset = 7.dp.toPx()
+
+        // Luz que el portal proyecta sobre la pista, por delante (hacia el jugador).
+        drawRect(
+            brush = Brush.verticalGradient(
+                listOf(color.copy(alpha = 0.16f * glowPulse), Color.Transparent),
+                startY = topLeft.y + gateHeight - inset,
+                endY = topLeft.y + gateHeight + 46.dp.toPx(),
+            ),
+            topLeft = Offset(topLeft.x + inset, topLeft.y + gateHeight - inset),
+            size = Size(tileWidth - inset * 2f, 46.dp.toPx() + inset),
+        )
+        // Velo de energía dentro del marco: más denso arriba, como una cortina de luz.
+        drawRoundRect(
+            brush = Brush.verticalGradient(
+                listOf(color.copy(alpha = 0.34f), color.copy(alpha = 0.10f)),
+                startY = topLeft.y,
+                endY = topLeft.y + gateHeight,
+            ),
+            topLeft = Offset(topLeft.x + inset, topLeft.y + inset),
+            size = Size(tileWidth - inset * 2f, gateHeight - inset * 2f),
+            cornerRadius = CornerRadius(14.dp.toPx()),
+        )
         drawNeonTile(
             baseColor = color,
-            activeAmt = 0.55f * glowPulse,
-            cornerRadius = 16.dp,
+            activeAmt = 0.75f * glowPulse,
+            cornerRadius = 18.dp,
             sparks = false,
             baseMargin = 4.dp,
             rectTopLeft = topLeft,
             rectSize = Size(tileWidth, gateHeight),
         )
 
-        val layout = measurer.measure(AnnotatedString(gate.operation.label), textStyle.copy(color = color))
+        val layout = measurer.measure(
+            AnnotatedString(gate.operation.label),
+            textStyle.copy(color = LogicColors.OnDark),
+        )
         drawText(
             textLayoutResult = layout,
             topLeft = Offset(
@@ -1147,6 +1236,21 @@ private fun DrawScope.drawVerticalLaser(
         ),
         radius = haloRadius,
         center = Offset(x, shipY),
+    )
+
+    // El carril entero se tiñe de rojo según carga el disparo: el aviso se lee con la visión
+    // periférica, sin tener que mirar la línea fina del centro del carril.
+    drawRect(
+        brush = Brush.verticalGradient(
+            listOf(
+                Color.Transparent,
+                LogicColors.Error.copy(alpha = if (laser.firing) 0.30f else (0.05f + 0.16f * laser.chargeProgress) * glowPulse),
+            ),
+            startY = shipY,
+            endY = beamEnd.y,
+        ),
+        topLeft = Offset(laser.lane.index * laneWidth, shipY),
+        size = Size(laneWidth, beamEnd.y - shipY),
     )
 
     if (laser.firing) {
@@ -1252,33 +1356,54 @@ private fun DrawScope.drawSwarm(
         center = center,
     )
 
+    // Perímetro de la formación: un aro fino que la recoge como unidad.
+    drawCircle(color = color.copy(alpha = 0.20f), radius = radius * 1.22f, center = center, style = Stroke(1.dp.toPx()))
+
     val shipLength = SHIP_UNIT_LENGTH_DP.dp.toPx()
     val halfWidth = SHIP_UNIT_WIDTH_DP.dp.toPx() * 0.5f
     val swarm = Path()
+    val trails = Path()
     for (i in 0 until aliveDots) {
         val pos = swarmShipOffset(center, i, layoutDots, radius, phase)
-        // Proa fija hacia [facing] (−1 arriba, +1 abajo): el triángulo no rota nunca.
+        // Proa fija hacia [facing] (−1 arriba, +1 abajo): la nave no rota nunca. Es un "delta"
+        // de cuatro puntos —proa, dos alas y una muesca en popa— en vez de un triángulo liso:
+        // a este tamaño es lo que la hace leerse como nave y no como flecha.
         val tipY = pos.y + facing * shipLength * 0.6f
         val backY = pos.y - facing * shipLength * 0.4f
+        val notchY = pos.y - facing * shipLength * 0.15f
         swarm.moveTo(pos.x, tipY)
         swarm.lineTo(pos.x + halfWidth, backY)
+        swarm.lineTo(pos.x, notchY)
         swarm.lineTo(pos.x - halfWidth, backY)
         swarm.close()
+        // Estela del motor: un trazo corto por detrás que parpadea con su propia fase. El
+        // coeficiente de [phase] es entero (3) para que el bucle cierre sin salto (ver KDoc de
+        // [swarmShipOffset]).
+        val flame = shipLength * (0.45f + 0.25f * sin(3f * phase + i * 1.3f))
+        trails.moveTo(pos.x, notchY)
+        trails.lineTo(pos.x, notchY - facing * flame)
     }
-    // Halo de contorno + cuerpo relleno: el mínimo para que el triángulo "brille" como neón sin
-    // pagar las cuatro capas de [drawNeonBeam] por cada una de las 180 naves.
-    drawPath(swarm, color = color.copy(alpha = 0.30f), style = Stroke(width = 3.dp.toPx()))
+    // Estelas → halo de contorno → cuerpo → filo claro: cuatro `drawPath` para TODO el enjambre,
+    // coste constante por frame sin pagar las capas de [drawNeonBeam] por cada una de las naves.
+    drawPath(trails, color = color.copy(alpha = 0.55f), style = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round))
+    drawPath(swarm, color = color.copy(alpha = 0.32f), style = Stroke(width = 4.dp.toPx()))
     drawPath(swarm, color = color)
+    drawPath(swarm, color = lerp(color, Color.White, 0.55f), style = Stroke(width = 0.9.dp.toPx()))
 
-    // La cifra exacta del ejército: el enjambre comunica la magnitud, el número la precisión.
+    // La cifra exacta del ejército, en una píldora con el borde de su bando: el enjambre comunica
+    // la magnitud, el número la precisión — y sobre la pista en movimiento necesita su fondo.
     val layout = measurer.measure(AnnotatedString(troops.toString()), countStyle)
-    drawText(
-        textLayoutResult = layout,
-        topLeft = Offset(
-            x = center.x - layout.size.width / 2f,
-            y = center.y - radius * 1.6f - layout.size.height,
-        ),
+    val padX = 11.dp.toPx()
+    val padY = 4.dp.toPx()
+    val pillSize = Size(layout.size.width + padX * 2f, layout.size.height + padY * 2f)
+    val pillTopLeft = Offset(
+        x = center.x - pillSize.width / 2f,
+        y = center.y - radius * 1.35f - pillSize.height - 6.dp.toPx(),
     )
+    val pillCorner = CornerRadius(pillSize.height / 2f)
+    drawRoundRect(LogicColors.SurfaceDark.copy(alpha = 0.90f), pillTopLeft, pillSize, pillCorner)
+    drawRoundRect(color.copy(alpha = 0.85f), pillTopLeft, pillSize, pillCorner, style = Stroke(1.5.dp.toPx()))
+    drawText(textLayoutResult = layout, topLeft = Offset(pillTopLeft.x + padX, pillTopLeft.y + padY))
 }
 
 /**
@@ -1320,23 +1445,68 @@ private fun DrawScope.drawEnemyArmy(
 }
 
 /**
- * Destello de cruce de puerta / impacto: anillo que se expande y desvanece en el carril del
- * suceso, verde si fue ganancia y Error si fue pérdida (feedback semántico §9.2).
+ * Destello de cruce de puerta / impacto: una **columna de luz** que recorre el carril, dos anillos
+ * que se expanden y chispas, verde si fue ganancia y Error si fue pérdida (feedback semántico
+ * §9.2). Antes era un único anillo fino, y el momento central del juego —cruzar la puerta que
+ * elegiste— pasaba casi sin acuse.
  */
 private fun DrawScope.drawGateFlash(flash: GateFlash, lanes: Int) {
     val progress = (flash.ageSec / LegionBalance.FLASH_DURATION_SEC).coerceIn(0f, 1f)
+    val fade = 1f - progress
+    val ease = 1f - fade * fade
     val laneWidth = size.width / lanes
     val center = Offset(
         x = (flash.lane.index + 0.5f) * laneWidth,
         y = LegionBalance.PLAYER_Y * size.height,
     )
     val color = if (flash.positive) LogicColors.NeonGreen else LogicColors.Error
-    drawCircle(
-        color = color.copy(alpha = (1f - progress) * 0.55f),
-        radius = laneWidth * (0.25f + 0.55f * progress),
-        center = center,
-        style = Stroke(width = 3.dp.toPx() * (1f - progress * 0.6f)),
+
+    // Columna de luz en el carril: nace en la legión y se pierde hacia arriba.
+    val columnTop = center.y - size.height * 0.55f
+    drawRect(
+        brush = Brush.verticalGradient(
+            listOf(Color.Transparent, color.copy(alpha = 0.26f * fade)),
+            startY = columnTop,
+            endY = center.y,
+        ),
+        topLeft = Offset(flash.lane.index * laneWidth, columnTop),
+        size = Size(laneWidth, center.y - columnTop),
     )
+    drawCircle(
+        brush = Brush.radialGradient(
+            listOf(color.copy(alpha = 0.40f * fade), Color.Transparent),
+            center = center,
+            radius = laneWidth * 0.75f,
+        ),
+        radius = laneWidth * 0.75f,
+        center = center,
+    )
+    drawCircle(
+        color = color.copy(alpha = fade * 0.80f),
+        radius = laneWidth * (0.22f + 0.50f * ease),
+        center = center,
+        style = Stroke(width = 4.dp.toPx() * fade + 1f),
+    )
+    drawCircle(
+        color = Color.White.copy(alpha = fade * 0.55f),
+        radius = laneWidth * (0.12f + 0.34f * ease),
+        center = center,
+        style = Stroke(width = 1.5.dp.toPx()),
+    )
+    // Chispas radiales: se alejan frenando y se acortan.
+    val sparks = 10
+    for (k in 0 until sparks) {
+        val a = (k + hash01(flash.id.toInt() * 7 + k)) * (TWO_PI / sparks)
+        val inner = laneWidth * (0.26f + 0.42f * ease)
+        val outer = inner + laneWidth * 0.12f * fade
+        drawLine(
+            color = color.copy(alpha = fade),
+            start = Offset(center.x + cos(a) * inner, center.y + sin(a) * inner),
+            end = Offset(center.x + cos(a) * outer, center.y + sin(a) * outer),
+            strokeWidth = 2.dp.toPx(),
+            cap = StrokeCap.Round,
+        )
+    }
 }
 
 /**
@@ -1448,19 +1618,8 @@ private fun DrawScope.drawArmyClashPops(
             continue
         }
 
-        // Impacto: anillo de choque que se expande al apagarse + núcleo blanco que muere antes.
-        val fade = 1f - age
-        drawCircle(
-            color = LogicColors.Amber.copy(alpha = 0.75f * fade),
-            radius = popRadius * (0.35f + 0.65f * age),
-            center = pos,
-            style = Stroke(width = 1.8.dp.toPx()),
-        )
-        drawCircle(
-            color = Color.White.copy(alpha = 0.9f * fade * fade),
-            radius = popRadius * 0.34f * fade,
-            center = pos,
-        )
+        // Impacto: la explosión común de nave alcanzada.
+        drawImpactPop(pos, age, popRadius, seed = j)
     }
 }
 
@@ -1534,21 +1693,10 @@ private fun DrawScope.drawBossVolley(
     val dotsBefore = (layoutDots.toLong() * boss.troopsBeforeVolley / start).toInt()
     val dotsAfter = (layoutDots.toLong() * troopsAlive / start).toInt()
     val popRadius = CLASH_POP_RADIUS_DP.dp.toPx()
-    val fade = 1f - age
 
     for (j in dotsAfter until dotsBefore.coerceAtMost(layoutDots)) {
         val pos = swarmShipOffset(playerCenter, j, layoutDots, radius, phase)
-        drawCircle(
-            color = LogicColors.Amber.copy(alpha = 0.75f * fade),
-            radius = popRadius * (0.35f + 0.65f * age),
-            center = pos,
-            style = Stroke(width = 1.8.dp.toPx()),
-        )
-        drawCircle(
-            color = Color.White.copy(alpha = 0.9f * fade * fade),
-            radius = popRadius * 0.34f * fade,
-            center = pos,
-        )
+        drawImpactPop(pos, age.coerceIn(0f, 1f), popRadius, seed = j)
     }
 }
 
@@ -1560,21 +1708,43 @@ private fun DrawScope.drawBossVolley(
  * `DrawScope` conoce.
  */
 private fun DrawScope.drawBossHealthBar(boss: BossFight, bossCenter: Offset, glowPulse: Float) {
-    val barWidth = size.width * 0.46f
-    val barHeight = 7.dp.toPx()
+    val barWidth = size.width * 0.52f
+    val barHeight = 11.dp.toPx()
     val left = bossCenter.x - barWidth / 2f
     val top = bossCenter.y - BOSS_BAR_OFFSET_DP.dp.toPx()
+    val corner = CornerRadius(barHeight / 2f)
+    val filled = barWidth * boss.hpFraction
 
+    drawRoundRect(LogicColors.SurfaceDark.copy(alpha = 0.92f), Offset(left, top), Size(barWidth, barHeight), corner)
+    if (filled > 0f) {
+        // Halo bajo la vida restante + relleno con brillo superior.
+        drawRoundRect(
+            color = LogicColors.Error.copy(alpha = 0.34f * glowPulse),
+            topLeft = Offset(left, top - 3.dp.toPx()),
+            size = Size(filled, barHeight + 6.dp.toPx()),
+            cornerRadius = CornerRadius(barHeight),
+        )
+        drawRoundRect(
+            brush = Brush.verticalGradient(
+                listOf(lerp(LogicColors.Error, Color.White, 0.35f), LogicColors.Error),
+                startY = top,
+                endY = top + barHeight,
+            ),
+            topLeft = Offset(left, top),
+            size = Size(filled, barHeight),
+            cornerRadius = corner,
+        )
+    }
+    // Muescas de cuartos: ayudan a estimar cuánto queda de un vistazo.
+    for (q in 1..3) {
+        val x = left + barWidth * q / 4f
+        drawLine(LogicColors.BackgroundDark.copy(alpha = 0.7f), Offset(x, top), Offset(x, top + barHeight), 1.5.dp.toPx())
+    }
     drawRoundRect(
-        color = LogicColors.SurfaceVariantDark.copy(alpha = 0.9f),
+        color = LogicColors.Error.copy(alpha = 0.85f),
         topLeft = Offset(left, top),
         size = Size(barWidth, barHeight),
-        cornerRadius = CornerRadius(barHeight / 2f),
-    )
-    drawRoundRect(
-        color = LogicColors.Error.copy(alpha = 0.75f + 0.25f * glowPulse),
-        topLeft = Offset(left, top),
-        size = Size(barWidth * boss.hpFraction, barHeight),
-        cornerRadius = CornerRadius(barHeight / 2f),
+        cornerRadius = corner,
+        style = Stroke(1.5.dp.toPx()),
     )
 }

@@ -10,8 +10,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -294,7 +294,7 @@ private fun BoxScope.PauseMenu(
     Box(
         modifier = Modifier
             .matchParentSize()
-            .background(Color.Black.copy(alpha = scrimAlpha))
+            .modalScrim(scrimAlpha)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -303,7 +303,6 @@ private fun BoxScope.PauseMenu(
             .padding(28.dp),
         contentAlignment = Alignment.Center,
     ) {
-        val cardShape = RoundedCornerShape(28.dp)
         // Envoltorio propio (además de la tarjeta) para poder anclar los acentos de
         // esquina a las mismas coordenadas que anima la tarjeta (escala + fundido).
         Box(
@@ -315,23 +314,19 @@ private fun BoxScope.PauseMenu(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(cardShape)
-                    .background(LogicColors.SurfaceDark)
-                    .border(
-                        BorderStroke(
-                            1.5.dp,
-                            Brush.linearGradient(
-                                listOf(accent.copy(alpha = 0.55f), accent.copy(alpha = 0.12f)),
-                            ),
-                        ),
-                        cardShape,
-                    )
+                    .modalCard(accent)
                     .padding(horizontal = 22.dp, vertical = 22.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                PauseHeader(accent = accent, gameTitle = gameTitle, onClose = onResume)
+                // Cada bloque entra escalonado ([ModalReveal]): cabecera → audio → ayuda
+                // → acciones, que es el orden en que se lee el menú.
+                ModalReveal(index = 0, visible = visible) {
+                    PauseHeader(accent = accent, gameTitle = gameTitle, onClose = onResume)
+                }
 
                 // --- Opciones de audio -------------------------------------------------
+                ModalReveal(index = 1, visible = visible) {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 SectionLabel(stringResource(Res.string.gamepause_audio_section), accent)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -376,27 +371,35 @@ private fun BoxScope.PauseMenu(
                         },
                     )
                 }
+                }
+                }
 
                 // --- Ayuda (cómo se juega) ---------------------------------------------
                 // Con diseño estructurado ([help]): fila que abre la pantalla de ayuda genérica.
                 // Sin él, respaldo de legado: texto plegable en línea ([helpText]).
                 if (hasRichHelp) {
-                    HelpOpenRow(onClick = onOpenHelp, accent = accent)
+                    ModalReveal(index = 2, visible = visible) {
+                        HelpOpenRow(onClick = onOpenHelp, accent = accent)
+                    }
                 } else if (helpText != null) {
-                    HelpSection(helpText = helpText, accent = accent)
+                    ModalReveal(index = 2, visible = visible) {
+                        HelpSection(helpText = helpText, accent = accent)
+                    }
                 }
 
                 // --- Acciones principales -----------------------------------------------
                 // CTA principal en el color propio del juego (cada categoría tiene el suyo,
                 // ver [CategoryPalette]): degradado de [accent] hacia una versión más clara,
                 // en vez de un verde fijo que ignoraría esa identidad. Único bucle de
-                // atención (pulse) reservado al CTA que guía: reanudar (§9.4).
+                // atención (pulse + destello) reservado al CTA que guía: reanudar (§9.4).
+                ModalReveal(index = 3, visible = visible) {
                 AnimatedGameButton(
                     onClick = onResume,
                     gradient = accentCtaGradient(accent),
                     modifier = Modifier
                         .fillMaxWidth()
                         .pulse(),
+                    shimmer = true,
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -415,6 +418,7 @@ private fun BoxScope.PauseMenu(
                             fontWeight = FontWeight.ExtraBold,
                         )
                     }
+                }
                 }
                 // Atajo condicional: nivel "técnicamente ganado" con contenido opcional
                 // pendiente (ver KDoc de [onAdvanceLevel]). Sin `pulse()`: el único bucle
@@ -446,6 +450,7 @@ private fun BoxScope.PauseMenu(
                 }
                 // "SALIR" (y, si aplica, "REINICIAR" junto a él a medias): en contorno,
                 // no relleno, para no competir con "REANUDAR" como segunda acción del menú.
+                ModalReveal(index = 4, visible = visible) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -464,6 +469,7 @@ private fun BoxScope.PauseMenu(
                         tint = LogicColors.Magenta,
                         onClick = onExit,
                     )
+                }
                 }
                 // Solo en juegos que activan el guardado al salir (ver GameExitGuard):
                 // tranquiliza antes de que el jugador pulse "SALIR".
@@ -520,11 +526,13 @@ private fun PauseHeader(accent: Color, gameTitle: String?, onClose: () -> Unit) 
             modifier = Modifier
                 .size(52.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(accent.copy(alpha = 0.16f))
-                .border(BorderStroke(1.2.dp, accent.copy(alpha = 0.5f)), RoundedCornerShape(16.dp)),
+                .background(
+                    Brush.verticalGradient(listOf(accent.copy(alpha = 0.30f), accent.copy(alpha = 0.10f))),
+                )
+                .border(BorderStroke(1.2.dp, accent.copy(alpha = 0.65f)), RoundedCornerShape(16.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            NeonIcon(icon = KortexIcons.Pause, tint = accent, size = 24.dp, glow = false)
+            NeonIcon(icon = KortexIcons.Pause, tint = accent, size = 26.dp)
         }
         Column(
             modifier = Modifier.weight(1f),

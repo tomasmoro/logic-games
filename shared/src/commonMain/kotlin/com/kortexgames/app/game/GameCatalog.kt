@@ -163,6 +163,29 @@ object GameIds {
      * dan de alta en la fase de integración del juego.
      */
     const val NEON_GRID_SWITCH = "16c38bc2-a0e1-46ec-b3a0-3aa1ea0659d2"
+
+    /**
+     * Neon Shikaku Matrix / partir el tablero en rectángulos cuya área iguala su número
+     * (categoría "spatial" / Visión Espacial). UUID v4 aleatorio con prefijo distinto a todos
+     * los demás ids del catálogo (mismo criterio anti-transposición que [QUANTUM_MERGE]).
+     */
+    const val NEON_SHIKAKU = "604aae7c-48c9-459d-a5ef-79c231a0d7b9"
+
+    /**
+     * Neon Trees & Tents / plantar una tienda junto a cada árbol sin que se toquen
+     * (categoría "logic" / Pensamiento Lógico). UUID v4 aleatorio con prefijo distinto a todos
+     * los demás ids del catálogo (mismo criterio anti-transposición que [QUANTUM_MERGE]).
+     */
+    const val NEON_TENTS = "0240cbed-e818-446d-8a1c-e592a2617a85"
+
+    /**
+     * Neon Hexa Flux / colocar y fusionar fichas en un tablero hexagonal de silueta cambiante
+     * (categoría "patterns" / Reconocimiento de Patrones). UUID v4 aleatorio con prefijo distinto
+     * a todos los demás ids del catálogo (mismo criterio anti-transposición que [QUANTUM_MERGE]).
+     *
+     * Su seed en Supabase es la migración `0064_seed_neon_hexa_flux.sql`.
+     */
+    const val NEON_HEXA_FLUX = "e83d5f1a-2c47-4b90-a6d3-71f09b8e4c25"
 }
 
 /**
@@ -291,6 +314,27 @@ enum class GameMotif {
      * en la miniatura, en vez de un patrón de luces arbitrario.
      */
     LIGHTS_GRID,
+
+    /**
+     * Neon Shikaku Matrix: tablero en L ya partido en rectángulos de neón, cada uno con su
+     * número (= su área). Enseña a la vez la regla y lo que distingue al juego: la figura
+     * irregular.
+     */
+    SHIKAKU_RECTS,
+
+    /**
+     * Neon Trees & Tents: mini tablero con pinos y la tienda que le toca a cada uno, ya
+     * colocadas sin tocarse — la regla del juego resuelta en la miniatura.
+     */
+    TENTS_FOREST,
+
+    /**
+     * Neon Hexa Flux: panal de siete hexágonos con tres fichas iguales en contacto y la del
+     * centro encendida — el instante justo antes de la fusión. Motivo propio (y no [HEXA_ORBIT],
+     * que también es un panal) porque allí lo que identifica al juego es el trazo curvo que lo
+     * recorre y aquí son las celdas RELLENAS: una tarjeta enseña un camino, la otra, fichas.
+     */
+    HEXA_FLUX,
 }
 
 /**
@@ -352,10 +396,17 @@ object GameCatalog {
         GameInfo(GameIds.NEON_LEGION, "Neon Legion", GameCategory.MENTAL_SPEED, playable = true, motif = GameMotif.LEGION_SWARM, isNew = true),
         GameInfo(GameIds.NEON_DEFUSER, "Buscaminas", GameCategory.ATTENTION, playable = true, motif = GameMotif.MINESWEEPER),
         GameInfo(GameIds.HEXA_ORBIT, "Hexa Orbit", GameCategory.MENTAL_SPEED, playable = true, motif = GameMotif.HEXA_ORBIT, isNew = true),
+        // isNew = true: la incorporación más reciente al catálogo (ver GameInfo.isNew).
+        GameInfo(GameIds.NEON_SHIKAKU, "Neon Shikaku Matrix", GameCategory.SPATIAL, playable = true, motif = GameMotif.SHIKAKU_RECTS, isNew = true),
+        // published = false: recién integrado, a la espera de probarlo en dispositivo. Al
+        // publicarlo basta con quitar el flag (su seed de Supabase es la migración 0063).
+        GameInfo(GameIds.NEON_TENTS, "Neon Trees & Tents", GameCategory.LOGIC, playable = true, motif = GameMotif.TENTS_FOREST, isNew = true),
+        // Segundo juego de Reconocimiento de Patrones. Su seed de Supabase es la migración 0064.
+        GameInfo(GameIds.NEON_HEXA_FLUX, "Neon Hexa Flux", GameCategory.PATTERNS, playable = true, published = false, motif = GameMotif.HEXA_FLUX, isNew = true),
         GameInfo(GameIds.BUBBLE_MATH, "Burbujas de Cálculo", GameCategory.MENTAL_MATH, playable = true, motif = GameMotif.MATH_BUBBLES),
         // Primer juego de Reconocimiento de Patrones del catálogo: la categoría deja de
         // estar vacía.
-        GameInfo(GameIds.NEON_GRID_SWITCH, "Neon Grid Switch", GameCategory.PATTERNS, playable = true, motif = GameMotif.LIGHTS_GRID, isNew = true),
+        GameInfo(GameIds.NEON_GRID_SWITCH, "Neon Grid Switch", GameCategory.PATTERNS, playable = true, motif = GameMotif.LIGHTS_GRID),
         GameInfo(GameIds.NEON_BLOCK_GRID, "Bloques Neón", GameCategory.LOGIC, playable = true, motif = GameMotif.TETROMINO),
         GameInfo(GameIds.QUANTUM_MERGE, "Quantum Merge", GameCategory.SPATIAL, playable = true, motif = GameMotif.QUANTUM_SPHERES),
         GameInfo(GameIds.WORD_CONNECT, "Palabras Conectadas", GameCategory.LANGUAGE, playable = true, published = false, motif = GameMotif.WORD_WHEEL),

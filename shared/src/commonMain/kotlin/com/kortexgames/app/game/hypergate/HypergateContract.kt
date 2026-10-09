@@ -74,6 +74,15 @@ sealed interface HypergateIntent : UiIntent {
     data object ToggleShield : HypergateIntent
 
     /**
+     * El jugador empieza ([held] = `true`) o deja ([held] = `false`) de **mantener pulsado**: pide
+     * encender o apagar el modo escudo. Es una petición, no una orden: el motor la ignora si el
+     * escudo está recargando (ver [com.kortexgames.app.game.hypergate.HypergateEngine.setBarrierHeld]).
+     *
+     * La pantalla es quien distingue un toque corto ([ToggleShield]) de una pulsación mantenida.
+     */
+    data class SetBarrier(val held: Boolean) : HypergateIntent
+
+    /**
      * Tick del bucle de render. Transporta el timestamp monotónico del frame (`withFrameNanos`)
      * en lugar de un delta ya calculado: dejar que el MOTOR derive el `dt` a partir de dos
      * timestamps consecutivos evita acumular error de redondeo si la UI recalcula el delta, y le
@@ -111,21 +120,22 @@ sealed interface HypergateEffect : UiEffect {
     /**
      * Reproduce un pitido de juego.
      *
-     * @property cue qué señal sonora ([Cue.ABSORB] al absorber bien, [Cue.CRASH] al chocar mal).
+     * @property cue qué señal sonora ([Cue.ABSORB] al absorber bien, [Cue.CRASH] al chocar mal,
+     *   [Cue.DEFLECT] cuando el modo escudo deshace algo, [Cue.OVERHEAT] al agotarse el escudo).
      */
     data class PlaySound(val cue: Cue) : HypergateEffect {
-        /** Señales sonoras posibles de un impacto. */
-        enum class Cue { ABSORB, CRASH }
+        /** Señales sonoras posibles. */
+        enum class Cue { ABSORB, CRASH, DEFLECT, OVERHEAT }
     }
 
     /**
      * Dispara una vibración háptica.
      *
      * @property cue intención del pulso ([Cue.SUCCESS] en la absorción correcta, [Cue.ERROR] en
-     *   el choque de polaridad equivocada).
+     *   el choque, [Cue.DEFLECT] cuando el modo escudo deshace algo, [Cue.OVERHEAT] al agotarse).
      */
     data class Vibrate(val cue: Cue) : HypergateEffect {
         /** Intenciones hápticas posibles. */
-        enum class Cue { SUCCESS, ERROR }
+        enum class Cue { SUCCESS, ERROR, DEFLECT, OVERHEAT }
     }
 }
