@@ -79,7 +79,20 @@ object GameRankingScopes {
      * criterio que Hyper-Cube) hace que cada tabla compare partidas del MISMO reto, que es la
      * pregunta que de verdad le importa al jugador de un nivel concreto.
      */
-    private val openLevelRankedGames: Set<String> = setOf(GameIds.WATER_SORT, GameIds.ENERGY_FLOW)
+    private val openLevelRankedGames: Set<String> = setOf(
+        GameIds.WATER_SORT,
+        GameIds.ENERGY_FLOW,
+        // Conectores y Línea Neón (Resolución de Problemas): ranking por nivel, ordenado por puntos.
+        GameIds.NEON_CIRCUIT,
+        GameIds.NEON_LINE,
+        // Neon Grid Switch (Reconocimiento de Patrones): cada etapa es otro tablero, se rankea por etapa.
+        GameIds.NEON_GRID_SWITCH,
+        // Shikaku y Trees & Tents: el nivel N es el mismo tablero para todos (semilla derivada del
+        // nivel), así que solo tiene sentido comparar partidas del MISMO nivel. Van por tiempo
+        // (ver [rankedByTime]).
+        GameIds.NEON_SHIKAKU,
+        GameIds.NEON_TENTS,
+    )
 
     /**
      * Juegos cuyo ranking mundial se ordena por **tiempo** (gana el más rápido) en vez de por
@@ -92,7 +105,13 @@ object GameRankingScopes {
      * velocidad con estilo —eficiencia de movimientos, ayudas usadas— y dejaría de responder a la
      * pregunta que se hace todo el mundo: "¿quién lo hace más rápido?".
      */
-    private val rankedByTime: Set<String> = setOf(GameIds.HYPER_CUBE)
+    private val rankedByTime: Set<String> = setOf(
+        GameIds.HYPER_CUBE,
+        // Shikaku y Tents: mismo tablero para todos dentro de un nivel y la partida solo termina al resolverlo:
+        // el tiempo es la comparación limpia. El puntaje mezcla nivel, ayudas y reinicios.
+        GameIds.NEON_SHIKAKU,
+        GameIds.NEON_TENTS,
+    )
 
     /** ¿El ranking de [gameId] se ordena por tiempo (menor = mejor)? Ver [rankedByTime]. */
     fun isRankedByTime(gameId: String): Boolean = gameId in rankedByTime
@@ -126,9 +145,9 @@ object GameRankingScopes {
  * libre.
  *
  * El modo libre ocupa la posición `MAX_LEVEL + 1` porque necesita su propio universo de ranking:
- * mezcla el cubo a fondo (20 giros) y compararlo con un nivel de la rampa no significaría nada. En
- * la práctica su tabla ni se muestra —el juego oculta el ranking al terminar en modo libre—, pero
- * el rótulo existe para que una partida suya nunca caiga por error en la tabla de un nivel.
+ * mezcla el cubo a fondo (20 giros) y compararlo con un nivel de la rampa no significaría nada. Su
+ * tabla se muestra tanto al terminar la partida como en la antesala, y el rótulo "Modo libre" evita
+ * que una partida suya caiga por error en la tabla de un nivel.
  */
 private val HYPER_CUBE_LEVEL_NAMES: List<String> =
     (1..MAX_LEVEL).map { "Nivel $it" } + "Modo libre"

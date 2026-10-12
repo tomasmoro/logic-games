@@ -14,6 +14,7 @@ import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.LeveledGamePhase
 import com.kortexgames.app.game.toGameOverInfo
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -103,6 +104,8 @@ class HyperCubeViewModel(
             }
             is HyperCubeIntent.PlayLevel -> playLevel(intent.level)
             HyperCubeIntent.PlayFreeMode -> playFreeMode()
+            is HyperCubeIntent.PreviewLevel -> previewRanking(intent.level, free = false)
+            HyperCubeIntent.PreviewFreeMode -> previewRanking(FREE_MODE_DIFFICULTY, free = true)
             HyperCubeIntent.ScrambleCube -> replayCurrent()
             HyperCubeIntent.Pause -> {
                 stopCameraInertia() // pausar congela TODO, también el giro libre de la cámara.
@@ -365,6 +368,34 @@ class HyperCubeViewModel(
         if (currentState.game.isFreeMode) playFreeMode() else playLevel(currentState.currentLevel)
     }
 
+    /** Pedidos en vuelo de [previewRanking]; se cancelan al lanzar uno nuevo para que una respuesta
+     *  vieja no pise a la actual al cambiar rápido de nivel en el carril. */
+    private var levelPreviewJob: Job? = null
+    private var freePreviewJob: Job? = null
+
+    /**
+     * Pide la comparativa mundial de [difficulty] (nivel, o [FREE_MODE_DIFFICULTY] para el modo
+     * libre) para pintarla en la antesala: cada uno tiene su propia tabla, ordenada por tiempo
+     * (ver `GameRankingScopes`).
+     */
+    private fun previewRanking(difficulty: Int, free: Boolean) {
+        if (free) {
+            freePreviewJob?.cancel()
+            setState { copy(freeRankingPreview = null, freeRankingPreviewLoading = true) }
+            freePreviewJob = viewModelScope.launch {
+                val ranking = progress.previewRanking(GameIds.HYPER_CUBE, difficulty)
+                setState { copy(freeRankingPreview = ranking, freeRankingPreviewLoading = false) }
+            }
+        } else {
+            levelPreviewJob?.cancel()
+            setState { copy(rankingPreview = null, rankingPreviewLoading = true) }
+            levelPreviewJob = viewModelScope.launch {
+                val ranking = progress.previewRanking(GameIds.HYPER_CUBE, difficulty)
+                setState { copy(rankingPreview = ranking, rankingPreviewLoading = false) }
+            }
+        }
+    }
+
     /**
      * Persiste el resultado (local-first) y abre el overlay final.
      *
@@ -379,7 +410,12 @@ class HyperCubeViewModel(
             // partida reanudada le falta el tiempo jugado antes de salir. Se corrige aquí, antes de
             // persistir: si no, salir y volver a entrar sería la forma más fácil de "batir" el
             // récord de mejor tiempo del nivel.
-            completionTimeMs = engine.elapsedMs(),
+            //
+            // Además se le suma la penalización de movimientos extra (ver [EXTRA_MOVE_PENALTY_MS]):
+            // este es el tiempo que ordena el ranking y el que se enseña al final, con el desglose.
+            // El modo libre queda fuera: ahí el ranking es solo tiempo, sin penalizar movimientos.
+            completionTimeMs = engine.elapsedMs() + if (freeMode) 0L else EXTRA_MOVE_PENALTY_MS *
+                extraMovesFor(currentState.game.moves, currentState.game.scrambleDepth),
             // El **nivel es el universo del ranking** de este juego (ver `GameRankingScopes`): cada
             // uno mezcla con un giro más, así que solo tiene sentido comparar tiempos entre
             // partidas del mismo nivel. Se rellena aquí porque `BaseGameEngine.difficulty` es fijo
@@ -392,21 +428,9 @@ class HyperCubeViewModel(
             // Supabase) y, si hay sesión, el percentil/ranking real después (ver KDoc
             // de `ProgressRepository.saveResult`).
             progress.saveResult(corrected).collect { outcome ->
-                val info = outcome.toGameOverInfo(corrected)
-                setState {
-                    copy(
-                        // En modo libre no se enseña comparativa: cada partida baraja el cubo a fondo y
-                        // sin nivel, así que no hay un universo con el que medirse —ni por puntos ni por
-                        // tiempo—. Enseñar un puesto ahí sería inventarse una competición que no existe.
-                        // `isSyncPending = false` de propina: sin comparativa que mostrar, tampoco tiene
-                        // sentido el hueco de "comparando con el mundo…" mientras se resuelve la subida.
-                        gameOver = if (freeMode) {
-                            info.copy(ranking = null, percentile = null, isSyncPending = false)
-                        } else {
-                            info
-                        },
-                    )
-                }
+                // El modo libre también enseña comparativa: tiene su propia tabla
+                // ([FREE_MODE_DIFFICULTY]), así que se compara con quien jugó lo mismo.
+                setState { copy(gameOver = outcome.toGameOverInfo(corrected)) }
             }
         }
     }

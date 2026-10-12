@@ -109,9 +109,7 @@ data class CrucigramaNeonLevelSpec(
                 "La palabra extra '$extra' usa letras que no existen en el teclado del nivel."
             }
             require(extra !in gridAnswers) { "La palabra extra '$extra' ya está en la rejilla." }
-            require(gridAnswers.none { it != extra && it.startsWith(extra) }) {
-                "La palabra extra '$extra' es prefijo de una palabra de la rejilla."
-            }
+
             require(extra.length <= gridMaxLen) {
                 "La palabra extra '$extra' es más larga que la palabra mayor de la rejilla y no podría escribirse."
             }
@@ -541,10 +539,104 @@ object CrucigramaNeonGenerator {
             ),
             extras = listOf( "NATA", "SANA", "SITIA", "ANTI", "TANTA", "TAN", "SIN"),
         ),
+        LevelDef(
+            listOf(
+                "ZONA" to "Extensión de terreno delimitada con características particulares",
+                "RAZON" to "Motivo, argumento o facultad del ser humano para pensar y discurrir",
+                "ONZA" to "Unidad de masa equivalente a la decimosexta parte de una libra",
+                "ROZA" to "Toca ligeramente una superficie al pasar, o terreno limpio de maleza",
+                "ORAN" to "Forma del verbo orar, referente a rezar o dirigir una oración",
+                "ARZON" to "Cada una de las dos partes prominentes de una silla de montar"
+            ),
+            extras = listOf("AZOR", "ORA", "ROA"),
+        ),
+        LevelDef(
+            listOf(
+                "FAROL" to "Aparato provisto de una estructura transparente que protege una luz en su interior",
+                "FLORAL" to "Estructura reproductiva de las plantas, generalmente de vivos colores y agradable aroma",
+                "FLOR" to "Estructura reproductiva de las plantas, generalmente de vivos colores y agradable aroma",
+                "FARO" to "Torre ubicada en la costa con una luz potente para guiar a los navegantes",
+                "ORAL" to "Que se expresa o transmite mediante la voz hablada o está relacionado con la boca",
+                "AFRO" to "Perteneciente o relativo a los afrodescendientes"
+            ),
+            extras = listOf("OLA", "ARO", "LOA", "FLORA", "FAROLA"),
+        ),
+        LevelDef(
+            listOf(
+                "VAMOS" to "Forma del verbo ir utilizada para indicar movimiento o animar a realizar una acción",
+                "VASO" to "Recipiente cóncavo de cristal, plástico u otro material que se usa para beber",
+                "AMOS" to "Personas que tienen el dominio o la propiedad de algo respecto a sus sirvientes o mascotas",
+                "AMO" to "Hombre que posee o domina algo, o forma del verbo amar",
+                "MAS" to "Conjunción adversativa equivalente a 'pero', usada para oponer dos ideas",
+                "VOS" to "Pronombre personal de segunda persona singular utilizado en algunas regiones de habla hispana",
+            ),
+            extras = listOf("AMAS", "ASO", "MOSA", "SOVA"),
+        ),
+        LevelDef(
+            listOf(
+                "LUTO" to "Signo exterior de duelo y dolor por la muerte de una persona querida",
+                "TUTOR" to "Persona que guía y orienta a un estudiante en su proceso de aprendizaje",
+                "TROL" to "Ser fantástico de la mitología escandinava que habita en bosques o cuevas",
+                "TOUR" to "Excursión o viaje turístico con un recorrido por distintos lugares de interés",
+                "ROL" to "Función, papel o representación que cumple alguien en un grupo o sociedad",
+                "TUL" to "Tejido muy fino, ligero y transparente en forma de red, usado en velos y vestidos",
+            ),
+            extras = listOf("ROTO", "LOTO", "URO"),
+        ),
+        LevelDef(
+            listOf(
+                "PITADO" to "Acción de sonar un silbato, o sonido emitido por un silbato o claxon",
+                "PATIO" to "Espacio abierto en el interior de una edificación o en la parte trasera de una casa",
+                "PODIA" to "Forma del verbo poder que indica la capacidad o facultad de realizar algo en el pasado",
+                "DATO" to "Información concreta sobre hechos o elementos que permite su estudio o análisis",
+                "TIPO" to "Modelo, ejemplar o categoría a la que pertenece una persona o un objeto",
+                "DIA" to "Período de tiempo que transcurre entre el amanecer y el anochecer"
+            ),
+            extras = listOf("PATO", "PODA", "APTO", "OPTA", "TODA", "TIPA"),
+        ),
+        LevelDef(
+            listOf(
+                "ISLA" to "Porción de tierra rodeada de agua por todas partes",
+                "LIRA" to "Instrumento musical de cuerda usado en la antigüedad clásica",
+                "LISA" to "Que tiene la superficie suave y libre de arrugas o relieves",
+                "RISA" to "Movimiento de la boca y sonido que demuestra alegría o diversión",
+                "CRIA" to "Bebé de un animal, o acción de alimentar y educar a los hijos",
+                "CAL" to "Material blando y blanco, usado para hacer mortero o pintura"
+            ),
+            extras = listOf("SAL", "RIA", "RAS", "SICA", "CARI", "SILA"),
+        ),
+        LevelDef(
+            listOf(
+                "BROMO" to "Elemento químico halógeno, líquido y de color rojo oscuro, de olor muy penetrante",
+                "BRIO" to "Fuerza, energía o ánimo vivo con que se ejecuta una acción",
+                "MIRO" to "Forma del verbo mirar en pasado, o apellido del célebre pintor surrealista",
+                "RIMO" to "Forma del verbo rimar, referente a la coincidencia de sonidos al final de los versos",
+                "RIO" to "Curso de agua",
+                "ROBO" to "Acción de apoderarse de algo ajeno sin permiso, mediante violencia o engaño",
+            ),
+            extras = listOf("ROMI", "MIO", "OBRO", "BRAMO"),
+        ),
 
     )
 
     private val levels: List<CrucigramaNeonLevelSpec> by lazy { levelDefs.map { buildSpec(it) } }
+
+    /**
+     * Construye cada nivel por separado y devuelve los que fallan (número 1-based →
+     * mensaje). Existe porque [levels] se construye de golpe y un único nivel inválido
+     * tumba todos con un error que no dice cuál es; los tests lo usan para señalar el
+     * nivel exacto y la regla de [CrucigramaNeonLevelSpec] o del entrelazador que rompe.
+     */
+    internal fun levelErrors(): Map<Int, String> =
+        levelDefs.withIndex().mapNotNull { (i, def) ->
+            val repeated = def.words.map { it.first }.groupingBy { it }.eachCount()
+                .filterValues { it > 1 }.keys
+            if (repeated.isNotEmpty()) {
+                return@mapNotNull (i + 1) to "Palabras repetidas en la rejilla: $repeated"
+            }
+            runCatching { buildSpec(def) }.exceptionOrNull()
+                ?.let { (i + 1) to (it.message ?: it.toString()) }
+        }.toMap()
 
     /**
      * Cantidad de niveles DISTINTOS del catálogo. [generate] cicla sobre ellos

@@ -165,7 +165,7 @@ data class ResumeState(
  *        de la cabecera abre la pantalla de ayuda genérica ([GameHelpSheet]); si es null,
  *        el botón cae en [onHelp].
  * @param tutorial tutorial animado del juego ([GameTutorial]). Si no es null, se abre **solo la
- *        primera vez** que el jugador entra en esta antesala (lo recuerda
+ *        primera vez** que el jugador pulsa jugar (y al cerrarlo arranca la partida; lo recuerda
  *        [com.kortexgames.app.data.settings.TutorialStore]) y, después, a mano desde el botón
  *        "Ver tutorial" bajo la descripción. **null** = juego sin tutorial todavía.
  * @param onHelp acción del botón de ayuda cuando no se inyecta [help]; por defecto un no-op.
@@ -214,22 +214,14 @@ fun GameIntroScreen(
     // orquestar nada (por eso [onHelp] solo se usa como respaldo si no hay [help]).
     var showHelp by remember { mutableStateOf(false) }
 
-    // Tutorial animado: se abre solo la primera vez. Se marca como visto al ABRIRLO y no al
-    // cerrarlo: quien lo salta ya ha dicho que no lo quiere, y no debe volver a saltarle.
+    // Tutorial animado: se abre solo la primera vez que el jugador PULSA JUGAR (no al entrar en la
+    // antesala desde el catálogo: ahí solo está mirando el juego), y al cerrarlo arranca la
+    // partida. Se marca como visto al ABRIRLO y no al cerrarlo: quien lo salta ya ha dicho que no
+    // lo quiere, y no debe volver a saltarle. "Ver tutorial" lo abre a mano sin arrancar nada.
     var showTutorial by remember { mutableStateOf(false) }
+    var startAfterTutorial by remember { mutableStateOf(false) }
     val tutorialStore = LocalTutorialStore.current
-    if (tutorial != null && tutorialStore != null) {
-        val seenTutorials by tutorialStore.seen.collectAsStateWithLifecycle()
-        // La clave solo cambia una vez (cuando DataStore responde), así que marcarlo como
-        // visto —que vuelve a emitir— no relanza el efecto.
-        LaunchedEffect(tutorial.gameId, seenTutorials == null) {
-            val seen = seenTutorials ?: return@LaunchedEffect
-            if (tutorial.gameId !in seen) {
-                showTutorial = true
-                tutorialStore.markSeen(tutorial.gameId)
-            }
-        }
-    }
+    val seenTutorials = tutorialStore?.seen?.collectAsStateWithLifecycle()?.value
 
     // Bienvenida de primera apertura: si esta antesala es uno de sus juegos, se le
     // añaden las dos piezas que la bienvenida necesita —indicador de paso y aviso
@@ -238,9 +230,22 @@ fun GameIntroScreen(
 
     // Arrancar la partida es además el momento en que el jugador acepta las
     // condiciones durante la bienvenida: son el texto que tiene justo bajo el botón.
-    val startGame: () -> Unit = {
+    val launchGame: () -> Unit = {
         firstRun?.onGameStarted()
         onStart()
+    }
+    val startGame: () -> Unit = {
+        // `seenTutorials == null` = DataStore aún no respondió: se arranca sin tutorial antes
+        // que bloquear el botón esperando a un dato que casi siempre llega al instante.
+        val firstTime = tutorial != null && tutorialStore != null &&
+            seenTutorials != null && tutorial.gameId !in seenTutorials
+        if (firstTime) {
+            tutorialStore?.markSeen(tutorial!!.gameId)
+            startAfterTutorial = true
+            showTutorial = true
+        } else {
+            launchGame()
+        }
     }
 
     Box(modifier = modifier.fillMaxSize().background(LogicColors.BackgroundDark)) {
@@ -461,7 +466,13 @@ fun GameIntroScreen(
             GameTutorialDialog(
                 tutorial = tutorial,
                 visible = showTutorial,
-                onClose = { showTutorial = false },
+                onClose = {
+                    showTutorial = false
+                    if (startAfterTutorial) {
+                        startAfterTutorial = false
+                        launchGame()
+                    }
+                },
             )
         }
     }

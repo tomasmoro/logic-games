@@ -55,7 +55,10 @@ import com.kortexgames.app.ui.components.GameOverOverlay
 import com.kortexgames.app.ui.components.GamePauseControls
 import com.kortexgames.app.ui.components.LevelStripState
 import com.kortexgames.app.ui.components.NeonBoardHud
+import com.kortexgames.app.ui.components.RankingPreviewUnavailable
 import com.kortexgames.app.ui.components.SpaceBackdrop
+import com.kortexgames.app.ui.components.WorldRankingLoading
+import com.kortexgames.app.ui.components.WorldRankingPreviewPanel
 import com.kortexgames.app.ui.components.boardCascade
 import com.kortexgames.app.ui.components.drawBoardSocket
 import com.kortexgames.app.ui.components.drawNeonBoardPlate
@@ -153,6 +156,9 @@ fun NeonLineScreen(graph: AppGraph, onExit: () -> Unit) {
     if (state.phase == LeveledGamePhase.LEVEL_SELECT) {
         // Arranca en la frontera (récord + 1) y se resetea si el récord sube.
         var selectedLevel by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
+        // Comparativa mundial del nivel resaltado, ANTES de jugarlo: se relanza en cada cambio de
+        // nivel del carril (y al entrar en la antesala).
+        LaunchedEffect(selectedLevel) { vm.onIntent(NeonLineIntent.PreviewLevel(selectedLevel)) }
         GameIntroScreen(
             help = GameHelpContent.neonLine,
             title = "Línea Neón",
@@ -173,6 +179,16 @@ fun NeonLineScreen(graph: AppGraph, onExit: () -> Unit) {
             },
             onExit = onExit,
             background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },
+            // Ranking mundial del nivel elegido, justo encima del CTA (mismo panel que el cartel
+            // de fin de nivel).
+            configContent = {
+                val preview = state.rankingPreview
+                when {
+                    state.rankingPreviewLoading -> WorldRankingLoading()
+                    preview != null -> WorldRankingPreviewPanel(ranking = preview)
+                    else -> RankingPreviewUnavailable(difficultyLabel = "Nivel $selectedLevel")
+                }
+            },
         )
         return
     }

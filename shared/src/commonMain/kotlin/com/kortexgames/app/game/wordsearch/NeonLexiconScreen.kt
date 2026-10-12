@@ -262,6 +262,7 @@ fun NeonLexiconScreen(graph: AppGraph, onExit: () -> Unit) {
                 // "Ver niveles" y lleva a la antesala con el cartel de completado.
                 hasNextLevel = state.currentLevel < NeonLexiconGenerator.levelCount,
                 accent = accent,
+                showWorldComparison = false,
             )
         }
 

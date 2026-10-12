@@ -52,7 +52,10 @@ import com.kortexgames.app.ui.components.GameOverOverlay
 import com.kortexgames.app.ui.components.GamePauseControls
 import com.kortexgames.app.ui.components.KortexIcons
 import com.kortexgames.app.ui.components.LevelStripState
+import com.kortexgames.app.ui.components.RankingPreviewUnavailable
 import com.kortexgames.app.ui.components.SpaceBackdrop
+import com.kortexgames.app.ui.components.WorldRankingLoading
+import com.kortexgames.app.ui.components.WorldRankingPreviewPanel
 import com.kortexgames.app.ui.components.bounceClick
 import com.kortexgames.app.ui.components.drawNeonTile
 import kortexgames.shared.generated.resources.Res
@@ -128,6 +131,9 @@ fun GridSwitchScreen(graph: AppGraph, onExit: () -> Unit) {
     if (state.phase == LeveledGamePhase.LEVEL_SELECT) {
         // Arranca en la frontera (récord + 1) y se resetea si el récord sube.
         var selectedStage by remember(state.maxUnlocked) { mutableStateOf(state.maxUnlocked + 1) }
+        // Comparativa mundial de la etapa resaltada, ANTES de jugarla: se relanza en cada cambio
+        // de etapa del carril (y al entrar en la antesala).
+        LaunchedEffect(selectedStage) { vm.onIntent(GridSwitchIntent.PreviewStage(selectedStage)) }
         GameIntroScreen(
             help = GameHelpContent.gridSwitch,
             tutorial = GridSwitchTutorial.tutorial,
@@ -148,6 +154,16 @@ fun GridSwitchScreen(graph: AppGraph, onExit: () -> Unit) {
             },
             onExit = onExit,
             background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },
+            // Ranking mundial de la etapa elegida, justo encima del CTA (mismo panel que el cartel
+            // de fin de etapa).
+            configContent = {
+                val preview = state.rankingPreview
+                when {
+                    state.rankingPreviewLoading -> WorldRankingLoading()
+                    preview != null -> WorldRankingPreviewPanel(ranking = preview)
+                    else -> RankingPreviewUnavailable(difficultyLabel = "Nivel $selectedStage")
+                }
+            },
         )
         return
     }

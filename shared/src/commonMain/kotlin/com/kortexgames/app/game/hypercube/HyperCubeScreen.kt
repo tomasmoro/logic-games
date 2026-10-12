@@ -69,6 +69,10 @@ import com.kortexgames.app.ui.components.GameOverOverlay
 import com.kortexgames.app.ui.components.GamePauseControls
 import com.kortexgames.app.ui.components.KortexIcons
 import com.kortexgames.app.ui.components.LevelStripState
+import com.kortexgames.app.ui.components.RankingPreviewUnavailable
+import com.kortexgames.app.ui.components.WorldRankingLoading
+import com.kortexgames.app.ui.components.WorldRankingPreviewPanel
+import com.kortexgames.app.domain.model.GameRanking
 import com.kortexgames.app.ui.components.NeonIcon
 import com.kortexgames.app.ui.components.ResumeState
 import com.kortexgames.app.ui.components.SpaceBackdrop
@@ -85,6 +89,8 @@ import com.kortexgames.app.ui.components.drawSparkBurst
 import com.kortexgames.app.ui.components.rememberBoardClock
 import kortexgames.shared.generated.resources.Res
 import kortexgames.shared.generated.resources.gameboard_hud_level
+import kortexgames.shared.generated.resources.hypercube_gameover_time_note_clean
+import kortexgames.shared.generated.resources.hypercube_gameover_time_note_extra
 import kortexgames.shared.generated.resources.hypercube_gesture_hint
 import kortexgames.shared.generated.resources.hypercube_hud_free_mode
 import kortexgames.shared.generated.resources.hypercube_hud_moves
@@ -217,6 +223,10 @@ fun HyperCubeScreen(graph: AppGraph, onExit: () -> Unit) {
         var selectedLevel by remember(state.maxUnlocked) {
             mutableStateOf((state.maxUnlocked + 1).coerceAtMost(MAX_LEVEL))
         }
+        // Comparativa mundial ANTES de jugar: la del nivel resaltado (se relanza al cambiar de
+        // nivel en el carril) y la del modo libre, que es otra tabla.
+        LaunchedEffect(selectedLevel) { vm.onIntent(HyperCubeIntent.PreviewLevel(selectedLevel)) }
+        LaunchedEffect(Unit) { vm.onIntent(HyperCubeIntent.PreviewFreeMode) }
         GameIntroScreen(
             help = GameHelpContent.hyperCube,
             title = "Neon Hyper-Cube",
@@ -231,7 +241,20 @@ fun HyperCubeScreen(graph: AppGraph, onExit: () -> Unit) {
                 onSelect = { selectedLevel = it },
                 maxLevel = MAX_LEVEL,
             ),
-            configContent = { FreeModeCard(onPlay = { vm.onIntent(HyperCubeIntent.PlayFreeMode) }) },
+            configContent = {
+                Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    RankingPreview(
+                        ranking = state.rankingPreview,
+                        loading = state.rankingPreviewLoading,
+                        label = "Nivel $selectedLevel",
+                    )
+                    FreeModeCard(
+                        onPlay = { vm.onIntent(HyperCubeIntent.PlayFreeMode) },
+                        ranking = state.freeRankingPreview,
+                        rankingLoading = state.freeRankingPreviewLoading,
+                    )
+                }
+            },
             onStart = {
                 // Cuenta para la misión diaria en cuanto se juega, no hace falta terminar
                 // la partida (ver DailyGoalManager.markPlayed).
@@ -356,6 +379,10 @@ fun HyperCubeScreen(graph: AppGraph, onExit: () -> Unit) {
                 },
                 onChooseLevel = { vm.onIntent(HyperCubeIntent.ChooseLevel) },
                 accent = ACCENT,
+                // En modo libre el tiempo no lleva penalización, así que no hay nada que explicar.
+                timeNote = if (game.isFreeMode) null else {
+                    hyperCubeTimeNote(game, state.gameOver!!.result.completionTimeMs)
+                },
             )
         }
 
@@ -1116,7 +1143,7 @@ private fun HudChip(
  * quien ya sabe resolver un cubo, no el camino por defecto.
  */
 @Composable
-private fun FreeModeCard(onPlay: () -> Unit) {
+private fun FreeModeCard(onPlay: () -> Unit, ranking: GameRanking?, rankingLoading: Boolean) {
     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = "¿Ya dominas el cubo? Pruébalo entero, mezclado a fondo y sin nivel.",
@@ -1136,6 +1163,17 @@ private fun FreeModeCard(onPlay: () -> Unit) {
                 fontWeight = FontWeight.Bold,
             )
         }
+        RankingPreview(ranking = ranking, loading = rankingLoading, label = "Modo libre")
+    }
+}
+
+/** Panel de ranking de la antesala: cargando, la comparativa, o el aviso de "sin marca todavía". */
+@Composable
+private fun RankingPreview(ranking: GameRanking?, loading: Boolean, label: String) {
+    when {
+        loading -> WorldRankingLoading()
+        ranking != null -> WorldRankingPreviewPanel(ranking = ranking)
+        else -> RankingPreviewUnavailable(difficultyLabel = label)
     }
 }
 
@@ -1239,3 +1277,22 @@ private const val MOTION_PROBE_FRACTION = 0.06f
 
 /** Píxeles mínimos de movimiento para considerar un candidato; descarta sondeos degenerados. */
 private const val MIN_PROBE_MOTION_PX = 0.01f
+
+/**
+ * Texto que explica el tiempo final: el tiempo mostrado incluye +1 s por cada movimiento extra
+ * (ver [EXTRA_MOVE_PENALTY_MS]). Se enseña también cuando no hubo extras, para que el jugador
+ * sepa la regla ANTES de que le cueste puestos.
+ *
+ * @param finalTimeMs tiempo ya penalizado, el que se guardó y se rankea.
+ */
+@Composable
+private fun hyperCubeTimeNote(game: HyperCubeGameState, finalTimeMs: Long): String {
+    val extra = extraMovesFor(game.moves, game.scrambleDepth)
+    if (extra == 0) return stringResource(Res.string.hypercube_gameover_time_note_clean)
+    val realSeconds = (finalTimeMs - extra * EXTRA_MOVE_PENALTY_MS).coerceAtLeast(0L) / 1000
+    return stringResource(
+        Res.string.hypercube_gameover_time_note_extra,
+        realSeconds.toString(),
+        extra.toString(),
+    )
+}

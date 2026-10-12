@@ -265,9 +265,11 @@ class ShikakuViewModel(
             score = ShikakuScoring.score(state.level, state.mask.enabledCount, elapsedMs, efficiency, restarts),
             completionTimeMs = elapsedMs,
             accuracyPercentage = efficiency * 100,
-            // El nivel viaja en `reachedMetric`, no aquí: `difficulty_level` es en el backend un
-            // escalón 1..5 de tabla de ranking, y este juego compite en tabla única (el puntaje
-            // ya está dominado por el nivel). Mismo criterio que Línea Neón.
+            // El nivel viaja en `reachedMetric` (progresión) Y en `difficultyLevel`: el ranking
+            // mundial se separa por nivel y se ordena por tiempo (ver `GameRankingScopes`), así que
+            // solo compiten entre sí partidas del mismo tablero. El backend admite niveles hasta
+            // 1000 desde la migración 0065.
+            difficultyLevel = state.level,
             reachedMetric = state.level,
         )
         setState { copy(status = GameStatus.FINISHED) }

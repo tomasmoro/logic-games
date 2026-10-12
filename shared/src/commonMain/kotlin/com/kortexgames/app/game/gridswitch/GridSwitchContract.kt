@@ -5,6 +5,7 @@ import com.kortexgames.app.core.audio.SoundEffect
 import com.kortexgames.app.core.mvi.UiEffect
 import com.kortexgames.app.core.mvi.UiIntent
 import com.kortexgames.app.core.mvi.UiState
+import com.kortexgames.app.domain.model.GameRanking
 import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.LeveledGamePhase
@@ -59,6 +60,9 @@ import com.kortexgames.app.game.grid.GridPosition
  *           arranca la siguiente como una partida nueva (RUNNING de nuevo).
  * @property gameOver datos de la pantalla de resultado de la etapa (récord =
  *           etapa máxima alcanzada, percentil); null mientras se juega.
+ * @property rankingPreview comparativa mundial de la etapa resaltada en el carril, para la
+ *           antesala, ANTES de jugarla. `null` si no hay marca, no hay sesión o la consulta falló.
+ * @property rankingPreviewLoading `true` mientras se resuelve [rankingPreview].
  */
 data class GridSwitchUiState(
     val phase: LeveledGamePhase = LeveledGamePhase.LEVEL_SELECT,
@@ -70,10 +74,18 @@ data class GridSwitchUiState(
     val isCompleted: Boolean = false,
     val status: GameStatus = GameStatus.IDLE,
     val gameOver: GameOverInfo? = null,
+    val rankingPreview: GameRanking? = null,
+    val rankingPreviewLoading: Boolean = false,
 ) : UiState
 
 /** Intents: único punto de entrada de la UI (patrón MVI, §4 CLAUDE.md). */
 sealed interface GridSwitchIntent : UiIntent {
+
+    /**
+     * El carril de la antesala resaltó la etapa [stage] (o se acaba de abrir): pide la comparativa
+     * mundial de ESA etapa para [GridSwitchUiState.rankingPreview], sin haberla jugado todavía.
+     */
+    data class PreviewStage(val stage: Int) : GridSwitchIntent
 
     /** Elige una etapa desbloqueada en el selector y empieza a jugarla. */
     data class PlayStage(val stage: Int) : GridSwitchIntent

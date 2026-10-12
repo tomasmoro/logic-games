@@ -377,8 +377,12 @@ object LegionBalance {
     fun shipsPerVerticalEvent(round: Int): Int =
         (if (round >= DOUBLE_LASER_MIN_ROUND) 2 else 1).coerceAtMost(lanesForRound(round) - 1)
 
-    /** Barridos horizontales (exámenes) que programa una ronda: uno desde [SWEEP_MIN_ROUND]. */
-    fun sweepsForRound(round: Int): Int = if (round >= SWEEP_MIN_ROUND) 1 else 0
+    /**
+     * Barridos horizontales (exámenes) que programa una ronda. Desactivado (siempre 0): se
+     * retiró el examen de cuentas de la partida y su UI; el motor se conserva por si se recupera.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    fun sweepsForRound(round: Int): Int = 0
 
     // ── Láser horizontal (examen de opciones múltiples) ──────────────────────────────────────
 

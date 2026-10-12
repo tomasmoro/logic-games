@@ -168,8 +168,15 @@ class EnergyFlowViewModel(
      * `saveResult` emite en 1 o 2 pasos: local primero (el cartel no espera a
      * Supabase) y, con sesión, el percentil real después (ver KDoc de
      * `ProgressRepository.saveResult`).
+     *
+     * Antes de persistir se corrige `difficultyLevel` al nivel jugado: el ranking mundial de
+     * Flujo de Energía se separa por nivel (ver `GameRankingScopes`), pero
+     * `BaseGameEngine.difficulty` queda fijo en 1 desde la construcción del motor, así que sin
+     * esta corrección todas las partidas se guardaban como nivel 1 y solo ese nivel tenía
+     * ranking. Mismo criterio que Water Sort.
      */
-    private fun onFinished(result: GameResult) {
+    private fun onFinished(original: GameResult) {
+        val result = original.copy(difficultyLevel = currentState.currentLevel)
         viewModelScope.launch {
             audio.playSound(SoundEffect.LEVEL_UP)
             audio.hapticFeedback(HapticFeedback.SUCCESS)

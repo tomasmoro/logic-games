@@ -5,6 +5,7 @@ import com.kortexgames.app.core.audio.SoundEffect
 import com.kortexgames.app.core.mvi.UiEffect
 import com.kortexgames.app.core.mvi.UiIntent
 import com.kortexgames.app.core.mvi.UiState
+import com.kortexgames.app.domain.model.GameRanking
 import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.LeveledGamePhase
@@ -44,6 +45,9 @@ import com.kortexgames.app.game.grid.GridPosition
  * @property status ciclo de vida estándar de partida (IDLE→RUNNING→FINISHED).
  * @property gameOver datos de la pantalla de resultado (récord, percentil); null
  *           mientras se juega.
+ * @property rankingPreview comparativa mundial del nivel resaltado en el carril, para la
+ *           antesala, ANTES de jugarlo. `null` si no hay marca, no hay sesión o la consulta falló.
+ * @property rankingPreviewLoading `true` mientras se resuelve [rankingPreview].
  */
 data class NeonLineUiState(
     val phase: LeveledGamePhase = LeveledGamePhase.LEVEL_SELECT,
@@ -52,10 +56,18 @@ data class NeonLineUiState(
     val game: NeonLineGameState = NeonLineGameState(),
     val status: GameStatus = GameStatus.IDLE,
     val gameOver: GameOverInfo? = null,
+    val rankingPreview: GameRanking? = null,
+    val rankingPreviewLoading: Boolean = false,
 ) : UiState
 
 /** Intents: único punto de entrada de la UI (patrón MVI, §4 CLAUDE.md). */
 sealed interface NeonLineIntent : UiIntent {
+
+    /**
+     * El carril de la antesala resaltó el nivel [level] (o se acaba de abrir): pide la comparativa
+     * mundial de ESE nivel para [NeonLineUiState.rankingPreview], sin haberlo jugado todavía.
+     */
+    data class PreviewLevel(val level: Int) : NeonLineIntent
 
     /** Elige un nivel desbloqueado en el selector y empieza a jugarlo. */
     data class PlayLevel(val level: Int) : NeonLineIntent

@@ -54,6 +54,9 @@ import com.kortexgames.app.game.GameMotif
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.ui.components.GameExitGuard
 import com.kortexgames.app.ui.components.GameIntroScreen
+import com.kortexgames.app.ui.components.RankingPreviewUnavailable
+import com.kortexgames.app.ui.components.WorldRankingLoading
+import com.kortexgames.app.ui.components.WorldRankingPreviewPanel
 import com.kortexgames.app.ui.components.GameOverOverlay
 import com.kortexgames.app.ui.components.GamePauseControls
 import com.kortexgames.app.ui.components.ReviveAdOverlay
@@ -171,7 +174,17 @@ fun HexaOrbitScreen(graph: AppGraph, onExit: () -> Unit) {
             onExit = onExit,
             background = { SpaceBackdrop(modifier = Modifier.fillMaxSize()) },
             configContent = if (event == null) {
-                null
+                {
+                    // Comparativa mundial del jugador, ANTES de jugar (mismo panel que el cartel
+                    // de fin de partida). Tabla única: no hay selector de dificultad. En torneo
+                    // se omite: ahí la antesala enseña las reglas del evento, no el ranking mundial.
+                    val preview = state.rankingPreview
+                    when {
+                        state.rankingPreviewLoading -> WorldRankingLoading()
+                        preview != null -> WorldRankingPreviewPanel(ranking = preview)
+                        else -> RankingPreviewUnavailable(difficultyLabel = null)
+                    }
+                }
             } else {
                 {
                     // En torneo, la antesala explica las reglas del evento antes de que el

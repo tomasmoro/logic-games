@@ -8,8 +8,10 @@ import com.kortexgames.app.core.mvi.MviViewModel
 import com.kortexgames.app.core.mvi.UiEffect
 import com.kortexgames.app.core.mvi.UiIntent
 import com.kortexgames.app.core.mvi.UiState
+import com.kortexgames.app.domain.model.GameRanking
 import com.kortexgames.app.domain.model.GameResult
 import com.kortexgames.app.domain.repository.ProgressRepository
+import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.toGameOverInfo
@@ -17,11 +19,20 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
-/** Estado de UI de la pantalla Atracción Geométrica. */
+/**
+ * Estado de UI de la pantalla Atracción Geométrica.
+ *
+ * @property rankingPreview comparativa mundial para la antesala, ANTES de jugar. `null` mientras
+ *   se resuelve ([rankingPreviewLoading]) o si no hay comparativa (invitado, sin red, sin marca).
+ * @property rankingPreviewLoading `true` mientras se pide [rankingPreview]; arranca en `true`
+ *   para que la antesala no parpadee con el aviso de "sin marca" antes de tener respuesta.
+ */
 data class PolarityCollisionUiState(
     val game: PolarityCollisionState = PolarityCollisionState(),
     val status: GameStatus = GameStatus.IDLE,
     val gameOver: GameOverInfo? = null,
+    val rankingPreview: GameRanking? = null,
+    val rankingPreviewLoading: Boolean = true,
 ) : UiState
 
 /** Intents de Atracción Geométrica (entrada única para la UI). */
@@ -69,6 +80,12 @@ class PolarityCollisionViewModel(
         engine.state.onEach { s -> setState { copy(game = s) } }.launchIn(viewModelScope)
         engine.status.onEach { st -> setState { copy(status = st) } }.launchIn(viewModelScope)
         engine.outcome.onEach { result -> result?.let(::onFinished) }.launchIn(viewModelScope)
+        // Comparativa mundial para la antesala. Tabla única (sin selector de dificultad), así que
+        // una sola carga al entrar basta.
+        viewModelScope.launch {
+            val ranking = progress.previewRanking(GameIds.POLARITY_COLLISION)
+            setState { copy(rankingPreview = ranking, rankingPreviewLoading = false) }
+        }
         // No arrancamos aquí: el juego queda en IDLE y muestra la antesala (intro). La
         // partida empieza al pulsar "Comenzar" (intent [PolarityCollisionIntent.Start]).
     }

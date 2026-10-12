@@ -12,6 +12,7 @@ import com.kortexgames.app.domain.repository.ProgressRepository
 import com.kortexgames.app.game.GameIds
 import com.kortexgames.app.game.LeveledGamePhase
 import com.kortexgames.app.game.toGameOverInfo
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -53,6 +54,7 @@ class NeonCircuitViewModel(
     override fun onIntent(intent: NeonCircuitIntent) {
         when (intent) {
             is NeonCircuitIntent.PlayLevel -> playLevel(intent.level)
+            is NeonCircuitIntent.PreviewLevel -> refreshRankingPreview(intent.level)
             is NeonCircuitIntent.StartPath -> engine.onPathStarted(intent.color, intent.cell)
             is NeonCircuitIntent.ResumePath -> engine.onPathResumed(intent.color, intent.cell)
             is NeonCircuitIntent.ExtendPath -> engine.onPathExtended(intent.cell)
@@ -109,6 +111,23 @@ class NeonCircuitViewModel(
         }
     }
 
+    /** Pedido en vuelo de [refreshRankingPreview]; se cancela al lanzar uno nuevo para que una
+     *  respuesta vieja no pise a la actual al cambiar rápido de nivel en el carril. */
+    private var rankingPreviewJob: Job? = null
+
+    /**
+     * Pide la comparativa mundial del nivel [level] para la antesala (ver
+     * [ProgressRepository.previewRanking]): el ranking se separa por nivel (ver `GameRankingScopes`).
+     */
+    private fun refreshRankingPreview(level: Int) {
+        rankingPreviewJob?.cancel()
+        setState { copy(rankingPreview = null, rankingPreviewLoading = true) }
+        rankingPreviewJob = viewModelScope.launch {
+            val ranking = progress.previewRanking(GameIds.NEON_CIRCUIT, level)
+            setState { copy(rankingPreview = ranking, rankingPreviewLoading = false) }
+        }
+    }
+
     /** Empieza (o reempieza) un nivel: limpia el game-over y arranca el motor. */
     private fun playLevel(level: Int) {
         setState { copy(phase = LeveledGamePhase.PLAYING, currentLevel = level, gameOver = null) }
@@ -122,7 +141,11 @@ class NeonCircuitViewModel(
      * el percentil/ranking cuando la red responda (ver KDoc de
      * `ProgressRepository.saveResult`).
      */
-    private fun onFinished(result: GameResult) {
+    private fun onFinished(original: GameResult) {
+        // Se corrige `difficultyLevel` al nivel jugado: el ranking mundial se separa por nivel (ver
+        // `GameRankingScopes`), pero `BaseGameEngine.difficulty` queda fijo en 1 desde la
+        // construcción del motor, así que sin esto todas las partidas caerían en el nivel 1.
+        val result = original.copy(difficultyLevel = currentState.currentLevel)
         viewModelScope.launch {
             sendEffect(NeonCircuitEffect.PlaySound(SoundEffect.LEVEL_UP))
             sendEffect(NeonCircuitEffect.Vibrate(HapticFeedback.SUCCESS))

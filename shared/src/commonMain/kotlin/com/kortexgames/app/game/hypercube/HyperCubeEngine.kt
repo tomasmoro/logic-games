@@ -658,3 +658,19 @@ val FREE_MODE_DIFFICULTY: Int = MAX_LEVEL + 1
  * aleatorio (más allá de esto no se gana desorden, solo tiempo de animación).
  */
 const val FREE_SCRAMBLE_DEPTH = 20
+
+/**
+ * Segundos (en ms) que suma al tiempo de resolución cada movimiento por encima de la mezcla.
+ *
+ * Existe porque el ranking del Hyper-Cube se ordena SOLO por tiempo: sin esto, girar a lo loco y
+ * ver qué sale vale lo mismo que resolver con cabeza. Un segundo por movimiento extra mantiene el
+ * tiempo como métrica (y el ranking comprensible) pero hace que dar vueltas de más no salga gratis.
+ */
+const val EXTRA_MOVE_PENALTY_MS = 1000L
+
+/**
+ * Movimientos que el jugador hizo por encima de la profundidad de la mezcla ([scrambleDepth]),
+ * que es la referencia de "solución razonable" que ya usa la eficiencia (ver `efficiencyRatio`).
+ * Nunca negativo: resolver en menos giros que la mezcla no da bonificación de tiempo.
+ */
+fun extraMovesFor(moves: Int, scrambleDepth: Int): Int = (moves - scrambleDepth).coerceAtLeast(0)

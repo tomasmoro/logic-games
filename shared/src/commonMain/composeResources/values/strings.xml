@@ -334,6 +334,9 @@
     <string name="gameover_default_headline">¡Partida terminada!</string>
     <string name="gameover_stat_points">PUNTOS</string>
     <string name="gameover_stat_time">Tiempo</string>
+    <!-- Hyper-Cube: el tiempo del ranking suma 1 s por cada movimiento por encima de la mezcla. -->
+    <string name="hypercube_gameover_time_note_extra">Tu tiempo real fue %1$s s, más %2$s mov. extra (+%2$s s). Cada movimiento extra suma 1 segundo.</string>
+    <string name="hypercube_gameover_time_note_clean">Sin movimientos extra. Ojo: cada movimiento por encima de la mezcla suma 1 segundo a tu tiempo.</string>
     <!-- Único CTA durante la bienvenida de primera apertura (ver duringFirstRun). -->
     <string name="gameover_cta_back">VOLVER</string>
     <!-- %1$s = rótulo del escalón de dificultad recién abierto, en mayúsculas. -->

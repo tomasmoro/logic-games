@@ -3,6 +3,7 @@ package com.kortexgames.app.game.hypercube
 import com.kortexgames.app.core.mvi.UiEffect
 import com.kortexgames.app.core.mvi.UiIntent
 import com.kortexgames.app.core.mvi.UiState
+import com.kortexgames.app.domain.model.GameRanking
 import com.kortexgames.app.game.GameOverInfo
 import com.kortexgames.app.game.GameStatus
 import com.kortexgames.app.game.LeveledGamePhase
@@ -46,6 +47,12 @@ import com.kortexgames.app.game.LeveledGamePhase
  *   las recomposiciones hasta que el jugador lo cierre.
  * @property saved resumen de la partida a medias guardada al salir, o `null` si no hay ninguna.
  *   La antesala la ofrece como "Continuar".
+ * @property rankingPreview comparativa mundial del nivel resaltado en el carril, para la antesala;
+ *   `null` si el jugador aún no tiene marca ahí, no hay sesión o la consulta falló.
+ * @property rankingPreviewLoading `true` mientras se resuelve [rankingPreview].
+ * @property freeRankingPreview ídem para el **modo libre**, que tiene su propia tabla
+ *   ([FREE_MODE_DIFFICULTY]).
+ * @property freeRankingPreviewLoading `true` mientras se resuelve [freeRankingPreview].
  * @property awaitingUndoAd hay un anuncio recompensado en marcha para pagar un deshacer. La
  *   pantalla lo usa como disparador (lanza el anuncio) y como señal de "cargando".
  */
@@ -60,6 +67,10 @@ data class HyperCubeUiState(
     val gameOver: GameOverInfo? = null,
     val saved: SavedGameSummary? = null,
     val awaitingUndoAd: Boolean = false,
+    val rankingPreview: GameRanking? = null,
+    val rankingPreviewLoading: Boolean = false,
+    val freeRankingPreview: GameRanking? = null,
+    val freeRankingPreviewLoading: Boolean = false,
 ) : UiState
 
 /**
@@ -184,6 +195,15 @@ sealed interface HyperCubeIntent : UiIntent {
 
     /** Vuelve a la antesala con el carril de niveles. */
     data object ChooseLevel : HyperCubeIntent
+
+    /**
+     * El carril de la antesala resaltó el nivel [level] (o se acaba de abrir): pide la comparativa
+     * mundial de ESE nivel, sin haberlo jugado todavía.
+     */
+    data class PreviewLevel(val level: Int) : HyperCubeIntent
+
+    /** La antesala se abrió: pide la comparativa mundial del modo libre (tabla propia). */
+    data object PreviewFreeMode : HyperCubeIntent
 
     /** Retoma la partida guardada que ofrece la antesala. */
     data object ResumeSaved : HyperCubeIntent

@@ -163,6 +163,11 @@ private val TrophyGap = CardItemGap * 0.9f
  *   de la tarjeta y el CTA principal, para que "SIGUIENTE NIVEL"/"JUGAR DE NUEVO" hable
  *   del color propio del juego en vez de un verde fijo que ignoraría la categoría
  *   (CLAUDE.md §9.2). Por defecto ámbar (el tono que ya tenía el trofeo).
+ * @param timeNote aviso opcional bajo las métricas para explicar cómo se calculó el tiempo (p. ej.
+ *   penalizaciones que el jugador no ve en pantalla). Null = no se muestra nada.
+ * @param showWorldComparison si es false se omite la comparativa mundial (ranking,
+ *   percentil y avisos de "comparando"/"inicia sesión"). Los juegos que no quieren
+ *   ranking lo desactivan aquí en vez de que el cartel decida por su cuenta.
  */
 @Composable
 fun GameOverOverlay(
@@ -179,6 +184,8 @@ fun GameOverOverlay(
     audio: AudioAndHapticManager? = null,
     accent: Color = LogicColors.Amber,
     singleBackCta: Boolean = false,
+    showWorldComparison: Boolean = true,
+    timeNote: String? = null,
 ) {
     // `visible` arranca en false: durante REVEAL_DELAY_MS no se dibuja nada y la
     // pantalla de juego queda a la vista; luego dispara scrim + entrada del card.
@@ -242,7 +249,8 @@ fun GameOverOverlay(
     //
     // `isGlobalRecord` solo existe con sesión + red; sin él la tarjeta sigue
     // celebrando el récord personal, que es local y siempre está disponible.
-    val ranking = info.ranking
+    // Sin comparativa mundial el ranking no se usa ni para celebrar récord global.
+    val ranking = if (showWorldComparison) info.ranking else null
     val isGlobalRecord = ranking?.isGlobalRecord == true
     val showFireworks = info.isNewRecord || isGlobalRecord
 
@@ -356,6 +364,16 @@ fun GameOverOverlay(
             }
             }
 
+            if (timeNote != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = timeNote,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = LogicColors.OnDarkMuted,
+                    textAlign = TextAlign.Center,
+                )
+            }
+
             Spacer(Modifier.height(CardItemGap))
 
             // Comparativa con el mundo, en orden de preferencia:
@@ -368,7 +386,7 @@ fun GameOverOverlay(
             //      ProgressRepository.saveResult), así que este hueco se rellena solo
             //      un instante después;
             //   4. aviso de guardado local (invitado / sin red / subida fallida).
-            val percentile = info.percentile
+            val percentile = if (showWorldComparison) info.percentile else null
             val eventOutcome = info.event
             when {
                 // Partida de TORNEO: manda el puesto del torneo. La comparativa mundial
@@ -388,6 +406,7 @@ fun GameOverOverlay(
                     },
                 )
                 percentile != null -> PercentileBanner(percentile)
+                !showWorldComparison -> Unit
                 info.isSyncPending -> WorldRankingLoading()
                 else -> WorldRankingUnavailable()
             }
@@ -395,7 +414,7 @@ fun GameOverOverlay(
             // Mismo hueco que el resto de bloques de la tarjeta: un `2.dp` aquí dejaba
             // el aviso de ranking/"inicia sesión" pegado a los botones de abajo,
             // rompiendo el ritmo vertical uniforme del resto del cartel.
-            Spacer(Modifier.height(CardItemGap))
+            if (showWorldComparison || eventOutcome != null) Spacer(Modifier.height(CardItemGap))
 
             if (onlyBack) {
                 // Un único CTA. Repetir nivel, avanzar o elegir nivel no pintan nada
